@@ -18,10 +18,7 @@ public static class RulePackLoader
         .Build();
 
     /// <summary>Default directory for user-supplied rule packs.</summary>
-    public static string DefaultUserRulesDir =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".cifail", "rules");
+    public static string DefaultUserRulesDir => CiFailPaths.UserRulesDir;
 
     /// <summary>
     /// Load all rules: embedded defaults first, then any user packs (which override

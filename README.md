@@ -62,6 +62,12 @@ cifail resolve <id> --note    # record how a failure was fixed
 cifail rules list             # inspect loaded rule packs
 ```
 
+## Data & configuration
+
+History and user rule packs live under `~/.cifail/` (`history.db`, `rules/`). Set the
+`CIFAIL_HOME` environment variable to relocate this directory — handy for CI, tests,
+or keeping projects isolated.
+
 ## How it works
 
 ```
@@ -74,8 +80,8 @@ See [`docs`](./docs) / the plan for the full architecture.
 ## Roadmap
 
 - **M0** — Scaffolding, CI, license. ✅
-- **M1** — Offline analyze: ingest, .NET rule pack, rule engine, console + `--json`.
-- **M2** — Memory: SQLite history + TF-IDF similarity + `history`/`resolve`.
+- **M1** — Offline analyze: ingest, .NET rule pack, rule engine, console + `--json`. ✅
+- **M2** — Memory: SQLite history + TF-IDF similarity + `history`/`resolve`. ✅
 - **M3** — Breadth: Node, Python, Generic CI rule packs.
 - **M4** — Optional AI via Ollama, gated behind `--ai`.
 - **M5** — Release: docs, samples, `dotnet tool` packaging, NuGet + GitHub Releases.

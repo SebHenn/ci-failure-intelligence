@@ -2,6 +2,7 @@ using System.ComponentModel;
 using CiFail.Cli.Output;
 using CiFail.Core.Analysis;
 using CiFail.Core.Models;
+using CiFail.Core.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -76,7 +77,12 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             TopSimilar = settings.Top,
         };
 
-        var service = AnalysisService.CreateDefault();
+        // History + similarity are backed by the local SQLite store. Opening it
+        // creates ~/.cifail/history.db on first use; --no-history still queries
+        // similarity but skips persisting the current run.
+        using var store = new SqliteAnalysisRepository();
+        var service = AnalysisService.CreateWithStore(store);
+
         bool allMatched = true;
         var results = new List<Analysis>(inputs.Count);
 
