@@ -1,0 +1,87 @@
+# .NET / NuGet / MSBuild / xUnit rule pack
+# Each rule: id, ecosystem, category, title, match (regex, named groups allowed),
+# confidence (0..1), fix (template with {group} placeholders), docs (optional).
+
+- id: nuget-nu1101
+  ecosystem: dotnet
+  category: dependency
+  title: NuGet package not found
+  match: "error NU1101: Unable to find package '?(?<package>[^'\\s.]+(?:\\.[^'\\s.]+)*)'?"
+  confidence: 0.9
+  fix: |
+    Package '{package}' was not found in any configured NuGet source.
+    Check the package name/version for typos, and confirm the right source is
+    configured in nuget.config (e.g. nuget.org or a private feed).
+  docs: https://learn.microsoft.com/nuget/reference/errors-and-warnings/nu1101
+
+- id: nuget-nu1605
+  ecosystem: dotnet
+  category: dependency
+  title: NuGet package downgrade detected
+  match: "(?:error|warning) NU1605: .*?Detected package downgrade: (?<package>[^\\s]+)"
+  confidence: 0.85
+  fix: |
+    A transitive dependency requires a higher version of '{package}' than the
+    one referenced directly. Add a direct PackageReference to '{package}' at the
+    higher version, or align the versions across projects.
+  docs: https://learn.microsoft.com/nuget/reference/errors-and-warnings/nu1605
+
+- id: nuget-nu1102
+  ecosystem: dotnet
+  category: dependency
+  title: NuGet package version not found
+  match: "error NU1102: Unable to find package (?<package>[^\\s]+) with version"
+  confidence: 0.88
+  fix: |
+    The package '{package}' exists, but the requested version is not available in
+    the configured sources. Pick an available version (check the feed) or update
+    the version constraint in the .csproj / Directory.Packages.props.
+  docs: https://learn.microsoft.com/nuget/reference/errors-and-warnings/nu1102
+
+- id: msbuild-msb3073
+  ecosystem: dotnet
+  category: build
+  title: MSBuild custom command exited with an error
+  match: "error MSB3073: .*?exited with code (?<code>\\d+)"
+  confidence: 0.7
+  fix: |
+    A custom build step (Exec task / pre- or post-build event) failed with exit
+    code {code}. Look just above this line for the failing command's own output;
+    run that command locally to reproduce.
+  docs: https://learn.microsoft.com/visualstudio/msbuild/errors/msb3073
+
+- id: csc-compile-error
+  ecosystem: dotnet
+  category: compile
+  title: C# compile error
+  match: "error (?<code>CS\\d{3,5}): (?<message>.+)"
+  confidence: 0.6
+  fix: |
+    Compilation failed ({code}): {message}
+    Fix the offending source line, then rebuild. Run `dotnet build` locally to
+    iterate; {code} can be searched on learn.microsoft.com for details.
+  docs: https://learn.microsoft.com/dotnet/csharp/language-reference/compiler-messages/
+
+- id: xunit-assert-failed
+  ecosystem: dotnet
+  category: test
+  title: xUnit test assertion failed
+  match: "(?<assert>Assert\\.\\w+\\(\\) Failure)"
+  confidence: 0.65
+  fix: |
+    A test failed an assertion ({assert}). Compare the Expected vs Actual values
+    in the lines that follow. Reproduce a single test with
+    `dotnet test --filter FullyQualifiedName~<TestName>`.
+  docs: https://xunit.net/docs/comparisons
+
+- id: dotnet-sdk-not-found
+  ecosystem: dotnet
+  category: environment
+  title: Required .NET SDK version not found
+  match: "A compatible .NET SDK was not found|error NETSDK1045|requested SDK version"
+  confidence: 0.75
+  fix: |
+    The build requested a .NET SDK version that isn't installed on this machine.
+    Check global.json for a pinned SDK version and either install that SDK or
+    relax/remove the version constraint.
+  docs: https://learn.microsoft.com/dotnet/core/tools/global-json

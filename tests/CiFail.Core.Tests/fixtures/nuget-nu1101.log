@@ -1,0 +1,4 @@
+Determining projects to restore...
+C:\proj\src\App\App.csproj : error NU1101: Unable to find package Newtonsoft.Jsn. No packages exist with this id in source(s): nuget.org
+  Failed to restore C:\proj\src\App\App.csproj (in 412 ms).
+Build FAILED.

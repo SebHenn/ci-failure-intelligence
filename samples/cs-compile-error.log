@@ -1,0 +1,7 @@
+2026-06-20T10:15:32.1234567Z Build started.
+2026-06-20T10:15:33.0000000Z   Determining projects to restore...
+2026-06-20T10:15:34.5550000Z   App -> C:\proj\src\App\bin\Debug\net8.0\App.dll
+2026-06-20T10:15:35.1110000Z C:\proj\src\App\Program.cs(12,9): error CS0103: The name 'Consoel' does not exist in the current context [C:\proj\src\App\App.csproj]
+2026-06-20T10:15:35.2220000Z
+2026-06-20T10:15:35.3330000Z Build FAILED.
+2026-06-20T10:15:35.4440000Z     1 Error(s)

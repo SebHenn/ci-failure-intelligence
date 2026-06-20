@@ -488,3 +488,8 @@ $RECYCLE.BIN/
 *.db
 nupkg/
 samples/*.local.log
+
+# Sample + fixture logs are committed on purpose (override the global *.log rule),
+# but keep transient local logs out.
+!samples/**/*.log
+!tests/**/fixtures/**/*.log

@@ -25,4 +25,8 @@
     <ProjectReference Include="..\..\src\CiFail.Core\CiFail.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
