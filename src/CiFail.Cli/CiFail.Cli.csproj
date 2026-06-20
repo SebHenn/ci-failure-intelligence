@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>CiFail.Cli</RootNamespace>
+
+    <!-- Package as a .NET global tool -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>cifail</ToolCommandName>
+    <PackageId>cifail</PackageId>
+    <Version>0.1.0-alpha</Version>
+    <Authors>Sebastian Henn</Authors>
+    <Description>Local-first CI failure intelligence: what broke, whether it happened before, and how to fix it.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/SebHenn/ci-failure-intelligence</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/SebHenn/ci-failure-intelligence</RepositoryUrl>
+    <PackageTags>ci;build;logs;diagnostics;cli;dotnet-tool</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CiFail.Core\CiFail.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console" Version="0.57.0" />
+    <PackageReference Include="Spectre.Console.Cli" Version="0.55.0" />
+  </ItemGroup>
+
+</Project>
