@@ -487,6 +487,7 @@ $RECYCLE.BIN/
 .cifail/
 *.db
 nupkg/
+dist/
 samples/*.local.log
 
 # Sample + fixture logs are committed on purpose (override the global *.log rule),

@@ -9,3 +9,7 @@
 *.md    text eol=lf
 *.json  text eol=lf
 *.log   text eol=lf
+
+# Shell scripts must stay LF — they run on Linux/macOS CI and via `curl | bash`.
+*.sh    text eol=lf
+Dockerfile text eol=lf

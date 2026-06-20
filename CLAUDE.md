@@ -25,7 +25,19 @@ dotnet run --project src/CiFail.Cli -- rules list
 
 # Package as a global tool:
 dotnet pack src/CiFail.Cli/CiFail.Cli.csproj -c Release -o ./nupkg
+
+# Build self-contained, single-file native binaries (no .NET needed to run them):
+bash scripts/publish.sh                # all 6 RIDs -> dist/
+bash scripts/publish.sh linux-x64      # one RID
+dotnet publish src/CiFail.Cli/CiFail.Cli.csproj -c Release -r win-x64 -o dist/win-x64
+# Releases are cut by pushing a tag (git tag v0.1.0 && git push origin v0.1.0),
+# which triggers .github/workflows/release.yml to build the matrix + attach binaries.
 ```
+
+The published executable is named **`cifail`** (set via `<AssemblyName>`), not
+`CiFail.Cli`. Self-contained/single-file props in `CiFail.Cli.csproj` are gated on
+`'$(RuntimeIdentifier)' != ''`, so they only apply during `dotnet publish -r <rid>` and
+never affect plain build/test/pack.
 
 **Always set `CIFAIL_HOME` to a temp dir when manually running the CLI.** The tool
 writes history to `~/.cifail/history.db`, and .NET's `SpecialFolder.UserProfile`

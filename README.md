@@ -47,42 +47,59 @@ Think of it as a teammate who has seen a lot of broken builds and remembers all 
 
 ---
 
-## Try it in 60 seconds
+## Install
 
-You need the **[.NET SDK](https://dotnet.microsoft.com/download) (version 8 or newer)**
-installed. Then:
+cifail is a single self-contained binary — **no .NET, no runtime, nothing else to
+install.** Pick your platform:
+
+**macOS / Linux** (one line):
 
 ```console
-git clone https://github.com/SebHenn/ci-failure-intelligence.git
-cd ci-failure-intelligence
-dotnet run --project src/CiFail.Cli -- analyze samples/nuget-nu1101.log
+curl -fsSL https://raw.githubusercontent.com/SebHenn/ci-failure-intelligence/main/scripts/install.sh | bash
 ```
 
-That runs cifail against an example broken-build log included in the repo. You should
-see a "What broke" panel explaining the failure.
+**Homebrew** (macOS / Linux):
 
-> The `-- ` separates options for `dotnet run` from the arguments meant for cifail.
-> Everything after `--` is what you'd type after `cifail` once it's installed.
+```console
+brew install SebHenn/tap/cifail
+```
 
-### Use it on your own build
+**Windows** ([Scoop](https://scoop.sh)):
 
-Run your build/test command and pipe its output into cifail:
+```console
+scoop install https://raw.githubusercontent.com/SebHenn/ci-failure-intelligence/main/packaging/scoop/cifail.json
+```
+
+**Manual:** grab the binary for your OS from the
+[Releases page](https://github.com/SebHenn/ci-failure-intelligence/releases), unzip it,
+and put it on your `PATH`.
+
+> Prefer Docker or a CI pipeline? See [Use cifail in CI](#use-cifail-in-ci) below.
+
+## Use it
+
+Run your build or test command and pipe its output into cifail:
 
 ```console
 dotnet build 2>&1 | cifail analyze
 npm install   2>&1 | cifail analyze
 pytest        2>&1 | cifail analyze
+go build ./... 2>&1 | cifail analyze
 ```
 
 Or save a log to a file first and analyze that:
 
 ```console
-dotnet build > build.log 2>&1
-cifail analyze build.log
+npm test > test.log 2>&1
+cifail analyze test.log
 ```
 
-*(While running from source, replace `cifail` with
-`dotnet run --project src/CiFail.Cli -- `.)*
+Want to see it work right now without a broken build of your own? The repo ships
+example logs:
+
+```console
+cifail analyze samples/nuget-nu1101.log
+```
 
 ---
 
@@ -106,6 +123,25 @@ There's also `cifail rules list` to see every failure pattern cifail can recogni
 - `--ai` — if a failure isn't recognized, also ask a local AI model for a suggestion.
   *(Optional and off by default — needs [Ollama](https://ollama.com) installed. Coming soon.)*
 - `--no-history` — analyze without saving this run to history.
+
+---
+
+## Use cifail in CI
+
+The quickest way is to pipe a failing step's output into cifail right in your pipeline.
+For example, in GitHub Actions:
+
+```yaml
+- name: Build
+  run: dotnet build 2>&1 | tee build.log
+
+- name: Explain failures
+  if: failure()
+  run: cifail analyze build.log
+```
+
+A published **Docker image** and a ready-made **GitHub Action / GitLab template** are on
+the roadmap below, so you won't even need to install the binary on the runner.
 
 ---
 
@@ -138,20 +174,41 @@ plain YAML files (no C# needed) — see the existing ones in
 [`src/CiFail.Core/rulepacks`](./src/CiFail.Core/rulepacks). A full `CONTRIBUTING.md` is
 coming soon.
 
+### Build from source
+
+cifail is written in C# (.NET 8). If you want to hack on it you'll need the
+[.NET SDK](https://dotnet.microsoft.com/download) (8 or newer):
+
+```console
+git clone https://github.com/SebHenn/ci-failure-intelligence.git
+cd ci-failure-intelligence
+dotnet test                                           # run the tests
+dotnet run --project src/CiFail.Cli -- analyze samples/nuget-nu1101.log
+bash scripts/publish.sh linux-x64                     # build a standalone binary
+```
+
+*(While running from source, `dotnet run --project src/CiFail.Cli -- ` stands in for the
+installed `cifail` command.)* See [CLAUDE.md](./CLAUDE.md) for architecture notes.
+
 ---
 
 ## Project status & roadmap
 
-🚧 Early but usable. The offline analysis, memory, and the .NET/Node/Python/Generic
-patterns all work today.
+🚧 Early but usable. Offline analysis, memory, and the .NET/Node/Python/Generic patterns
+all work today.
 
-- **M1** — Explain failures offline (.NET patterns), with `--json`. ✅
-- **M2** — Remember past failures and your fixes. ✅
-- **M3** — Node, Python, and generic CI patterns. ✅
-- **M4** — Optional local AI suggestions via Ollama (`--ai`). *(next)*
-- **M5** — Install with one command (`dotnet tool install --global cifail`). *(planned)*
+Done:
+- **Explain failures offline** (.NET, Node, Python, generic patterns), human or `--json`. ✅
+- **Remember** past failures and your fixes, and surface similar ones. ✅
 
-*(Developer/architecture notes live in [CLAUDE.md](./CLAUDE.md).)*
+Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
+- **One-command install** as a native binary on any OS — no .NET needed. *(in progress)*
+- **Pick your database** — keep the built-in SQLite, or point cifail at a shared
+  PostgreSQL / MySQL / SQL Server / MongoDB. *(planned)*
+- **Resolutions that record themselves** — cifail links a failure to the commit that
+  fixed it, so you don't have to run `resolve` by hand. *(planned)*
+- **Docker image, GitHub Action & GitLab template**, then a shared team service. *(planned)*
+- **Optional local AI** suggestions via [Ollama](https://ollama.com) (`--ai`). *(planned)*
 
 ## License
 

@@ -1,0 +1,28 @@
+{
+  "version": "0.1.0",
+  "description": "Local-first CI failure intelligence: what broke, whether it happened before, and how to fix it.",
+  "homepage": "https://github.com/SebHenn/ci-failure-intelligence",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/SebHenn/ci-failure-intelligence/releases/download/v0.1.0/cifail-0.1.0-win-x64.zip",
+      "hash": "REPLACE_WITH_WIN_X64_SHA256"
+    },
+    "arm64": {
+      "url": "https://github.com/SebHenn/ci-failure-intelligence/releases/download/v0.1.0/cifail-0.1.0-win-arm64.zip",
+      "hash": "REPLACE_WITH_WIN_ARM64_SHA256"
+    }
+  },
+  "bin": "cifail.exe",
+  "checkver": "github",
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/SebHenn/ci-failure-intelligence/releases/download/v$version/cifail-$version-win-x64.zip"
+      },
+      "arm64": {
+        "url": "https://github.com/SebHenn/ci-failure-intelligence/releases/download/v$version/cifail-$version-win-arm64.zip"
+      }
+    }
+  }
+}
