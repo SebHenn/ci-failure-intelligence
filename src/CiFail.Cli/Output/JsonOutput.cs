@@ -25,6 +25,7 @@ public static class JsonOutput
             Ecosystem = analysis.Ecosystem.ToString().ToLowerInvariant(),
             AnalyzedAt = analysis.AnalyzedAt,
             Matched = analysis.HasMatch,
+            HistoryId = analysis.HistoryId,
             Fingerprint = analysis.Fingerprint.ToString(),
             RootCause = analysis.RootCause is { } rc ? ToMatchDto(rc) : null,
             Matches = analysis.Matches.Select(ToMatchDto).ToList(),
@@ -65,6 +66,7 @@ public static class JsonOutput
         public string Ecosystem { get; init; } = "";
         public DateTimeOffset AnalyzedAt { get; init; }
         public bool Matched { get; init; }
+        public long? HistoryId { get; init; }
         public string Fingerprint { get; init; } = "";
         public MatchDto? RootCause { get; init; }
         public List<MatchDto> Matches { get; init; } = new();

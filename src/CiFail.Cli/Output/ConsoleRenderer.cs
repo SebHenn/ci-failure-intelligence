@@ -3,7 +3,10 @@ using Spectre.Console;
 
 namespace CiFail.Cli.Output;
 
-/// <summary>Renders an <see cref="Analysis"/> for humans using Spectre panels/tables.</summary>
+/// <summary>
+/// Renders an <see cref="Analysis"/> for humans using Spectre panels/tables. Wording
+/// is intentionally plain so someone new to CI logs can act on it without extra context.
+/// </summary>
 public static class ConsoleRenderer
 {
     public static void Render(IAnsiConsole console, Analysis analysis)
@@ -20,6 +23,8 @@ public static class ConsoleRenderer
 
         if (analysis.AiSuggestion is { } ai)
             RenderAi(console, ai);
+
+        RenderNextSteps(console, analysis);
     }
 
     private static void RenderRootCause(IAnsiConsole console, Analysis analysis, RuleMatch rc)
@@ -27,71 +32,71 @@ public static class ConsoleRenderer
         var color = ConfidenceColor(rc.Score);
         var header = $"[{color}]{Markup.Escape(rc.Rule.Title)}[/]  " +
                      $"[grey]({analysis.Ecosystem.ToString().ToLowerInvariant()} · " +
-                     $"{Markup.Escape(rc.Rule.Category)} · {rc.Score:0.00})[/]";
+                     $"{Markup.Escape(rc.Rule.Category)} · {ConfidenceWord(rc.Score)} confidence)[/]";
 
         var body = new Markup(
+            "[bold]How to fix it[/]\n" +
             $"{Markup.Escape(rc.Fix.TrimEnd())}\n\n" +
-            $"[grey]matched:[/] {Markup.Escape(Truncate(rc.MatchedLine, 100))}" +
+            $"[grey]The line that gave it away:[/]\n{Markup.Escape(Truncate(rc.MatchedLine, 100))}" +
             (string.IsNullOrWhiteSpace(rc.Rule.Docs)
                 ? string.Empty
-                : $"\n[grey]docs:[/] [link]{Markup.Escape(rc.Rule.Docs!)}[/]"));
+                : $"\n\n[grey]Learn more:[/] [link]{Markup.Escape(rc.Rule.Docs!)}[/]"));
 
         console.Write(new Panel(body)
-            .Header($" Root cause: {header} ")
+            .Header($" What broke: {header} ")
             .Border(BoxBorder.Rounded)
             .BorderColor(ConfidenceSpectreColor(rc.Score))
             .Expand());
 
         if (analysis.Matches.Count > 1)
         {
-            var table = new Table().Border(TableBorder.Minimal).Title("[grey]other signals[/]");
-            table.AddColumn("rule");
-            table.AddColumn("title");
-            table.AddColumn(new TableColumn("conf").RightAligned());
+            var table = new Table().Border(TableBorder.Minimal)
+                .Title("[grey]Other things cifail noticed (less likely the main cause)[/]");
+            table.AddColumn("problem");
+            table.AddColumn(new TableColumn("confidence").RightAligned());
             foreach (var m in analysis.Matches.Skip(1).Take(5))
-                table.AddRow(Markup.Escape(m.Rule.Id), Markup.Escape(m.Rule.Title), $"{m.Score:0.00}");
+                table.AddRow(Markup.Escape(m.Rule.Title), ConfidenceWord(m.Score));
             console.Write(table);
         }
-
-        console.MarkupLine($"[grey]fingerprint:[/] {Markup.Escape(analysis.Fingerprint.ToString())}");
     }
 
     private static void RenderNoMatch(IAnsiConsole console, Analysis analysis)
     {
         console.Write(new Panel(new Markup(
-                "[yellow]No known failure pattern matched.[/]\n\n" +
-                "This failure isn't in the rule packs yet. Try [bold]--ai[/] for a suggestion " +
-                "(requires a local Ollama), or add a rule pack to teach cifail this pattern."))
-            .Header(" Root cause: [yellow]unknown[/] ")
+                "[yellow]cifail doesn't recognize this failure yet.[/]\n\n" +
+                "It looks like a [bold]" + analysis.Ecosystem.ToString().ToLowerInvariant() +
+                "[/] log, but none of the built-in patterns matched. You can:\n" +
+                "  • read the log yourself and look for the first line containing [bold]error[/] or [bold]failed[/]\n" +
+                "  • try [bold]--ai[/] to ask a local AI model (needs Ollama installed)\n" +
+                "  • teach cifail this pattern by adding a rule (see the README)"))
+            .Header(" What broke: [yellow]not sure yet[/] ")
             .Border(BoxBorder.Rounded)
             .BorderColor(Color.Yellow)
             .Expand());
-
-        console.MarkupLine(
-            $"[grey]ecosystem:[/] {analysis.Ecosystem.ToString().ToLowerInvariant()}   " +
-            $"[grey]fingerprint:[/] {Markup.Escape(analysis.Fingerprint.ToString())}");
     }
 
     private static void RenderSimilar(IAnsiConsole console, IReadOnlyList<SimilarFailure> similar)
     {
-        var table = new Table().Border(TableBorder.Rounded).Title("[bold]Similar past failures[/]");
+        var table = new Table().Border(TableBorder.Rounded)
+            .Title("[bold]You've seen something like this before[/]");
         table.AddColumn("id");
-        table.AddColumn(new TableColumn("match").RightAligned());
-        table.AddColumn("rule");
+        table.AddColumn(new TableColumn("how similar").RightAligned());
+        table.AddColumn("problem");
         table.AddColumn("when");
-        table.AddColumn("resolution");
+        table.AddColumn("how you fixed it last time");
 
         foreach (var s in similar)
         {
             table.AddRow(
                 s.Id.ToString(),
-                $"{s.Similarity:0.00}",
+                $"{s.Similarity:0%}",
                 Markup.Escape(s.RuleId),
                 Markup.Escape(s.AnalyzedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")),
-                Markup.Escape(string.IsNullOrWhiteSpace(s.Resolution) ? "—" : Truncate(s.Resolution!, 50)));
+                Markup.Escape(string.IsNullOrWhiteSpace(s.Resolution) ? "— (not recorded)" : Truncate(s.Resolution!, 50)));
         }
 
         console.Write(table);
+        console.MarkupLine("[grey]See the full detail of a past failure with[/] [bold]cifail history <id>[/][grey].[/]");
     }
 
     private static void RenderAi(IAnsiConsole console, AiSuggestion ai)
@@ -103,6 +108,25 @@ public static class ConsoleRenderer
             .BorderColor(Color.Blue)
             .Expand());
     }
+
+    private static void RenderNextSteps(IAnsiConsole console, Analysis analysis)
+    {
+        // Once they've fixed it, let them record how — that's what powers the
+        // "you've seen this before" hint next time. Only show when we have an id.
+        if (analysis.HistoryId is { } id)
+        {
+            console.MarkupLine(
+                $"[grey]Saved as #{id}. Once you've fixed it, record how so future-you remembers:[/]\n" +
+                $"  [bold]cifail resolve {id} --note \"what fixed it\"[/]");
+        }
+    }
+
+    private static string ConfidenceWord(double score) => score switch
+    {
+        >= 0.8 => "high",
+        >= 0.6 => "medium",
+        _ => "low",
+    };
 
     private static string ConfidenceColor(double score) => score switch
     {

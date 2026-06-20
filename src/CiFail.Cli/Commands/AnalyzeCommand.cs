@@ -63,9 +63,11 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
 
         if (inputs.Count == 0)
         {
-            AnsiConsole.MarkupLine(
-                "[red]error:[/] no input. Pass a log file path, or pipe a log via stdin " +
-                "(e.g. [grey]dotnet build | cifail analyze[/]).");
+            AnsiConsole.MarkupLine("[yellow]cifail needs a log to look at.[/] Two ways to give it one:");
+            AnsiConsole.MarkupLine("  1. Point it at a file:   [bold]cifail analyze build.log[/]");
+            AnsiConsole.MarkupLine("  2. Pipe a command's output straight in:");
+            AnsiConsole.MarkupLine("       [grey]dotnet build 2>&1 | cifail analyze[/]");
+            AnsiConsole.MarkupLine("       [grey]npm install   2>&1 | cifail analyze[/]");
             return ExitInputError;
         }
 

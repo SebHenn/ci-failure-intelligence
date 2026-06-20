@@ -47,6 +47,7 @@ public sealed class AnalysisService
         var fingerprint = FingerprintBuilder.Build(log, rootCause);
 
         IReadOnlyList<SimilarFailure> similar = Array.Empty<SimilarFailure>();
+        long? historyId = null;
 
         if (_store is not null)
         {
@@ -55,7 +56,7 @@ public sealed class AnalysisService
 
             if (options.RecordHistory)
             {
-                _store.Save(new AnalysisRecord
+                historyId = _store.Save(new AnalysisRecord
                 {
                     AnalyzedAt = DateTimeOffset.UtcNow,
                     Source = source,
@@ -76,6 +77,7 @@ public sealed class AnalysisService
             Ecosystem = ecosystem,
             Matches = matches,
             Fingerprint = fingerprint,
+            HistoryId = historyId,
             SimilarFailures = similar,
         };
     }

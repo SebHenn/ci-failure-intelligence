@@ -19,6 +19,13 @@ public sealed class Analysis
 
     public required FailureFingerprint Fingerprint { get; init; }
 
+    /// <summary>
+    /// The id this analysis was saved under in history, or null when it wasn't
+    /// persisted (no store, or --no-history). Used to tell the user how to
+    /// <c>cifail resolve</c> it later.
+    /// </summary>
+    public long? HistoryId { get; init; }
+
     /// <summary>Similar prior failures (populated in M2); empty until then.</summary>
     public IReadOnlyList<SimilarFailure> SimilarFailures { get; init; } =
         Array.Empty<SimilarFailure>();

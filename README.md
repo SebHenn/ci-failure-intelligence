@@ -1,43 +1,56 @@
-# cifail — CI Failure Intelligence
+# cifail — understand why your build failed
 
-> Local-first developer intelligence for CI/build/test logs. Tells you **what broke,
-> whether it has happened before, and how to fix it** — offline, language-agnostic,
-> open source. AI is an optional add-on, never a requirement.
+Builds and tests fail with walls of confusing log output. **cifail** reads that output
+and tells you, in plain English:
 
-`cifail` takes a build/test log (from a file or stdin), matches it against a library of
-failure rules, finds similar past failures you've already seen, and prints a clear root
-cause + suggested fix.
+1. **What broke** — the one thing that actually caused the failure.
+2. **How to fix it** — concrete next steps, not just the error code.
+3. **Whether you've hit it before** — and how you fixed it last time.
+
+It runs entirely on your own machine. Nothing is uploaded anywhere, it works offline,
+and it doesn't care what language your project is in.
 
 ```console
 $ dotnet build 2>&1 | cifail analyze
-┌─ Root cause ─────────────────────────────────────────────┐
-│ NuGet package not found  (dotnet · dependency · 0.90)    │
-│ Package 'Newtonsoft.Jsn' was not found in the configured │
-│ sources. Check the name/version, or add the right NuGet  │
-│ source in nuget.config.                                  │
-└──────────────────────────────────────────────────────────┘
+
+── cifail · stdin ───────────────────────────────────────────────
+╭─ What broke: NuGet package not found  (dotnet · dependency · high confidence) ─╮
+│ How to fix it                                                                  │
+│ Package 'Newtonsoft.Jsn' was not found in any configured NuGet source.         │
+│ Check the package name/version for typos, and confirm the right source is      │
+│ configured in nuget.config (e.g. nuget.org or a private feed).                 │
+│                                                                                │
+│ The line that gave it away:                                                    │
+│ error NU1101: Unable to find package Newtonsoft.Jsn …                          │
+╰────────────────────────────────────────────────────────────────────────────────╯
+Saved as #1. Once you've fixed it, record how so future-you remembers:
+  cifail resolve 1 --note "what fixed it"
 ```
 
-## Status
+> `2>&1` just means "send error messages to the same place as normal output", so cifail
+> sees the whole log. The `|` ("pipe") feeds that output into cifail.
 
-🚧 Early development. Building toward the MVP described in the milestones below.
+---
 
-## Why
+## What problem does this solve?
 
-CI logs are long, noisy, and repetitive. The signal — the one line that actually
-explains the failure — is buried, and the fix is often something you (or a teammate)
-already figured out last month. `cifail` is built around three ideas:
+A failing CI log can be hundreds of lines long, and the line that matters is buried
+somewhere in the middle. Figuring out *which* line, and what to do about it, takes
+experience. cifail does that first pass for you:
 
-- **Local-first & offline** — your logs never leave your machine. No account, no cloud.
-- **Rules before AI** — deterministic pattern matching handles the common cases
-  instantly. A local LLM (via [Ollama](https://ollama.com)) is an *optional* fallback
-  for the unknown ones.
-- **Memory** — it remembers past failures and the fixes you recorded, so recurring
-  problems get faster to resolve over time.
+- It knows the common failure patterns for **.NET, Node/npm, Python/pip**, and generic
+  CI errors, so it can point straight at the cause.
+- It **remembers** every failure you analyze. The next time a similar one shows up, it
+  reminds you — including the fix you wrote down last time.
 
-## Install
+Think of it as a teammate who has seen a lot of broken builds and remembers all of them.
 
-> Not yet published. For now, run from source:
+---
+
+## Try it in 60 seconds
+
+You need the **[.NET SDK](https://dotnet.microsoft.com/download) (version 8 or newer)**
+installed. Then:
 
 ```console
 git clone https://github.com/SebHenn/ci-failure-intelligence.git
@@ -45,52 +58,101 @@ cd ci-failure-intelligence
 dotnet run --project src/CiFail.Cli -- analyze samples/nuget-nu1101.log
 ```
 
-Once released it will ship as a .NET global tool:
+That runs cifail against an example broken-build log included in the repo. You should
+see a "What broke" panel explaining the failure.
+
+> The `-- ` separates options for `dotnet run` from the arguments meant for cifail.
+> Everything after `--` is what you'd type after `cifail` once it's installed.
+
+### Use it on your own build
+
+Run your build/test command and pipe its output into cifail:
 
 ```console
-dotnet tool install --global cifail
+dotnet build 2>&1 | cifail analyze
+npm install   2>&1 | cifail analyze
+pytest        2>&1 | cifail analyze
 ```
 
-## Usage
+Or save a log to a file first and analyze that:
 
 ```console
-cifail analyze <path...>      # analyze one or more log files (reads stdin if no path)
-cifail analyze --json x.log   # machine-readable output for CI pipelines
-cifail analyze --ai x.log     # also consult a local Ollama model on low confidence
-cifail history                # browse past analyses
-cifail resolve <id> --note    # record how a failure was fixed
-cifail rules list             # inspect loaded rule packs
+dotnet build > build.log 2>&1
+cifail analyze build.log
 ```
 
-## Data & configuration
+*(While running from source, replace `cifail` with
+`dotnet run --project src/CiFail.Cli -- `.)*
 
-History and user rule packs live under `~/.cifail/` (`history.db`, `rules/`). Set the
-`CIFAIL_HOME` environment variable to relocate this directory — handy for CI, tests,
-or keeping projects isolated.
+---
 
-## How it works
+## The three commands you'll actually use
 
-```
-ingest → normalize (strip ANSI/timestamps) → detect ecosystem → rule match
-       → root cause + fix → similarity vs. past failures → persist → render
-```
+| Command | What it does |
+|---------|--------------|
+| `cifail analyze <log>` | Look at a log and explain the failure. This is the main one. |
+| `cifail history` | Show the failures you've analyzed before. Each has a number (its id). |
+| `cifail resolve <id> --note "..."` | Write down how you fixed failure number `<id>`, so cifail can remind you next time you hit something similar. |
 
-See [`docs`](./docs) / the plan for the full architecture.
+There's also `cifail rules list` to see every failure pattern cifail can recognize, and
+`cifail --help` (or `cifail analyze --help`) for the full list of options.
 
-## Roadmap
+### Handy options for `analyze`
 
-- **M0** — Scaffolding, CI, license. ✅
-- **M1** — Offline analyze: ingest, .NET rule pack, rule engine, console + `--json`. ✅
-- **M2** — Memory: SQLite history + TF-IDF similarity + `history`/`resolve`. ✅
-- **M3** — Breadth: Node, Python, Generic CI rule packs. ✅
-- **M4** — Optional AI via Ollama, gated behind `--ai`.
-- **M5** — Release: docs, samples, `dotnet tool` packaging, NuGet + GitHub Releases.
+- `--json` — print the result as JSON instead of a panel. Useful inside CI pipelines or
+  other scripts.
+- `--type dotnet|node|python|generic` — tell cifail what kind of log this is, if it
+  guesses wrong.
+- `--ai` — if a failure isn't recognized, also ask a local AI model for a suggestion.
+  *(Optional and off by default — needs [Ollama](https://ollama.com) installed. Coming soon.)*
+- `--no-history` — analyze without saving this run to history.
 
-## Contributing
+---
 
-Rule packs are plain YAML — adding a new failure pattern is the easiest way to help.
-See [CONTRIBUTING.md](./CONTRIBUTING.md) (coming soon).
+## What do the words mean?
+
+cifail tries to keep things plain, but a few terms show up:
+
+- **ecosystem** — the kind of project the log came from: `dotnet`, `node`, `python`, or
+  `generic` (anything else). cifail guesses this automatically.
+- **confidence** — how sure cifail is about the cause: **high**, **medium**, or **low**.
+  Low confidence means "this is my best guess — double-check it".
+- **rule / pattern** — a single known failure cifail can recognize (for example, "NuGet
+  package not found"). The set of all of them is what `cifail rules list` shows.
+
+---
+
+## Where your data is kept
+
+cifail stores your history and any custom patterns in a folder called `.cifail` in your
+home directory (`~/.cifail`). It never leaves your machine. If you want it somewhere
+else (for example, one per project), set the `CIFAIL_HOME` environment variable to a
+folder of your choice.
+
+---
+
+## Want to help? Add a pattern
+
+The easiest way to contribute is to teach cifail a new failure. Patterns are written in
+plain YAML files (no C# needed) — see the existing ones in
+[`src/CiFail.Core/rulepacks`](./src/CiFail.Core/rulepacks). A full `CONTRIBUTING.md` is
+coming soon.
+
+---
+
+## Project status & roadmap
+
+🚧 Early but usable. The offline analysis, memory, and the .NET/Node/Python/Generic
+patterns all work today.
+
+- **M1** — Explain failures offline (.NET patterns), with `--json`. ✅
+- **M2** — Remember past failures and your fixes. ✅
+- **M3** — Node, Python, and generic CI patterns. ✅
+- **M4** — Optional local AI suggestions via Ollama (`--ai`). *(next)*
+- **M5** — Install with one command (`dotnet tool install --global cifail`). *(planned)*
+
+*(Developer/architecture notes live in [CLAUDE.md](./CLAUDE.md).)*
 
 ## License
 
-[MIT](./LICENSE)
+[MIT](./LICENSE) — free to use, change, and share.

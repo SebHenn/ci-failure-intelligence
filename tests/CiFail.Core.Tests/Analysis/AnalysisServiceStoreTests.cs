@@ -36,6 +36,18 @@ public class AnalysisServiceStoreTests : IDisposable
     }
 
     [Fact]
+    public void Saved_analysis_exposes_its_history_id_for_resolve()
+    {
+        var saved = _service.Analyze("run", Fixtures.Load("nuget-nu1101.log"));
+        saved.HistoryId.Should().NotBeNull();
+        _repo.GetById(saved.HistoryId!.Value).Should().NotBeNull();
+
+        var transient = _service.Analyze("run", Fixtures.Load("nuget-nu1101.log"),
+            new AnalysisOptions { RecordHistory = false });
+        transient.HistoryId.Should().BeNull();
+    }
+
+    [Fact]
     public void NoHistory_option_still_finds_similar_but_does_not_persist()
     {
         _service.Analyze("seed", Fixtures.Load("nuget-nu1101.log"));

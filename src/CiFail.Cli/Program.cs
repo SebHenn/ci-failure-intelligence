@@ -7,25 +7,25 @@ app.Configure(config =>
     config.SetApplicationName("cifail");
 
     config.AddCommand<AnalyzeCommand>("analyze")
-        .WithDescription("Analyze a CI/build/test log: what broke and how to fix it.")
+        .WithDescription("Read a build/test log and explain what broke and how to fix it.")
         .WithExample("analyze", "build.log")
         .WithExample("analyze", "--json", "test.log")
         .WithExample("analyze", "--type", "dotnet", "build.log");
 
     config.AddCommand<HistoryCommand>("history")
-        .WithDescription("Browse past analyses, or show one by id.")
+        .WithDescription("List the failures you've analyzed before (or show one by its number).")
         .WithExample("history")
         .WithExample("history", "42");
 
     config.AddCommand<ResolveCommand>("resolve")
-        .WithDescription("Record how a past failure was fixed.")
+        .WithDescription("Save how you fixed a failure, so cifail can remind you next time.")
         .WithExample("resolve", "42", "--note", "\"Fixed the package name typo\"");
 
     config.AddBranch("rules", rules =>
     {
-        rules.SetDescription("Inspect and manage rule packs.");
+        rules.SetDescription("See the failure patterns cifail knows about.");
         rules.AddCommand<RulesListCommand>("list")
-            .WithDescription("List all loaded rules (embedded + user packs).");
+            .WithDescription("List every pattern cifail can recognize.");
     });
 });
 
