@@ -1,0 +1,58 @@
+# Generic / cross-ecosystem CI rule pack.
+# These are ecosystem-agnostic and always evaluated. Confidence is deliberately
+# lower so an ecosystem-specific rule wins when both match.
+
+- id: generic-command-not-found
+  ecosystem: generic
+  category: environment
+  title: Command not found
+  match: "(?:command not found|: not found): (?<command>[^\\n]+)|(?<command2>[\\w./-]+): command not found"
+  confidence: 0.7
+  fix: |
+    A required command isn't installed or isn't on PATH in the CI environment.
+    Install it in a setup step, or use the full path. Verify the tool is available
+    on the runner image you're using.
+
+- id: github-actions-error
+  ecosystem: generic
+  category: ci
+  title: GitHub Actions step error
+  match: "##\\[error\\](?<message>.+)"
+  confidence: 0.5
+  fix: |
+    A GitHub Actions step reported an error: {message}
+    This is the surfaced failure; the underlying cause is usually in the command
+    output just above. Re-run with debug logging (ACTIONS_STEP_DEBUG=true) for more.
+
+- id: generic-permission-denied
+  ecosystem: generic
+  category: environment
+  title: Permission denied
+  match: "(?<what>[^\\n:]+): Permission denied|EACCES: permission denied"
+  confidence: 0.6
+  fix: |
+    The process was denied access. Common causes on CI: a script without the
+    executable bit (chmod +x), writing outside the workspace, or a port/file owned
+    by another user. Check file permissions and target paths.
+
+- id: generic-oom
+  ecosystem: generic
+  category: environment
+  title: Out of memory / process killed
+  match: "(?:Killed|OOMKilled|JavaScript heap out of memory|Out of memory|signal SIGKILL|exit code 137)"
+  confidence: 0.7
+  fix: |
+    A process was killed, most likely for exceeding available memory (exit 137 /
+    OOMKilled). Reduce memory use, raise the runner/container memory limit, or for
+    Node bump --max-old-space-size.
+
+- id: generic-nonzero-exit
+  ecosystem: generic
+  category: build
+  title: Process exited with a non-zero code
+  match: "(?:exited with (?:code|status)|returned (?:exit )?code|Process completed with exit code) (?<code>[1-9]\\d*)"
+  confidence: 0.4
+  fix: |
+    A step exited with code {code}. This is a generic failure signal — the real
+    cause is in that command's own output above. Re-run that command locally to
+    reproduce and capture the specific error.

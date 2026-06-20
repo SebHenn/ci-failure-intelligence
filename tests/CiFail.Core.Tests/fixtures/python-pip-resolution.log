@@ -1,0 +1,4 @@
+Collecting package-a==1.0
+Collecting package-b==2.0
+ERROR: Cannot install package-a and package-b because these package versions have conflicting dependencies.
+ERROR: ResolutionImpossible: for help visit https://pip.pypa.io/en/latest/topics/dependency-resolution/

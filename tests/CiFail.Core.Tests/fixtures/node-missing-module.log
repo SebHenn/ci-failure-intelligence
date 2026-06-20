@@ -1,0 +1,8 @@
+> my-app@1.0.0 build
+> node ./build.js
+
+internal/modules/cjs/loader.js:905
+  throw err;
+  ^
+Error: Cannot find module 'lodahs'
+    at Function.Module._resolveFilename (internal/modules/cjs/loader.js:902:15)

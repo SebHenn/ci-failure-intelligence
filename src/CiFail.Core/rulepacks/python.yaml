@@ -1,0 +1,66 @@
+# Python / pip / pytest rule pack
+
+- id: py-module-not-found
+  ecosystem: python
+  category: dependency
+  title: Python module not found
+  match: "ModuleNotFoundError: No module named '(?<module>[^']+)'"
+  confidence: 0.85
+  fix: |
+    Python can't import '{module}'. Install it (pip install {module}) and pin it in
+    requirements.txt / pyproject.toml. If it's a local package, check it's importable
+    (correct package name, __init__.py, and that the venv is activated).
+
+- id: py-import-error
+  ecosystem: python
+  category: dependency
+  title: Import error
+  match: "ImportError: (?<message>cannot import name .+|.+)"
+  confidence: 0.7
+  fix: |
+    An import failed: {message}
+    Often a version mismatch (a name moved/was removed) or a circular import. Check
+    the installed version of the offending package against what your code expects.
+
+- id: pip-resolution-impossible
+  ecosystem: python
+  category: dependency
+  title: pip could not resolve dependencies
+  match: "ERROR: ResolutionImpossible|ERROR: Cannot install .* because these package versions have conflicting dependencies"
+  confidence: 0.85
+  fix: |
+    pip couldn't find a set of versions satisfying all constraints. Loosen or align
+    the conflicting pins shown above, or resolve with a tool like pip-tools/uv.
+  docs: https://pip.pypa.io/en/stable/topics/dependency-resolution/
+
+- id: pip-no-matching-version
+  ecosystem: python
+  category: dependency
+  title: No matching distribution for package
+  match: "ERROR: Could not find a version that satisfies the requirement (?<package>[^\\s]+)|ERROR: No matching distribution found for (?<package2>[^\\s]+)"
+  confidence: 0.85
+  fix: |
+    No installable version matched the requirement. Check the package name, the
+    version specifier, and the Python version (a wheel may not exist for this
+    interpreter/platform on CI).
+
+- id: py-syntax-error
+  ecosystem: python
+  category: compile
+  title: Python syntax error
+  match: "SyntaxError: (?<message>.+)"
+  confidence: 0.8
+  fix: |
+    The interpreter hit a syntax error: {message}
+    Fix the indicated line. If it's unexpected, confirm the file's Python version
+    matches CI (e.g. f-strings / match statements need newer Python).
+
+- id: pytest-failed
+  ecosystem: python
+  category: test
+  title: pytest test failures
+  match: "=+ (?<summary>\\d+ failed(?:, \\d+ passed)?.*?) =+"
+  confidence: 0.65
+  fix: |
+    pytest reported failures ({summary}). Look for the FAILED lines and the assert
+    diffs above. Reproduce one with `pytest path::test_name -x`.

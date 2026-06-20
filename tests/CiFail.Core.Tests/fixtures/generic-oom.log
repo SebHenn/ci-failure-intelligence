@@ -1,0 +1,4 @@
+Running build step...
+<--- Last few GCs --->
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+##[error]Process completed with exit code 137
