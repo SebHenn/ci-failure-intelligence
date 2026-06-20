@@ -5,7 +5,7 @@ namespace CiFail.Core.Storage;
 /// pipeline doesn't depend on a concrete database, and tests can use an in-memory
 /// fake.
 /// </summary>
-public interface IAnalysisStore
+public interface IAnalysisStore : IDisposable
 {
     /// <summary>Persist a new analysis; returns its assigned id.</summary>
     long Save(AnalysisRecord record);

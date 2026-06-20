@@ -20,7 +20,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
     private const int ExitNoMatch = 1;   // analyzed, but no rule matched
     private const int ExitInputError = 2; // could not read input
 
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : StoreSettings
     {
         [CommandArgument(0, "[paths]")]
         [Description("Log file(s) to analyze. Reads stdin when omitted.")]
@@ -79,10 +79,10 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             TopSimilar = settings.Top,
         };
 
-        // History + similarity are backed by the local SQLite store. Opening it
-        // creates ~/.cifail/history.db on first use; --no-history still queries
-        // similarity but skips persisting the current run.
-        using var store = new SqliteAnalysisRepository();
+        // History + similarity are backed by the configured store (SQLite by default).
+        // --no-history still queries similarity but skips persisting the current run.
+        using var store = StoreSupport.TryCreate(settings);
+        if (store is null) return ExitInputError;
         var service = AnalysisService.CreateWithStore(store);
 
         bool allMatched = true;

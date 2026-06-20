@@ -11,7 +11,7 @@ namespace CiFail.Cli.Commands;
 /// </summary>
 public sealed class ResolveCommand : Command<ResolveCommand.Settings>
 {
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : StoreSettings
     {
         [CommandArgument(0, "<id>")]
         [Description("The analysis id to annotate (see `cifail history`).")]
@@ -29,7 +29,8 @@ public sealed class ResolveCommand : Command<ResolveCommand.Settings>
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
-        using var store = new SqliteAnalysisRepository();
+        using var store = StoreSupport.TryCreate(settings);
+        if (store is null) return 2;
 
         if (!store.SetResolution(settings.Id, settings.Note!.Trim()))
         {

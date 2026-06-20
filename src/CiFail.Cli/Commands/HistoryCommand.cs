@@ -11,7 +11,7 @@ namespace CiFail.Cli.Commands;
 /// </summary>
 public sealed class HistoryCommand : Command<HistoryCommand.Settings>
 {
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : StoreSettings
     {
         [CommandArgument(0, "[id]")]
         [Description("Show full detail for a single analysis id.")]
@@ -25,7 +25,8 @@ public sealed class HistoryCommand : Command<HistoryCommand.Settings>
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
-        using var store = new SqliteAnalysisRepository();
+        using var store = StoreSupport.TryCreate(settings);
+        if (store is null) return 2;
 
         return settings.Id is { } id
             ? ShowOne(store, id)
