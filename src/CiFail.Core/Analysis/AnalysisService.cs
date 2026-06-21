@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using CiFail.Core.Ai;
 using CiFail.Core.Git;
 using CiFail.Core.Ingest;
 using CiFail.Core.Models;
@@ -20,15 +21,24 @@ public sealed class AnalysisService
     /// <summary>How many past analyses to consider when ranking similarity.</summary>
     private const int CorpusLimit = 2000;
 
+    /// <summary>Below this rule confidence (the "low" bucket), AI is consulted when enabled.</summary>
+    private const double LowConfidenceThreshold = 0.6;
+
+    /// <summary>How much of the (normalized) log to hand the AI model.</summary>
+    private const int AiExcerptMaxChars = 6000;
+
     private readonly RuleEngine _engine;
     private readonly IAnalysisStore? _store;
     private readonly IGitRepo? _git;
+    private readonly IAiAnalyzer? _ai;
 
-    public AnalysisService(RuleEngine engine, IAnalysisStore? store = null, IGitRepo? git = null)
+    public AnalysisService(
+        RuleEngine engine, IAnalysisStore? store = null, IGitRepo? git = null, IAiAnalyzer? ai = null)
     {
         _engine = engine;
         _store = store;
         _git = git;
+        _ai = ai;
     }
 
     /// <summary>Factory that loads embedded + user rule packs, with no history store.</summary>
@@ -36,8 +46,9 @@ public sealed class AnalysisService
         new(new RuleEngine(RulePackLoader.LoadAll()));
 
     /// <summary>Factory that also wires the given history store (similarity + persistence).</summary>
-    public static AnalysisService CreateWithStore(IAnalysisStore store, IGitRepo? git = null) =>
-        new(new RuleEngine(RulePackLoader.LoadAll()), store, git);
+    public static AnalysisService CreateWithStore(
+        IAnalysisStore store, IGitRepo? git = null, IAiAnalyzer? ai = null) =>
+        new(new RuleEngine(RulePackLoader.LoadAll()), store, git, ai);
 
     public Models.Analysis Analyze(string source, string rawText, AnalysisOptions? options = null)
     {
@@ -48,6 +59,8 @@ public sealed class AnalysisService
         var matches = _engine.Match(log, ecosystem);
         var rootCause = matches.Count > 0 ? matches[0] : null;
         var fingerprint = FingerprintBuilder.Build(log, rootCause);
+
+        var aiSuggestion = MaybeSuggestWithAi(options, log, ecosystem, rootCause);
 
         IReadOnlyList<SimilarFailure> similar = Array.Empty<SimilarFailure>();
         long? historyId = null;
@@ -86,7 +99,42 @@ public sealed class AnalysisService
             Fingerprint = fingerprint,
             HistoryId = historyId,
             SimilarFailures = similar,
+            AiSuggestion = aiSuggestion,
         };
+    }
+
+    /// <summary>
+    /// Consult the AI analyzer when enabled and the rules are unsure (no match, or a match below
+    /// the "low" confidence bucket). Best-effort: any failure (model offline, bad response) is
+    /// swallowed so the rules-only result always stands.
+    /// </summary>
+    private AiSuggestion? MaybeSuggestWithAi(
+        AnalysisOptions options, LogDocument log, Ecosystem ecosystem, RuleMatch? rootCause)
+    {
+        if (!options.EnableAi || _ai is null)
+            return null;
+        if (rootCause is not null && rootCause.Score >= LowConfidenceThreshold)
+            return null;
+
+        try
+        {
+            return _ai.Suggest(new AiRequest
+            {
+                LogExcerpt = TailExcerpt(log.NormalizedText, AiExcerptMaxChars),
+                Ecosystem = ecosystem,
+                TopMatch = rootCause,
+            });
+        }
+        catch
+        {
+            return null; // never fatal — same philosophy as a skipped bad rule regex
+        }
+    }
+
+    private static string TailExcerpt(string text, int maxChars)
+    {
+        text = text.Trim();
+        return text.Length <= maxChars ? text : text[^maxChars..];
     }
 
     /// <summary>True when this service is operating inside a git repository.</summary>

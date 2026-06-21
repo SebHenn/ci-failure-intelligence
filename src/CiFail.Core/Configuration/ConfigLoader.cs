@@ -12,6 +12,9 @@ public static class ConfigLoader
 {
     public const string ProviderEnvVar = "CIFAIL_DB_PROVIDER";
     public const string ConnectionEnvVar = "CIFAIL_DB_CONNECTION";
+    public const string AiProviderEnvVar = "CIFAIL_AI_PROVIDER";
+    public const string AiModelEnvVar = "CIFAIL_AI_MODEL";
+    public const string AiUrlEnvVar = "CIFAIL_AI_URL";
 
     private static readonly IDeserializer Yaml = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -39,6 +42,16 @@ public static class ConfigLoader
         if (!string.IsNullOrWhiteSpace(cliConnection)) config.Database.ConnectionString = cliConnection;
 
         config.Database.Provider = config.Database.Provider.ToLowerInvariant();
+
+        // AI: file → env (CLI overrides are applied by the caller before AiFactory.Create).
+        var aiProvider = Environment.GetEnvironmentVariable(AiProviderEnvVar);
+        var aiModel = Environment.GetEnvironmentVariable(AiModelEnvVar);
+        var aiUrl = Environment.GetEnvironmentVariable(AiUrlEnvVar);
+        if (!string.IsNullOrWhiteSpace(aiProvider)) config.Ai.Provider = aiProvider.Trim();
+        if (!string.IsNullOrWhiteSpace(aiModel)) config.Ai.Model = aiModel;
+        if (!string.IsNullOrWhiteSpace(aiUrl)) config.Ai.BaseUrl = aiUrl;
+        config.Ai.Provider = config.Ai.Provider.ToLowerInvariant();
+
         return config;
     }
 

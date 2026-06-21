@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using CiFail.Cli.Output;
+using CiFail.Core.Ai;
 using CiFail.Core.Analysis;
+using CiFail.Core.Configuration;
 using CiFail.Core.Git;
 using CiFail.Core.Models;
 using CiFail.Core.Storage;
@@ -36,8 +38,16 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         public bool Json { get; init; }
 
         [CommandOption("--ai")]
-        [Description("Consult a local Ollama model when rule confidence is low.")]
+        [Description("Consult an AI model (default: local Ollama) when rule confidence is low.")]
         public bool Ai { get; init; }
+
+        [CommandOption("--ai-provider <PROVIDER>")]
+        [Description("AI backend: ollama (default), anthropic, openai.")]
+        public string? AiProvider { get; init; }
+
+        [CommandOption("--ai-model <MODEL>")]
+        [Description("Model name for the AI backend (overrides the provider default).")]
+        public string? AiModel { get; init; }
 
         [CommandOption("--no-history")]
         [Description("Do not persist this analysis to history.")]
@@ -101,7 +111,12 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         // Git correlation (R3): when run inside a repo, tag each record with the commit and
         // auto-resolve past failures that no longer occur at HEAD.
         var git = settings.NoGit ? null : GitContext.Detect(Directory.GetCurrentDirectory());
-        var service = AnalysisService.CreateWithStore(store, git);
+
+        // Optional AI (R8): build the configured analyzer only when --ai is set. A
+        // misconfiguration (unknown provider / missing key) warns and proceeds rules-only.
+        var ai = settings.Ai ? BuildAiAnalyzer(settings) : null;
+
+        var service = AnalysisService.CreateWithStore(store, git, ai);
 
         bool allMatched = true;
         var results = new List<Analysis>(inputs.Count);
@@ -127,6 +142,24 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             ReportAutoResolved(autoResolved);
 
         return allMatched ? ExitMatched : ExitNoMatch;
+    }
+
+    private static IAiAnalyzer? BuildAiAnalyzer(Settings settings)
+    {
+        var ai = ConfigLoader.Load().Ai;
+        if (!string.IsNullOrWhiteSpace(settings.AiProvider)) ai.Provider = settings.AiProvider.Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(settings.AiModel)) ai.Model = settings.AiModel;
+
+        try
+        {
+            return AiFactory.Create(ai);
+        }
+        catch (Exception ex)
+        {
+            // Don't fail the analysis just because AI is misconfigured — warn and go rules-only.
+            AnsiConsole.MarkupLine($"[yellow]warning:[/] AI disabled — {Markup.Escape(ex.Message)}");
+            return null;
+        }
     }
 
     private static List<(string, string)> ReadInputs(IReadOnlyList<string> paths)

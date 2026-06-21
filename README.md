@@ -146,8 +146,18 @@ we fix this last time?" history fills itself in. In `cifail history` these show 
   other scripts.
 - `--type dotnet|node|python|generic` — tell cifail what kind of log this is, if it
   guesses wrong.
-- `--ai` — if a failure isn't recognized, also ask a local AI model for a suggestion.
-  *(Optional and off by default — needs [Ollama](https://ollama.com) installed. Coming soon.)*
+- `--ai` — when cifail isn't sure (no rule matched, or only a low-confidence one), also ask
+  an AI model for a root cause and fix. **Off by default**, and only consulted when the rules
+  fall short — so cifail stays fast and fully offline unless you opt in. If the model is
+  unavailable the analysis still works; you just get the rules-only result.
+  - The default backend is a **local [Ollama](https://ollama.com)** model (nothing leaves your
+    machine). Install Ollama and pull a model (e.g. `ollama pull llama3.2`), then
+    `cifail analyze --ai build.log`.
+  - Pick the backend with `--ai-provider ollama|anthropic|openai` and the model with
+    `--ai-model <name>`. The hosted backends are opt-in and read their API key from the
+    `CIFAIL_AI_KEY` environment variable (they make outbound network calls).
+  - Defaults live under an `ai:` section in `~/.cifail/config.yaml`; env overrides are
+    `CIFAIL_AI_PROVIDER` / `CIFAIL_AI_MODEL` / `CIFAIL_AI_URL` / `CIFAIL_AI_KEY`.
 - `--no-history` — analyze without saving this run to history.
 
 ---
@@ -342,7 +352,8 @@ Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
 - **GitHub Action & GitLab template** so a pipeline can explain its own failures. ✅
 - **Shared team service** — `cifail serve` HTTP API (in the full/Docker build) + a Helm
   chart in [`deploy/`](./deploy). ✅ *(authentication is next)*
-- **Optional local AI** suggestions via [Ollama](https://ollama.com) (`--ai`). *(planned)*
+- **Optional AI** suggestions when the rules are unsure (`--ai`) — local [Ollama](https://ollama.com)
+  by default, or hosted Anthropic/OpenAI (opt-in). ✅
 
 ## License
 
