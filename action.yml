@@ -1,0 +1,74 @@
+name: 'cifail'
+description: 'Explain a CI/build/test failure: what broke, whether it happened before, and how to fix it.'
+branding:
+  icon: 'search'
+  color: 'red'
+
+inputs:
+  log:
+    description: 'Path to the log file to analyze (relative to the workspace).'
+    required: false
+    default: ''
+  args:
+    description: 'Extra arguments passed to `cifail analyze` (e.g. "--type node").'
+    required: false
+    default: ''
+  image:
+    description: 'cifail Docker image to use.'
+    required: false
+    default: 'ghcr.io/sebhenn/cifail:latest'
+  summary:
+    description: 'Write the analysis to the GitHub Actions step summary.'
+    required: false
+    default: 'true'
+  fail:
+    description: "Propagate cifail's exit code (fail the step). Off by default — the action is informational and runs after a build already failed."
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      env:
+        INPUT_LOG: ${{ inputs.log }}
+        INPUT_ARGS: ${{ inputs.args }}
+        INPUT_IMAGE: ${{ inputs.image }}
+        INPUT_SUMMARY: ${{ inputs.summary }}
+        INPUT_FAIL: ${{ inputs.fail }}
+      run: |
+        set -uo pipefail
+
+        docker pull "$INPUT_IMAGE" >/dev/null 2>&1 || true
+
+        run_args=(--rm -v "$PWD:/work" -w /work)
+        # Pass shared-database config through to the container when configured.
+        [ -n "${CIFAIL_DB_PROVIDER:-}" ] && run_args+=(-e CIFAIL_DB_PROVIDER)
+        [ -n "${CIFAIL_DB_CONNECTION:-}" ] && run_args+=(-e CIFAIL_DB_CONNECTION)
+
+        cifail_args=(analyze)
+        [ -n "$INPUT_LOG" ] && cifail_args+=("$INPUT_LOG")
+        # word-split extra args intentionally
+        # shellcheck disable=SC2206
+        [ -n "$INPUT_ARGS" ] && cifail_args+=($INPUT_ARGS)
+
+        out="$(docker run "${run_args[@]}" "$INPUT_IMAGE" "${cifail_args[@]}" 2>&1)"
+        code=$?
+
+        echo "$out"
+
+        if [ "$INPUT_SUMMARY" = "true" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          {
+            echo "## cifail analysis"
+            echo ""
+            echo '```'
+            echo "$out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+        # cifail exit codes: 0 matched, 1 analyzed but no rule matched, 2 input error.
+        if [ "$INPUT_FAIL" = "true" ]; then
+          exit $code
+        fi
+        exit 0

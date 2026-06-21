@@ -40,6 +40,10 @@ dotnet build src/CiFail.Cli/CiFail.Cli.csproj -p:IncludeExternalDb=true
 # build locally with:
 docker build -t cifail .
 docker run --rm -v "$PWD:/work" cifail analyze build.log
+# CI integration (R5): composite GitHub Action `action.yml` (wraps the GHCR image, writes
+# the analysis to the step summary) and GitLab template `ci-templates/gitlab.yml`. The
+# image symlinks /app/cifail -> /usr/local/bin/cifail so `cifail` is on PATH when a runner
+# overrides the entrypoint (GitLab).
 
 # Run the external-DB contract tests against real engines (needs Docker):
 CIFAIL_DB_IT=1 dotnet test tests/CiFail.Providers.Tests

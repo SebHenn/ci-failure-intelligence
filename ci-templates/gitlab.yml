@@ -1,0 +1,33 @@
+# cifail for GitLab CI — explain build/test failures automatically.
+#
+# Use it by including this file and extending the hidden job, or copy the job below into
+# your own .gitlab-ci.yml:
+#
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/SebHenn/ci-failure-intelligence/main/ci-templates/gitlab.yml'
+#
+#   build:
+#     stage: build
+#     script:
+#       - your-build-command 2>&1 | tee build.log
+#
+#   explain-failures:
+#     extends: .cifail
+#     needs: ["build"]
+#     variables:
+#       CIFAIL_LOG: build.log
+#
+# The .cifail job runs only when an earlier job failed (`when: on_failure`) and never fails
+# the pipeline itself (`allow_failure: true`) — it's there to explain, not to gate.
+
+.cifail:
+  image: ghcr.io/sebhenn/cifail:latest
+  stage: test
+  when: on_failure
+  allow_failure: true
+  variables:
+    CIFAIL_LOG: build.log
+  script:
+    - cifail analyze "$CIFAIL_LOG"
+  # For shared team history, set CIFAIL_DB_PROVIDER / CIFAIL_DB_CONNECTION as CI/CD
+  # variables (e.g. a PostgreSQL connection string) and cifail will use it automatically.

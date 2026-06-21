@@ -154,8 +154,10 @@ we fix this last time?" history fills itself in. In `cifail history` these show 
 
 ## Use cifail in CI
 
-The quickest way is to pipe a failing step's output into cifail right in your pipeline.
-For example, in GitHub Actions:
+### GitHub Actions (the ready-made action)
+
+Capture a failing step's output, then let the action explain it — the analysis shows up in
+the job's **step summary**. No install needed; it runs the Docker image for you.
 
 ```yaml
 - name: Build
@@ -163,11 +165,46 @@ For example, in GitHub Actions:
 
 - name: Explain failures
   if: failure()
-  run: cifail analyze build.log
+  uses: SebHenn/ci-failure-intelligence@v1
+  with:
+    log: build.log
 ```
 
-A published **Docker image** and a ready-made **GitHub Action / GitLab template** are on
-the roadmap below, so you won't even need to install the binary on the runner.
+Inputs: `log` (file to analyze), `args` (extra flags, e.g. `--type node`), `image` (pin a
+version instead of `:latest`), `summary` (write to the step summary, default `true`), and
+`fail` (propagate cifail's exit code; off by default since it runs after a failed build).
+For shared history, set `CIFAIL_DB_PROVIDER` / `CIFAIL_DB_CONNECTION` in the job env.
+
+### GitLab CI
+
+Include the template and point it at your log; it runs only `on_failure` and never fails
+the pipeline itself:
+
+```yaml
+include:
+  - remote: 'https://raw.githubusercontent.com/SebHenn/ci-failure-intelligence/main/ci-templates/gitlab.yml'
+
+build:
+  stage: build
+  script:
+    - your-build-command 2>&1 | tee build.log
+
+explain-failures:
+  extends: .cifail
+  needs: ["build"]
+  variables:
+    CIFAIL_LOG: build.log
+```
+
+### Anywhere else (plain pipe)
+
+If you've installed the binary (or are in a `cifail` container), just pipe into it:
+
+```yaml
+- name: Explain failures
+  if: failure()
+  run: cifail analyze build.log
+```
 
 ---
 
@@ -275,7 +312,8 @@ Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
 - **Resolutions that record themselves** — cifail links a failure to the commit that
   fixed it, so you don't have to run `resolve` by hand. ✅
 - **Docker image** (full build, all databases) published to GHCR. ✅
-- **GitHub Action & GitLab template**, then a shared team service. *(planned)*
+- **GitHub Action & GitLab template** so a pipeline can explain its own failures. ✅
+- **Shared team service** (Kubernetes/Helm + a server mode). *(planned)*
 - **Optional local AI** suggestions via [Ollama](https://ollama.com) (`--ai`). *(planned)*
 
 ## License

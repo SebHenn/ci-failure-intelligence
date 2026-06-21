@@ -33,6 +33,10 @@ RUN apt-get update \
 
 COPY --from=build /app /app
 
+# Put cifail on PATH so it works both as the entrypoint (`docker run … analyze x.log`) and
+# when a CI runner overrides the entrypoint and calls `cifail` from a script (e.g. GitLab).
+RUN ln -s /app/cifail /usr/local/bin/cifail
+
 # Mount your project at /work; history persists under /data (mount a volume to keep it).
 ENV CIFAIL_HOME=/data
 RUN mkdir -p /data
