@@ -94,6 +94,11 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
   The shared JSON contract lives in `Core/Output/AnalysisJson.cs` + `StoredAnalysisJson.cs`
   so the CLI `--json` and the server serialize one identical schema. `Core/Storage/
   HttpAnalysisStore.cs` is the matching client (`http` store provider; `--server <url>`).
+  R12 adds a bundled web dashboard: `src/CiFail.Server/wwwroot/index.html` is an
+  **EmbeddedResource** (one zero-build page, no node stage), read once and served at `/` +
+  `/index.html`; those paths plus `/healthz` are in `PublicPaths` (exempt from the R9 token —
+  the shell collects the token in-page and sends it on its own API calls). JSON is **PascalCase**
+  (`AnalysisJson.Options`), so the dashboard JS keys off `r.Id`/`r.Status`/etc.
 - **`tests/CiFail.Core.Tests`** — xUnit + FluentAssertions; fixtures in `fixtures/*.log`.
 - **`tests/CiFail.Providers.Tests`** — shared store contract + Docker-gated DB tests.
 - **`tests/CiFail.Server.Tests`** — boots a real serve instance on a random port (no Docker).

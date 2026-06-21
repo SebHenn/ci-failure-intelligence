@@ -310,11 +310,17 @@ cifail reconcile --server http://your-host:8080 --server-token "a-long-random-se
 Reconciliation runs on your machine (it reads your git history) and writes the results back to
 the shared server, so a central service needs no checkout of its own.
 
+**Web dashboard.** Open the server's root (`http://your-host:8080/`) in a browser for a small
+built-in dashboard: browse recent failures, filter by ecosystem/status/repo, read the details
+and resolution status (`✓` manual, `✓ auto`), and mark a failure resolved. It's a single
+bundled page (no separate install) that calls the same JSON API; if the server requires a
+token, paste it into the field at the top once and it's remembered in your browser.
+
 **Authentication.** Set `CIFAIL_SERVER_TOKEN` (or `serve --token`) and the server requires
-`Authorization: Bearer <token>` on every request except `/healthz`. Clients send it via
-`--server-token` or the same `CIFAIL_SERVER_TOKEN` env var. If you start `serve` without a
-token it runs open and logs a loud warning — only acceptable on a trusted network. (mTLS is a
-possible future hardening on top of the token.)
+`Authorization: Bearer <token>` on every request except `/healthz` and the dashboard shell.
+Clients send it via `--server-token` or the same `CIFAIL_SERVER_TOKEN` env var. If you start
+`serve` without a token it runs open and logs a loud warning — only acceptable on a trusted
+network. (mTLS is a possible future hardening on top of the token.)
 
 There's a Helm chart for Kubernetes in [`deploy/`](./deploy); it sources the token from a
 Secret (`auth.existingSecret`) and injects it as `CIFAIL_SERVER_TOKEN`.
@@ -364,7 +370,8 @@ Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
 - **Docker image** (full build, all databases) published to GHCR. ✅
 - **GitHub Action & GitLab template** so a pipeline can explain its own failures. ✅
 - **Shared team service** — `cifail serve` HTTP API (in the full/Docker build) + a Helm
-  chart in [`deploy/`](./deploy), protected by a bearer token. ✅
+  chart in [`deploy/`](./deploy), protected by a bearer token, with a built-in web
+  dashboard at the server root. ✅
 - **Optional AI** suggestions when the rules are unsure (`--ai`) — local [Ollama](https://ollama.com)
   by default, or hosted Anthropic/OpenAI (opt-in). ✅
 

@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -72,8 +73,9 @@ public static class CiFailServer
 
         app.Use(async (context, next) =>
         {
-            // Probes hit /healthz unauthenticated (kubelet has no token).
-            if (context.Request.Path == "/healthz")
+            // The probe and the dashboard shell stay open (kubelet has no token; the shell
+            // collects one from the user, then calls the protected API with it).
+            if (PublicPaths.Contains(context.Request.Path.Value ?? string.Empty))
             {
                 await next(context);
                 return;
@@ -104,8 +106,33 @@ public static class CiFailServer
             Encoding.UTF8.GetBytes(token));
     }
 
+    /// <summary>
+    /// Public paths served without a token: the liveness probe and the dashboard shell (R12).
+    /// The shell is just static HTML — all data it shows comes from the authenticated API, which
+    /// it calls with the token the user enters in-page.
+    /// </summary>
+    private static readonly HashSet<string> PublicPaths =
+        new(StringComparer.OrdinalIgnoreCase) { "/healthz", "/", "/index.html" };
+
+    /// <summary>The bundled dashboard HTML, read once from the embedded resource.</summary>
+    private static readonly string DashboardHtml = LoadDashboardHtml();
+
+    private static string LoadDashboardHtml()
+    {
+        var asm = typeof(CiFailServer).Assembly;
+        using var stream = asm.GetManifestResourceStream("CiFail.Server.wwwroot.index.html")
+            ?? throw new InvalidOperationException("embedded dashboard resource not found");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
     private static void MapEndpoints(WebApplication app)
     {
+        // The bundled web dashboard (R12) — a single static page that talks to the API below.
+        IResult dashboard() => Results.Content(DashboardHtml, "text/html");
+        app.MapGet("/", dashboard);
+        app.MapGet("/index.html", dashboard);
+
         // Liveness/readiness — unauthenticated, used by the Helm probes.
         app.MapGet("/healthz", () => Results.Text("ok"));
 

@@ -32,6 +32,7 @@ started with a token (see **Auth** below).
 
 | Method & path        | Body / query                          | Returns                              |
 |----------------------|---------------------------------------|--------------------------------------|
+| `GET /`              | —                                     | the bundled web dashboard (R12, open)|
 | `GET /healthz`       | —                                     | `200 ok` (liveness/readiness, open)  |
 | `POST /analyze`      | raw log text; `?type=&source=&noHistory=` | the analysis JSON (the `--json` DTO) |
 | `GET /history`       | `?limit=N`                            | recent analyses                      |
@@ -53,6 +54,9 @@ Implemented now (R7 + R9 + R11) and what's still open:
   commit=<sha>`, which never overwrites a manual one); the unchanged `ResolutionReconciler`
   runs against the remote `http` store. Use `cifail reconcile --server <url>` (and the
   `cifail init` git hooks work the same way).
+- **Web dashboard**: ✅ (**R12**) a single bundled page at `/` (embedded in the server
+  assembly, no separate deploy) — browse/filter failures and resolve them. The shell is public
+  so it can load and collect a token; all its data calls hit the authenticated API.
 - **Similarity at scale**: ⏳ the corpus is loaded per request today; a service should push
   this into the DB (e.g. pgvector) before it's used by large teams (**R10**).
 

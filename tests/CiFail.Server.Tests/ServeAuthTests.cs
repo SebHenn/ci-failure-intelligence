@@ -29,6 +29,14 @@ public sealed class ServeAuthTests : IClassFixture<AuthServeFixture>
     }
 
     [Fact]
+    public async Task Dashboard_shell_is_open_without_a_token()
+    {
+        // The shell carries no data — it must load so the user can enter a token in-page.
+        var response = await _client.GetAsync("");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task Protected_route_without_a_token_is_401()
     {
         var response = await _client.GetAsync("history");

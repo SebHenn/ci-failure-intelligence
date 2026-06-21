@@ -22,4 +22,10 @@
     <ProjectReference Include="..\CiFail.Core\CiFail.Core.csproj" />
   </ItemGroup>
 
+  <!-- The bundled web dashboard (R12). Embedded so it ships inside the assembly and works
+       regardless of the host's content root / single-file packaging — no node build step. -->
+  <ItemGroup>
+    <EmbeddedResource Include="wwwroot\index.html" />
+  </ItemGroup>
+
 </Project>
