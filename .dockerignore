@@ -1,0 +1,15 @@
+# Keep the build context small and reproducible.
+**/bin/
+**/obj/
+dist/
+nupkg/
+.git/
+.github/
+.vs/
+*.user
+*.log
+docker-compose*.yml
+packaging/
+scripts/
+samples/
+tests/

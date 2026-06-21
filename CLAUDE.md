@@ -36,6 +36,11 @@ dotnet publish src/CiFail.Cli/CiFail.Cli.csproj -c Release -r win-x64 -o dist/wi
 # Full build WITH external DB providers (Postgres/MySQL/SQL Server/MongoDB) — for Docker:
 dotnet build src/CiFail.Cli/CiFail.Cli.csproj -p:IncludeExternalDb=true
 
+# Docker image (FULL build: all DB providers + git). Built/pushed to GHCR by release.yml;
+# build locally with:
+docker build -t cifail .
+docker run --rm -v "$PWD:/work" cifail analyze build.log
+
 # Run the external-DB contract tests against real engines (needs Docker):
 CIFAIL_DB_IT=1 dotnet test tests/CiFail.Providers.Tests
 docker compose -f docker-compose.test.yml up -d   # manual DBs for --db-* runs

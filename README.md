@@ -74,7 +74,20 @@ scoop install https://raw.githubusercontent.com/SebHenn/ci-failure-intelligence/
 [Releases page](https://github.com/SebHenn/ci-failure-intelligence/releases), unzip it,
 and put it on your `PATH`.
 
-> Prefer Docker or a CI pipeline? See [Use cifail in CI](#use-cifail-in-ci) below.
+**Docker** (no install — and the image bundles every database driver):
+
+```console
+# Analyze a log in the current folder:
+docker run --rm -v "$PWD:/work" ghcr.io/sebhenn/cifail analyze build.log
+
+# Keep history between runs by mounting a volume at /data:
+docker run --rm -v "$PWD:/work" -v cifail-data:/data ghcr.io/sebhenn/cifail history
+```
+
+The Docker image is the **full** build: PostgreSQL, MySQL/MariaDB, SQL Server and MongoDB
+support are all included (the standalone binaries stay SQLite-only to keep them small).
+
+> Prefer a CI pipeline? See [Use cifail in CI](#use-cifail-in-ci) below.
 
 ## Use it
 
@@ -258,10 +271,11 @@ Done:
 Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
 - **One-command install** as a native binary on any OS — no .NET needed. ✅
 - **Pick your database** — keep the built-in SQLite, or point cifail at a shared
-  PostgreSQL / MySQL / SQL Server / MongoDB. *(in progress)*
+  PostgreSQL / MySQL / SQL Server / MongoDB. ✅
 - **Resolutions that record themselves** — cifail links a failure to the commit that
   fixed it, so you don't have to run `resolve` by hand. ✅
-- **Docker image, GitHub Action & GitLab template**, then a shared team service. *(planned)*
+- **Docker image** (full build, all databases) published to GHCR. ✅
+- **GitHub Action & GitLab template**, then a shared team service. *(planned)*
 - **Optional local AI** suggestions via [Ollama](https://ollama.com) (`--ai`). *(planned)*
 
 ## License
