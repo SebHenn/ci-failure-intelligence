@@ -1,0 +1,45 @@
+# Local databases for trying cifail's external storage providers by hand.
+# (Automated tests use Testcontainers and don't need this file.)
+#
+#   docker compose -f docker-compose.test.yml up -d
+#   cifail analyze build.log --db-provider postgres \
+#       --db-connection "Host=localhost;Port=5432;Username=cifail;Password=cifail;Database=cifail"
+#   docker compose -f docker-compose.test.yml down -v
+#
+# Connection strings for each service:
+#   postgres   Host=localhost;Port=5432;Username=cifail;Password=cifail;Database=cifail
+#   mysql      Server=localhost;Port=3306;Uid=cifail;Pwd=cifail;Database=cifail
+#   sqlserver  Server=localhost,1433;User Id=sa;Password=Cifail!Passw0rd;Database=cifail;TrustServerCertificate=true
+#   mongodb    mongodb://cifail:cifail@localhost:27017/cifail?authSource=admin
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cifail
+      POSTGRES_PASSWORD: cifail
+      POSTGRES_DB: cifail
+    ports: ["5432:5432"]
+
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpw
+      MYSQL_USER: cifail
+      MYSQL_PASSWORD: cifail
+      MYSQL_DATABASE: cifail
+    ports: ["3306:3306"]
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Cifail!Passw0rd"
+    ports: ["1433:1433"]
+
+  mongodb:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: cifail
+      MONGO_INITDB_ROOT_PASSWORD: cifail
+    ports: ["27017:27017"]

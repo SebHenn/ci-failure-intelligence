@@ -15,7 +15,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: |
+            8.0.x
+            9.0.x
 
       - name: Restore
         run: dotnet restore
@@ -23,8 +25,28 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
+      # Integration tests skip here (CIFAIL_DB_IT unset) — the db-integration job runs them.
       - name: Test
         run: dotnet test --configuration Release --no-build --verbosity normal
 
       - name: Pack (global tool)
         run: dotnet pack src/CiFail.Cli/CiFail.Cli.csproj --configuration Release --no-build --output ./nupkg
+
+  # Real external databases (Postgres/MySQL/SQL Server/MongoDB) via Testcontainers. Kept in
+  # a separate job so the heavier, container-pulling tests don't slow the core pipeline.
+  db-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Run external-DB contract tests
+        env:
+          CIFAIL_DB_IT: '1'
+        run: dotnet test tests/CiFail.Providers.Tests/CiFail.Providers.Tests.csproj --configuration Release --verbosity normal

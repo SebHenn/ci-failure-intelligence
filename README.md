@@ -165,6 +165,47 @@ home directory (`~/.cifail`). It never leaves your machine. If you want it somew
 else (for example, one per project), set the `CIFAIL_HOME` environment variable to a
 folder of your choice.
 
+By default history lives in a local SQLite file — zero setup, nothing to run. If your
+team wants to **share** history, you can point cifail at an external database instead.
+
+---
+
+## Use a shared database (optional)
+
+Out of the box cifail uses local SQLite and needs no configuration. To share history
+across a team or CI, point it at PostgreSQL, MySQL/MariaDB, SQL Server, or MongoDB.
+
+Pick a backend in any of three ways (highest priority first):
+
+```console
+# 1. Command-line flags (any command that touches history):
+cifail analyze build.log \
+  --db-provider postgres \
+  --db-connection "Host=db;Port=5432;Username=ci;Password=secret;Database=cifail"
+
+# 2. Environment variables (handy in CI):
+export CIFAIL_DB_PROVIDER=postgres
+export CIFAIL_DB_CONNECTION="Host=db;Port=5432;Username=ci;Password=secret;Database=cifail"
+
+# 3. A config file at ~/.cifail/config.yaml:
+```
+
+```yaml
+# ~/.cifail/config.yaml
+database:
+  provider: postgres   # sqlite (default) | postgres | mysql | sqlserver | mongodb
+  connectionString: "Host=db;Port=5432;Username=ci;Password=secret;Database=cifail"
+```
+
+The connection string is whatever the database engine expects (cifail just hands it to
+the driver). cifail creates its table(s) on first use — no migrations to run.
+
+> **Which build do you have?** External databases ship in the **Docker image** and the
+> full build. The standalone single-file binaries stay SQLite-only to keep them small —
+> if you ask one of them for `postgres`/`mysql`/`sqlserver`/`mongodb` it will tell you so.
+> To try the external providers locally there's a `docker-compose.test.yml` with all four
+> engines pre-configured.
+
 ---
 
 ## Want to help? Add a pattern
@@ -202,9 +243,9 @@ Done:
 - **Remember** past failures and your fixes, and surface similar ones. ✅
 
 Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
-- **One-command install** as a native binary on any OS — no .NET needed. *(in progress)*
+- **One-command install** as a native binary on any OS — no .NET needed. ✅
 - **Pick your database** — keep the built-in SQLite, or point cifail at a shared
-  PostgreSQL / MySQL / SQL Server / MongoDB. *(planned)*
+  PostgreSQL / MySQL / SQL Server / MongoDB. *(in progress)*
 - **Resolutions that record themselves** — cifail links a failure to the commit that
   fixed it, so you don't have to run `resolve` by hand. *(planned)*
 - **Docker image, GitHub Action & GitLab template**, then a shared team service. *(planned)*

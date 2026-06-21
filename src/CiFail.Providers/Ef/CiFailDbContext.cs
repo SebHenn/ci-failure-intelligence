@@ -1,0 +1,36 @@
+using Microsoft.EntityFrameworkCore;
+
+namespace CiFail.Providers.Ef;
+
+/// <summary>
+/// The single EF Core model shared by every relational provider (Postgres, MySQL,
+/// SQL Server). Column/table/index names mirror the embedded SQLite schema so history
+/// is recognizable across backends. Schema is created on first use via
+/// <c>Database.EnsureCreated()</c> (no migrations — see <see cref="EfAnalysisStore"/>).
+/// </summary>
+public sealed class CiFailDbContext : DbContext
+{
+    public CiFailDbContext(DbContextOptions<CiFailDbContext> options) : base(options) { }
+
+    public DbSet<AnalysisEntity> Analyses => Set<AnalysisEntity>();
+
+    protected override void OnModelCreating(ModelBuilder model)
+    {
+        var e = model.Entity<AnalysisEntity>();
+        e.ToTable("analyses");
+        e.HasKey(x => x.Id);
+        e.Property(x => x.Id).HasColumnName("id").ValueGeneratedOnAdd();
+        e.Property(x => x.AnalyzedAt).HasColumnName("analyzed_at").IsRequired();
+        e.Property(x => x.Source).HasColumnName("source").IsRequired();
+        e.Property(x => x.Ecosystem).HasColumnName("ecosystem").IsRequired();
+        e.Property(x => x.RuleId).HasColumnName("rule_id").IsRequired();
+        e.Property(x => x.Matched).HasColumnName("matched").IsRequired();
+        e.Property(x => x.Fingerprint).HasColumnName("fingerprint").IsRequired();
+        e.Property(x => x.LogHash).HasColumnName("log_hash").IsRequired();
+        e.Property(x => x.Excerpt).HasColumnName("excerpt").IsRequired();
+        e.Property(x => x.Tokens).HasColumnName("tokens").IsRequired();
+        e.Property(x => x.Resolution).HasColumnName("resolution");
+        e.Property(x => x.ResolvedAt).HasColumnName("resolved_at");
+        e.HasIndex(x => x.Fingerprint).HasDatabaseName("ix_analyses_fingerprint");
+    }
+}

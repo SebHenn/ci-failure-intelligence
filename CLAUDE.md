@@ -27,9 +27,16 @@ dotnet run --project src/CiFail.Cli -- rules list
 dotnet pack src/CiFail.Cli/CiFail.Cli.csproj -c Release -o ./nupkg
 
 # Build self-contained, single-file native binaries (no .NET needed to run them):
-bash scripts/publish.sh                # all 6 RIDs -> dist/
+bash scripts/publish.sh                # all 6 RIDs -> dist/ (SLIM: SQLite only)
 bash scripts/publish.sh linux-x64      # one RID
 dotnet publish src/CiFail.Cli/CiFail.Cli.csproj -c Release -r win-x64 -o dist/win-x64
+
+# Full build WITH external DB providers (Postgres/MySQL/SQL Server/MongoDB) — for Docker:
+dotnet build src/CiFail.Cli/CiFail.Cli.csproj -p:IncludeExternalDb=true
+
+# Run the external-DB contract tests against real engines (needs Docker):
+CIFAIL_DB_IT=1 dotnet test tests/CiFail.Providers.Tests
+docker compose -f docker-compose.test.yml up -d   # manual DBs for --db-* runs
 # Releases are cut by pushing a tag (git tag v0.1.0 && git push origin v0.1.0),
 # which triggers .github/workflows/release.yml to build the matrix + attach binaries.
 ```
@@ -55,7 +62,10 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
 
 - **`src/CiFail.Core`** — all logic, no console dependencies.
 - **`src/CiFail.Cli`** — Spectre.Console.Cli `CommandApp`; thin commands that call Core.
+- **`src/CiFail.Providers`** — external DB providers (EF Core + MongoDB), size-gated out
+  of the default binary (see "External database providers" below).
 - **`tests/CiFail.Core.Tests`** — xUnit + FluentAssertions; fixtures in `fixtures/*.log`.
+- **`tests/CiFail.Providers.Tests`** — shared store contract + Docker-gated DB tests.
 
 ### The analyze pipeline (`Core/Analysis/AnalysisService.cs`)
 
@@ -93,11 +103,48 @@ a test case in `RulePackBreadthTests` — usually no C# changes needed.
 
 ### Storage (`Core/Storage/`)
 
-`SqliteAnalysisRepository` (Microsoft.Data.Sqlite) creates its schema on first use.
-Term vectors are stored as JSON per row and reloaded as the similarity corpus. Uses
+Persistence is pluggable behind `IAnalysisStore` (which extends `IDisposable`). Backends
+are chosen at runtime by name through a small registry:
+
+- `IStoreProvider` = a named factory (`Name`, `Description`, `Create(connectionString)`).
+- `StoreRegistry` = static map of provider name → provider. **SQLite is registered in the
+  static ctor** (always available, no extra deps). External providers register themselves
+  via `ExternalProviders.RegisterAll()` — see below.
+- `StoreFactory.Create(...)` resolves a `DatabaseConfig` (or CLI/env/file via
+  `ConfigLoader`) to a store; an unknown/unbundled provider throws
+  `StoreProviderNotAvailableException` (friendly "use the Docker/full build" message).
+- Config precedence (`Configuration/ConfigLoader`): CLI flags (`--db-provider`,
+  `--db-connection`) > env (`CIFAIL_DB_PROVIDER`, `CIFAIL_DB_CONNECTION`) >
+  `~/.cifail/config.yaml` (`database: { provider, connectionString }`) > default (sqlite).
+  Provider name is normalized to lowercase. CLI commands open the store via
+  `StoreSupport.TryCreate(settings)`, which prints the error and returns null (→ exit 2).
+
+`SqliteAnalysisRepository` (Microsoft.Data.Sqlite) is the default: creates its schema on
+first use, term vectors stored as JSON per row and reloaded as the similarity corpus, and
 `Pooling=False` so the db file handle releases promptly on dispose (otherwise the file
 stays locked, which breaks temp-file test cleanup). All paths resolve through
 `CiFailPaths`, which honors `CIFAIL_HOME`.
+
+### External database providers (`src/CiFail.Providers`, size-gated)
+
+PostgreSQL/MySQL/SQL Server (EF Core — one `CiFailDbContext` + `AnalysisEntity`, shared
+`EfAnalysisStore`, schema via `EnsureCreated()`, **no migrations**) and MongoDB
+(`MongoAnalysisStore`, document-per-analysis, sequential ids minted from a `counters` doc)
+live in a **separate assembly** so the default native binary stays SQLite-only and small.
+
+- Inclusion is opt-in: the CLI references `CiFail.Providers` and defines the
+  `CIFAIL_EXTERNAL_DB` compile symbol **only when built with `-p:IncludeExternalDb=true`**
+  (the Docker / full build). `Program.cs` then calls `ExternalProviders.RegisterAll()`
+  inside `#if CIFAIL_EXTERNAL_DB`. `scripts/publish.sh` builds SLIM (no flag).
+- EF entities store timestamps as ISO-8601 (`"O"`) **strings** (not `DateTimeOffset`
+  columns) to keep every relational engine's schema identical and dodge provider date
+  quirks. Column/table/index names mirror the SQLite schema.
+- Tests: `tests/CiFail.Providers.Tests`. One shared `StoreContract.Verify(store)` is the
+  behavioural contract for every backend. It runs locally against `EfAnalysisStore` over
+  **EF Core SQLite in-memory** (no Docker). Real-engine tests (`RealEngineContractTests`,
+  Testcontainers) are `[SkippableFact]` gated on **`CIFAIL_DB_IT=1`** — skipped locally,
+  run by the `db-integration` CI job. `docker-compose.test.yml` spins up all four engines
+  for manual `--db-*` runs.
 
 ### Output (`Cli/Output/`)
 

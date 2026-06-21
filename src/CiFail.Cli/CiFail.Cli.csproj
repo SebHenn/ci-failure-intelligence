@@ -44,6 +44,20 @@
     <ProjectReference Include="..\CiFail.Core\CiFail.Core.csproj" />
   </ItemGroup>
 
+  <!--
+    External DB providers (Postgres/MySQL/SQL Server/MongoDB) are opt-in to keep the
+    default binary small. Pass `-p:IncludeExternalDb=true` (the Docker / full build) to
+    reference CiFail.Providers and light up the CIFAIL_EXTERNAL_DB code path in Program.cs.
+    Without it, the slim build ships SQLite only and never pulls in EF Core / the drivers.
+  -->
+  <PropertyGroup Condition="'$(IncludeExternalDb)' == 'true'">
+    <DefineConstants>$(DefineConstants);CIFAIL_EXTERNAL_DB</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IncludeExternalDb)' == 'true'">
+    <ProjectReference Include="..\CiFail.Providers\CiFail.Providers.csproj" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Spectre.Console" Version="0.57.0" />
     <PackageReference Include="Spectre.Console.Cli" Version="0.55.0" />
