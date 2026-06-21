@@ -36,9 +36,10 @@ started with a token (see **Auth** below).
 | `POST /analyze`      | raw log text; `?type=&source=&noHistory=` | the analysis JSON (the `--json` DTO) |
 | `GET /history`       | `?limit=N`                            | recent analyses                      |
 | `GET /history/{id}`  | —                                     | one analysis, or `404`               |
-| `POST /resolve/{id}` | `{ "note": "..." }`                   | the updated record                   |
+| `GET /repos/{repoId}/open` | —                               | open failures for one repo (R11)     |
+| `POST /resolve/{id}` | `{ "note": "..." }`; `?source=auto&commit=<sha>` for auto | the updated record |
 
-Implemented now (R7 + R9) and what's still open:
+Implemented now (R7 + R9 + R11) and what's still open:
 - **Stateless**: ✅ the pod holds no state; a fresh store is opened per request and all
   persistence is the external DB, so it scales horizontally behind the Service.
 - **Auth**: ✅ (**R9**) a shared bearer token, set via `CIFAIL_SERVER_TOKEN` or
@@ -46,10 +47,12 @@ Implemented now (R7 + R9) and what's still open:
   Started without a token, serve runs open and logs a loud warning. Clients
   (`--server`) send it via `--server-token` / `CIFAIL_SERVER_TOKEN`. mTLS is a possible
   future hardening on top of the token.
-- **Git correlation (R3)**: ⏳ the reconciler needs a working tree, which a central server
-  doesn't have. Plan (**R11**): reconciliation stays client-side — the CLI talks to the
-  server via the `http` store and runs the existing reconciler locally. The auto-resolution
-  endpoints aren't exposed yet.
+- **Git correlation (R3)**: ✅ (**R11**) resolved as planned — **reconciliation stays on the
+  client** (it has the working tree). The server exposes open failures
+  (`GET /repos/{repoId}/open`) and accepts auto-resolutions (`POST /resolve/{id}?source=auto&
+  commit=<sha>`, which never overwrites a manual one); the unchanged `ResolutionReconciler`
+  runs against the remote `http` store. Use `cifail reconcile --server <url>` (and the
+  `cifail init` git hooks work the same way).
 - **Similarity at scale**: ⏳ the corpus is loaded per request today; a service should push
   this into the DB (e.g. pgvector) before it's used by large teams (**R10**).
 

@@ -13,10 +13,11 @@ namespace CiFail.Core.Storage;
 /// without the client holding any database credentials. Registered as the <c>http</c>
 /// provider; the connection string is the server's base URL (e.g. <c>http://cifail:8080</c>).
 ///
-/// Read + manual-resolve are implemented here against the R7 endpoints. The write-back paths
-/// used by analyze (<see cref="Save"/>, <see cref="LoadCorpus"/>) and the auto-resolution
-/// methods (<see cref="GetOpenFailures"/>, <see cref="SetAutoResolution"/>) are not yet served
-/// remotely — the latter two land with server-side reconciliation (R11).
+/// Read, manual-resolve, and (R11) the auto-resolution pair (<see cref="GetOpenFailures"/> /
+/// <see cref="SetAutoResolution"/>) are implemented here, so the client-side
+/// <c>ResolutionReconciler</c> runs unchanged against a remote server. The analyze write paths
+/// (<see cref="Save"/>, <see cref="LoadCorpus"/>) are not served remotely — a server analyzes
+/// and stores logs itself via <c>POST /analyze</c>.
 /// </summary>
 public sealed class HttpAnalysisStore : IAnalysisStore
 {
@@ -65,17 +66,34 @@ public sealed class HttpAnalysisStore : IAnalysisStore
         return true;
     }
 
+    public IReadOnlyList<StoredAnalysis> GetOpenFailures(string repoId)
+    {
+        var dtos = GetJson<List<StoredAnalysisJson.StoredAnalysisDto>>(
+            $"repos/{Uri.EscapeDataString(repoId)}/open");
+        return dtos is null
+            ? Array.Empty<StoredAnalysis>()
+            : dtos.Select(StoredAnalysisJson.FromDto).ToList();
+    }
+
+    public bool SetAutoResolution(long id, string resolvedCommit, string note)
+    {
+        var request = new HttpRequestMessage(
+            HttpMethod.Post, $"resolve/{id}?source=auto&commit={Uri.EscapeDataString(resolvedCommit)}")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new { note }), Encoding.UTF8, "application/json"),
+        };
+        var response = _http.Send(request);
+        // 404 = unknown id OR already resolved (manual wins) — both mean "didn't auto-resolve".
+        if (response.StatusCode == HttpStatusCode.NotFound) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
     public long Save(AnalysisRecord record) => throw new NotSupportedException(
         "A remote cifail server analyzes and stores logs itself; the http store does not save raw records.");
 
     public IReadOnlyList<CorpusEntry> LoadCorpus(int max) => throw new NotSupportedException(
         "Similarity is computed by the remote cifail server; the http store has no local corpus.");
-
-    public IReadOnlyList<StoredAnalysis> GetOpenFailures(string repoId) => throw new NotSupportedException(
-        "Server-side reconciliation is not available yet (planned for R11).");
-
-    public bool SetAutoResolution(long id, string resolvedCommit, string note) => throw new NotSupportedException(
-        "Server-side reconciliation is not available yet (planned for R11).");
 
     public void Dispose() => _http.Dispose();
 

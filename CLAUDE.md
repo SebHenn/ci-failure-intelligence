@@ -129,7 +129,9 @@ Each persisted record carries git context (`repo_id` = root commit, `git_commit`
 `git_branch`, `git_dirty`) plus a lifecycle: `status` (open/resolved), `resolution_source`
 (manual/auto), `resolved_commit`. See `AnalysisStatus`/`ResolutionSource` constants in
 `StoredAnalysis.cs`. Two store methods drive it: `GetOpenFailures(repoId)` and
-`SetAutoResolution(id, commit, note)` — implemented across all providers.
+`SetAutoResolution(id, commit, note)` — implemented across all providers, **and (R11) over
+HTTP** by `HttpAnalysisStore` (`GET /repos/{repoId}/open`, `POST /resolve/{id}?source=auto&
+commit=<sha>`), so the same reconciler works against a remote `--server`.
 
 `GitContext.Detect(dir)` shells out to the system `git` (no native lib) and returns null
 when git is missing / not a repo / no commits — so everything degrades to "just SQLite,
@@ -142,7 +144,9 @@ in `observedFingerprints` (the failures seen in the current run) — crediting t
 `(A, B]`. `SetAutoResolution` only touches still-open rows, so **manual resolutions always
 win**. The CLI runs this after `analyze` (passing the just-seen fingerprints) and via the
 standalone `reconcile` command (empty observed set); `init` installs post-commit/post-merge
-hooks that call `cifail reconcile`. Skip it all with `analyze --no-git`.
+hooks that call `cifail reconcile`. Skip it all with `analyze --no-git`. `reconcile --server
+<url>` (R11) runs the same flow against a remote server — the git context is always detected on
+the client (the server has no working tree); only the store differs.
 
 ### Rule packs (`Core/rulepacks/*.yaml`)
 

@@ -150,7 +150,19 @@ public static class CiFailServer
                 : Json(JsonSerializer.Serialize(StoredAnalysisJson.ToDto(record), AnalysisJson.Options));
         });
 
-        // Manual resolution. Body: { "note": "..." }. Returns the updated record, or 404.
+        // Open (unresolved) failures for one repository — the client-side reconciler (R11)
+        // reads these, then writes auto-resolutions back via /resolve?source=auto.
+        app.MapGet("/repos/{repoId}/open", (string repoId, Func<IAnalysisStore> stores) =>
+        {
+            using var store = stores();
+            var dtos = store.GetOpenFailures(repoId).Select(StoredAnalysisJson.ToDto).ToList();
+            return Json(JsonSerializer.Serialize(dtos, AnalysisJson.Options));
+        });
+
+        // Resolution. Body: { "note": "..." }. Manual by default; ?source=auto&commit=<sha>
+        // records a git-correlated auto-resolution (which never overwrites a manual one — the
+        // store enforces that, so a no-op returns 404 and the reconciler simply skips it).
+        // Returns the updated record, or 404.
         app.MapPost("/resolve/{id:long}", async (long id, HttpRequest request, Func<IAnalysisStore> stores) =>
         {
             ResolveRequest? req;
@@ -160,9 +172,18 @@ public static class CiFailServer
             if (req is null || string.IsNullOrWhiteSpace(req.Note))
                 return Results.BadRequest("note is required");
 
+            var isAuto = string.Equals(request.Query["source"].FirstOrDefault(), "auto", StringComparison.OrdinalIgnoreCase);
+            var commit = request.Query["commit"].FirstOrDefault();
+            if (isAuto && string.IsNullOrWhiteSpace(commit))
+                return Results.BadRequest("commit is required for an auto resolution");
+
             using var store = stores();
-            if (!store.SetResolution(id, req.Note))
+            var ok = isAuto
+                ? store.SetAutoResolution(id, commit!, req.Note)
+                : store.SetResolution(id, req.Note);
+            if (!ok)
                 return Results.NotFound();
+
             var updated = store.GetById(id)!;
             return Json(JsonSerializer.Serialize(StoredAnalysisJson.ToDto(updated), AnalysisJson.Options));
         });

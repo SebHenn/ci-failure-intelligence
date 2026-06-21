@@ -295,15 +295,20 @@ docker run --rm -p 8080:8080 \
 ```
 
 It exposes a small JSON API (`GET /healthz`, `POST /analyze`, `GET /history`,
-`GET /history/{id}`, `POST /resolve/{id}`) — `POST /analyze` returns the exact same shape as
-`cifail analyze --json`. Your CLI can browse and annotate that shared history without any
-database credentials:
+`GET /history/{id}`, `GET /repos/{repoId}/open`, `POST /resolve/{id}`) — `POST /analyze`
+returns the exact same shape as `cifail analyze --json`. Your CLI can browse and annotate that
+shared history, and reconcile fixed failures, without any database credentials:
 
 ```console
 cifail history --server http://your-host:8080 --server-token "a-long-random-secret"
 cifail resolve 1 --note "bumped the package version" \
   --server http://your-host:8080 --server-token "a-long-random-secret"
+# Auto-resolve failures your repo has since moved past, on the shared history:
+cifail reconcile --server http://your-host:8080 --server-token "a-long-random-secret"
 ```
+
+Reconciliation runs on your machine (it reads your git history) and writes the results back to
+the shared server, so a central service needs no checkout of its own.
 
 **Authentication.** Set `CIFAIL_SERVER_TOKEN` (or `serve --token`) and the server requires
 `Authorization: Bearer <token>` on every request except `/healthz`. Clients send it via

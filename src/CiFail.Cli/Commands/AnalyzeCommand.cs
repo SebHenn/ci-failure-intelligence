@@ -98,8 +98,9 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         // store doesn't serve yet — posting logs to a server lands in a later release.
         if (!string.IsNullOrWhiteSpace(settings.Server))
         {
-            AnsiConsole.MarkupLine("[red]error:[/] [bold]analyze --server[/] isn't supported yet. " +
-                "Use [bold]history[/]/[bold]resolve[/] against a server, or analyze against a local/direct database.");
+            AnsiConsole.MarkupLine("[red]error:[/] [bold]analyze --server[/] isn't supported. " +
+                "Run [bold]analyze[/] against a local/direct database; use [bold]history[/]/[bold]resolve[/]/" +
+                "[bold]reconcile[/] to work against a server.");
             return ExitInputError;
         }
 
