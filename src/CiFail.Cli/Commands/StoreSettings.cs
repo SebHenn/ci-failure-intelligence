@@ -20,6 +20,10 @@ public class StoreSettings : CommandSettings
     [CommandOption("--db-connection <CONNECTION>")]
     [Description("Connection string for the chosen database (native format for that engine).")]
     public string? DbConnection { get; init; }
+
+    [CommandOption("--server <URL>")]
+    [Description("Talk to a remote cifail serve instance instead of a database (e.g. http://cifail:8080).")]
+    public string? Server { get; init; }
 }
 
 /// <summary>Helper to open the configured store, reporting a friendly error on failure.</summary>
@@ -34,6 +38,11 @@ public static class StoreSupport
     {
         try
         {
+            // --server is shorthand for the remote http provider; it wins over --db-* so a
+            // single flag points the read/resolve commands at a shared service.
+            if (!string.IsNullOrWhiteSpace(settings.Server))
+                return StoreFactory.Create("http", settings.Server);
+
             return StoreFactory.Create(settings.DbProvider, settings.DbConnection);
         }
         catch (StoreProviderNotAvailableException ex)

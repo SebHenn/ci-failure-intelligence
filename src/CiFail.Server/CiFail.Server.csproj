@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>CiFail.Server</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    A class library that hosts ASP.NET Core (Kestrel + minimal API). Using the plain
+    SDK plus this FrameworkReference (rather than Sdk.Web) keeps it a *library* the CLI
+    can call into via CiFailServer.Run, instead of a second executable with its own Main.
+    Ships only in the full / Docker build (gated by CIFAIL_SERVER), so the slim binaries
+    never pull in ASP.NET Core.
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CiFail.Core\CiFail.Core.csproj" />
+  </ItemGroup>
+
+</Project>

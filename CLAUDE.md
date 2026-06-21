@@ -57,9 +57,15 @@ The published executable is named **`cifail`** (set via `<AssemblyName>`), not
 `'$(RuntimeIdentifier)' != ''`, so they only apply during `dotnet publish -r <rid>` and
 never affect plain build/test/pack.
 
-`deploy/` is an **R6 design spike**: a `cifail serve` HTTP API sketch + a Helm chart
-skeleton (`deploy/helm/cifail`). It is intentionally **not runnable** — `cifail serve`
-doesn't exist yet — so don't wire it into builds/CI; see `deploy/README.md`.
+`cifail serve` (R7) is a real HTTP API in `src/CiFail.Server` (ASP.NET Core minimal API),
+**size-gated into the full / Docker build only** via the `CIFAIL_SERVER` symbol (tied to
+`-p:IncludeExternalDb=true`, exactly like `CIFAIL_EXTERNAL_DB`). The slim binaries get
+neither the `serve` command nor ASP.NET Core. The Docker runtime base is therefore
+`dotnet/aspnet:8.0` (not `runtime:8.0`). The Helm chart in `deploy/helm/cifail` runs it; see
+`deploy/README.md`. Auth is **not** built in yet (R9) — don't expose serve on an untrusted
+network. Build it locally with `dotnet build src/CiFail.Cli/CiFail.Cli.csproj -p:IncludeExternalDb=true`
+then `dotnet run --project src/CiFail.Cli -- serve --port 8080` (or hit the in-process host
+in `tests/CiFail.Server.Tests`, which needs no Docker).
 
 **Always set `CIFAIL_HOME` to a temp dir when manually running the CLI.** The tool
 writes history to `~/.cifail/history.db`, and .NET's `SpecialFolder.UserProfile`
@@ -79,8 +85,14 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
 - **`src/CiFail.Cli`** — Spectre.Console.Cli `CommandApp`; thin commands that call Core.
 - **`src/CiFail.Providers`** — external DB providers (EF Core + MongoDB), size-gated out
   of the default binary (see "External database providers" below).
+- **`src/CiFail.Server`** — `cifail serve` HTTP API (ASP.NET Core), size-gated into the
+  full build only (`CIFAIL_SERVER`); a thin host over `AnalysisService` + `IAnalysisStore`.
+  The shared JSON contract lives in `Core/Output/AnalysisJson.cs` + `StoredAnalysisJson.cs`
+  so the CLI `--json` and the server serialize one identical schema. `Core/Storage/
+  HttpAnalysisStore.cs` is the matching client (`http` store provider; `--server <url>`).
 - **`tests/CiFail.Core.Tests`** — xUnit + FluentAssertions; fixtures in `fixtures/*.log`.
 - **`tests/CiFail.Providers.Tests`** — shared store contract + Docker-gated DB tests.
+- **`tests/CiFail.Server.Tests`** — boots a real serve instance on a random port (no Docker).
 
 ### The analyze pipeline (`Core/Analysis/AnalysisService.cs`)
 

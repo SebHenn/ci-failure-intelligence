@@ -1,12 +1,12 @@
 apiVersion: v2
 name: cifail
 description: |
-  Shared cifail service (design spike). Runs the full cifail image as a long-running
-  `cifail serve` HTTP API backed by an external database. NOTE: `cifail serve` is not
-  implemented yet — see deploy/README.md. This chart is a skeleton, not yet runnable.
+  Shared cifail service. Runs the full cifail image as a long-running `cifail serve` HTTP
+  API backed by an external database. Authentication is not built in yet (R9) — keep it on
+  a trusted network. See deploy/README.md.
 type: application
 # Chart version; bump on chart changes.
-version: 0.1.0
+version: 0.2.0
 # The cifail version this chart targets (image tag default).
 appVersion: "0.1.0-alpha"
 keywords:

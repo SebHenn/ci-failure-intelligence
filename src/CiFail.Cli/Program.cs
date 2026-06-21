@@ -35,6 +35,12 @@ app.Configure(config =>
         .WithDescription("Install git hooks so cifail auto-resolves fixed failures on each commit.")
         .WithExample("init");
 
+#if CIFAIL_SERVER
+    config.AddCommand<ServeCommand>("serve")
+        .WithDescription("Run cifail as a shared HTTP service (full/Docker build only).")
+        .WithExample("serve", "--port", "8080");
+#endif
+
     config.AddBranch("rules", rules =>
     {
         rules.SetDescription("See the failure patterns cifail knows about.");

@@ -19,6 +19,12 @@ public sealed class ReconcileCommand : Command<ReconcileCommand.Settings>
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
+        if (!string.IsNullOrWhiteSpace(settings.Server))
+        {
+            AnsiConsole.MarkupLine("[red]error:[/] reconciling against a remote [bold]--server[/] isn't supported yet (planned for R11).");
+            return 2;
+        }
+
         var git = GitContext.Detect(Directory.GetCurrentDirectory());
         if (git is null)
         {

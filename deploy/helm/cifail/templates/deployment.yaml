@@ -22,8 +22,7 @@ spec:
         - name: cifail
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          # NOTE: `cifail serve` is not implemented yet (design spike) — a deployed pod will
-          # crash-loop until it lands. See deploy/README.md.
+          # Runs `cifail serve` (the HTTP API, full/Docker build). See deploy/README.md.
           args:
             {{- toYaml .Values.serve.args | nindent 12 }}
           ports:

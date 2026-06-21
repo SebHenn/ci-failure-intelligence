@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # cifail Docker image — the FULL build: includes every external database provider
-# (PostgreSQL, MySQL/MariaDB, SQL Server, MongoDB) via -p:IncludeExternalDb=true, plus
-# git so the R3 auto-resolution features work against a mounted repository.
+# (PostgreSQL, MySQL/MariaDB, SQL Server, MongoDB) via -p:IncludeExternalDb=true, the
+# `cifail serve` HTTP API (ASP.NET Core), plus git so the R3 auto-resolution features work
+# against a mounted repository.
 
 # ---- build ----------------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
@@ -12,6 +13,7 @@ WORKDIR /src
 COPY src/CiFail.Core/CiFail.Core.csproj         src/CiFail.Core/
 COPY src/CiFail.Cli/CiFail.Cli.csproj           src/CiFail.Cli/
 COPY src/CiFail.Providers/CiFail.Providers.csproj src/CiFail.Providers/
+COPY src/CiFail.Server/CiFail.Server.csproj     src/CiFail.Server/
 RUN dotnet restore src/CiFail.Cli/CiFail.Cli.csproj -p:IncludeExternalDb=true
 
 COPY . .
@@ -22,7 +24,9 @@ RUN dotnet publish src/CiFail.Cli/CiFail.Cli.csproj \
         -o /app
 
 # ---- runtime --------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/runtime:8.0 AS runtime
+# ASP.NET Core runtime (not the plain runtime) so `cifail serve` has the shared framework.
+# CLI-only commands run on it just the same.
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 
 # git powers R3 (correlating failures with the commit that fixed them). safe.directory '*'
 # avoids "dubious ownership" errors when the mounted repo is owned by a different user.
@@ -41,6 +45,9 @@ RUN ln -s /app/cifail /usr/local/bin/cifail
 ENV CIFAIL_HOME=/data
 RUN mkdir -p /data
 WORKDIR /work
+
+# `cifail serve` listens here by default (shared-service mode; see deploy/).
+EXPOSE 8080
 
 ENTRYPOINT ["/app/cifail"]
 CMD ["--help"]

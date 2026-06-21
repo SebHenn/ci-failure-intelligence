@@ -58,6 +58,19 @@
     <ProjectReference Include="..\CiFail.Providers\CiFail.Providers.csproj" />
   </ItemGroup>
 
+  <!--
+    Server mode (`cifail serve`, ASP.NET Core) ships only in the full / Docker build, tied
+    to the same switch so one flag produces the complete image. The slim binaries get
+    neither the `serve` command nor the ASP.NET Core framework reference.
+  -->
+  <PropertyGroup Condition="'$(IncludeExternalDb)' == 'true'">
+    <DefineConstants>$(DefineConstants);CIFAIL_SERVER</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IncludeExternalDb)' == 'true'">
+    <ProjectReference Include="..\CiFail.Server\CiFail.Server.csproj" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Spectre.Console" Version="0.57.0" />
     <PackageReference Include="Spectre.Console.Cli" Version="0.55.0" />

@@ -84,6 +84,15 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             TopSimilar = settings.Top,
         };
 
+        // analyze runs the full pipeline locally (save + similarity), which the remote http
+        // store doesn't serve yet — posting logs to a server lands in a later release.
+        if (!string.IsNullOrWhiteSpace(settings.Server))
+        {
+            AnsiConsole.MarkupLine("[red]error:[/] [bold]analyze --server[/] isn't supported yet. " +
+                "Use [bold]history[/]/[bold]resolve[/] against a server, or analyze against a local/direct database.");
+            return ExitInputError;
+        }
+
         // History + similarity are backed by the configured store (SQLite by default).
         // --no-history still queries similarity but skips persisting the current run.
         using var store = StoreSupport.TryCreate(settings);

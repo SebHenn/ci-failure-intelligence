@@ -271,6 +271,33 @@ the driver). cifail creates its table(s) on first use — no migrations to run.
 
 ---
 
+## Run a shared server (optional)
+
+Instead of giving every machine the database connection string, you can run **one** cifail
+as an HTTP service and point everyone at it. The Docker image includes this `serve` mode:
+
+```console
+docker run --rm -p 8080:8080 \
+  -e CIFAIL_DB_PROVIDER=postgres \
+  -e CIFAIL_DB_CONNECTION="Host=db;Username=ci;Password=secret;Database=cifail" \
+  ghcr.io/sebhenn/cifail serve --port 8080
+```
+
+It exposes a small JSON API (`GET /healthz`, `POST /analyze`, `GET /history`,
+`GET /history/{id}`, `POST /resolve/{id}`) — `POST /analyze` returns the exact same shape as
+`cifail analyze --json`. Your CLI can browse and annotate that shared history without any
+database credentials:
+
+```console
+cifail history --server http://your-host:8080
+cifail resolve 1 --note "bumped the package version" --server http://your-host:8080
+```
+
+There's a Helm chart for Kubernetes in [`deploy/`](./deploy). **Heads-up:** the server has
+no authentication yet, so only run it on a trusted network for now.
+
+---
+
 ## Want to help? Add a pattern
 
 The easiest way to contribute is to teach cifail a new failure. Patterns are written in
@@ -313,8 +340,8 @@ Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
   fixed it, so you don't have to run `resolve` by hand. ✅
 - **Docker image** (full build, all databases) published to GHCR. ✅
 - **GitHub Action & GitLab template** so a pipeline can explain its own failures. ✅
-- **Shared team service** (Kubernetes/Helm + a `cifail serve` mode) — design spike +
-  Helm chart skeleton landed in [`deploy/`](./deploy); the server mode itself is next. 🚧
+- **Shared team service** — `cifail serve` HTTP API (in the full/Docker build) + a Helm
+  chart in [`deploy/`](./deploy). ✅ *(authentication is next)*
 - **Optional local AI** suggestions via [Ollama](https://ollama.com) (`--ai`). *(planned)*
 
 ## License

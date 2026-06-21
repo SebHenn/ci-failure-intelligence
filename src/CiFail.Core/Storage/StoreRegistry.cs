@@ -11,7 +11,14 @@ public static class StoreRegistry
 {
     private static readonly ConcurrentDictionary<string, IStoreProvider> Providers = new(StringComparer.OrdinalIgnoreCase);
 
-    static StoreRegistry() => Register(new SqliteStoreProvider());
+    static StoreRegistry()
+    {
+        // Both are dependency-free (SQLite ships with Core; the http client is BCL-only),
+        // so they're always available even in the slim build. External engines register
+        // themselves via ExternalProviders.RegisterAll() in the full build.
+        Register(new SqliteStoreProvider());
+        Register(new HttpStoreProvider());
+    }
 
     public static void Register(IStoreProvider provider) => Providers[provider.Name] = provider;
 
