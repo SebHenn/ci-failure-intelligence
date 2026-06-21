@@ -1,0 +1,57 @@
+# Default values for the cifail service chart (design spike — see deploy/README.md).
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/sebhenn/cifail
+  # Defaults to the chart's appVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# The planned server entrypoint. `cifail serve` does not exist yet; this is what the chart
+# will run once it does.
+serve:
+  port: 8080
+  args:
+    - serve
+    - --port
+    - "8080"
+
+# External database the service persists to. cifail reads CIFAIL_DB_PROVIDER /
+# CIFAIL_DB_CONNECTION (same as the CLI).
+database:
+  provider: postgres
+  # Option A (recommended): reference an existing secret holding the connection string.
+  existingSecret: ""
+  existingSecretKey: connection-string
+  # Option B (dev only): set the connection string here and let the chart create a Secret.
+  connectionString: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+    # - host: cifail.example.com
+    #   paths:
+    #     - path: /
+    #       pathType: Prefix
+  tls: []
+
+resources: {}
+  # limits:
+  #   cpu: 500m
+  #   memory: 256Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+podAnnotations: {}

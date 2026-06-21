@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cifail.fullname" . }}
+  labels:
+    {{- include "cifail.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cifail.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "cifail.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: cifail
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # NOTE: `cifail serve` is not implemented yet (design spike) — a deployed pod will
+          # crash-loop until it lands. See deploy/README.md.
+          args:
+            {{- toYaml .Values.serve.args | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.serve.port }}
+          env:
+            - name: CIFAIL_DB_PROVIDER
+              value: {{ .Values.database.provider | quote }}
+            - name: CIFAIL_DB_CONNECTION
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cifail.dbSecretName" . }}
+                  key: {{ include "cifail.dbSecretKey" . }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

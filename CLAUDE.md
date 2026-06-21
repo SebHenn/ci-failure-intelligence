@@ -57,6 +57,10 @@ The published executable is named **`cifail`** (set via `<AssemblyName>`), not
 `'$(RuntimeIdentifier)' != ''`, so they only apply during `dotnet publish -r <rid>` and
 never affect plain build/test/pack.
 
+`deploy/` is an **R6 design spike**: a `cifail serve` HTTP API sketch + a Helm chart
+skeleton (`deploy/helm/cifail`). It is intentionally **not runnable** — `cifail serve`
+doesn't exist yet — so don't wire it into builds/CI; see `deploy/README.md`.
+
 **Always set `CIFAIL_HOME` to a temp dir when manually running the CLI.** The tool
 writes history to `~/.cifail/history.db`, and .NET's `SpecialFolder.UserProfile`
 ignores a shell-exported `USERPROFILE`, so without `CIFAIL_HOME` your manual runs

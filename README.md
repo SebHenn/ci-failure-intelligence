@@ -313,7 +313,8 @@ Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
   fixed it, so you don't have to run `resolve` by hand. ✅
 - **Docker image** (full build, all databases) published to GHCR. ✅
 - **GitHub Action & GitLab template** so a pipeline can explain its own failures. ✅
-- **Shared team service** (Kubernetes/Helm + a server mode). *(planned)*
+- **Shared team service** (Kubernetes/Helm + a `cifail serve` mode) — design spike +
+  Helm chart skeleton landed in [`deploy/`](./deploy); the server mode itself is next. 🚧
 - **Optional local AI** suggestions via [Ollama](https://ollama.com) (`--ai`). *(planned)*
 
 ## License
