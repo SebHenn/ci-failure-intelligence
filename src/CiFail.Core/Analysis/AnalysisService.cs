@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using CiFail.Core.Git;
 using CiFail.Core.Ingest;
 using CiFail.Core.Models;
 using CiFail.Core.Rules;
@@ -21,11 +22,13 @@ public sealed class AnalysisService
 
     private readonly RuleEngine _engine;
     private readonly IAnalysisStore? _store;
+    private readonly IGitRepo? _git;
 
-    public AnalysisService(RuleEngine engine, IAnalysisStore? store = null)
+    public AnalysisService(RuleEngine engine, IAnalysisStore? store = null, IGitRepo? git = null)
     {
         _engine = engine;
         _store = store;
+        _git = git;
     }
 
     /// <summary>Factory that loads embedded + user rule packs, with no history store.</summary>
@@ -33,8 +36,8 @@ public sealed class AnalysisService
         new(new RuleEngine(RulePackLoader.LoadAll()));
 
     /// <summary>Factory that also wires the given history store (similarity + persistence).</summary>
-    public static AnalysisService CreateWithStore(IAnalysisStore store) =>
-        new(new RuleEngine(RulePackLoader.LoadAll()), store);
+    public static AnalysisService CreateWithStore(IAnalysisStore store, IGitRepo? git = null) =>
+        new(new RuleEngine(RulePackLoader.LoadAll()), store, git);
 
     public Models.Analysis Analyze(string source, string rawText, AnalysisOptions? options = null)
     {
@@ -67,6 +70,10 @@ public sealed class AnalysisService
                     LogHash = HashRaw(rawText),
                     Excerpt = BuildExcerpt(log, rootCause),
                     Terms = queryTerms,
+                    RepoId = _git?.RepoId,
+                    GitCommit = _git?.Head,
+                    GitBranch = _git?.Branch,
+                    GitDirty = _git?.IsDirty ?? false,
                 });
             }
         }
@@ -80,6 +87,22 @@ public sealed class AnalysisService
             HistoryId = historyId,
             SimilarFailures = similar,
         };
+    }
+
+    /// <summary>True when this service is operating inside a git repository.</summary>
+    public bool HasGit => _git is not null;
+
+    /// <summary>
+    /// Auto-resolve open failures for the current repo, treating <paramref name="observedFingerprints"/>
+    /// as "still happening now" (typically the fingerprints from the analyses just run, so a
+    /// failure that recurred at HEAD stays open). No-op without both a store and a git context.
+    /// </summary>
+    public IReadOnlyList<ResolutionReconciler.Resolved> ReconcileResolutions(
+        IReadOnlySet<string>? observedFingerprints = null)
+    {
+        if (_store is null || _git is null)
+            return Array.Empty<ResolutionReconciler.Resolved>();
+        return ResolutionReconciler.Reconcile(_store, _git, observedFingerprints);
     }
 
     private IReadOnlyList<SimilarFailure> FindSimilar(

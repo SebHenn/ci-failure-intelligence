@@ -26,6 +26,13 @@ public class SqliteAnalysisRepositoryTests : IDisposable
         Terms = terms.ToDictionary(t => t, _ => 1),
     };
 
+    private static AnalysisRecord GitRecord(string ruleId, string repoId, string commit) => Record(ruleId) with
+    {
+        RepoId = repoId,
+        GitCommit = commit,
+        GitBranch = "main",
+    };
+
     [Fact]
     public void Save_assigns_incrementing_ids_and_GetById_round_trips()
     {
@@ -65,6 +72,49 @@ public class SqliteAnalysisRepositoryTests : IDisposable
         var fetched = _repo.GetById(id);
         fetched!.Resolution.Should().Be("fixed the typo");
         fetched.ResolvedAt.Should().NotBeNull();
+        fetched.Status.Should().Be(AnalysisStatus.Resolved);
+        fetched.ResolutionSource.Should().Be(ResolutionSource.Manual);
+    }
+
+    [Fact]
+    public void GetOpenFailures_is_scoped_to_repo_and_excludes_resolved()
+    {
+        var openId = _repo.Save(GitRecord("a", "repo-1", "c1"));
+        var resolvedId = _repo.Save(GitRecord("b", "repo-1", "c2"));
+        _repo.Save(GitRecord("c", "repo-2", "c3")); // different repo
+
+        _repo.SetResolution(resolvedId, "done");
+
+        var open = _repo.GetOpenFailures("repo-1");
+        open.Select(f => f.Id).Should().ContainSingle().Which.Should().Be(openId);
+    }
+
+    [Fact]
+    public void SetAutoResolution_marks_auto_and_does_not_overwrite_a_resolved_row()
+    {
+        var id = _repo.Save(GitRecord("a", "repo-1", "old"));
+
+        _repo.SetAutoResolution(id, "fixsha", "likely fixed by fixsha").Should().BeTrue();
+        var fetched = _repo.GetById(id)!;
+        fetched.Status.Should().Be(AnalysisStatus.Resolved);
+        fetched.ResolutionSource.Should().Be(ResolutionSource.Auto);
+        fetched.ResolvedCommit.Should().Be("fixsha");
+
+        // Already resolved → second auto call is a no-op.
+        _repo.SetAutoResolution(id, "other", "nope").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Manual_resolution_overrides_a_prior_auto_resolution()
+    {
+        var id = _repo.Save(GitRecord("a", "repo-1", "old"));
+        _repo.SetAutoResolution(id, "autosha", "auto note");
+
+        _repo.SetResolution(id, "actually fixed by hand").Should().BeTrue();
+
+        var fetched = _repo.GetById(id)!;
+        fetched.ResolutionSource.Should().Be(ResolutionSource.Manual);
+        fetched.Resolution.Should().Be("actually fixed by hand");
     }
 
     [Fact]

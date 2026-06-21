@@ -20,4 +20,13 @@ public sealed class AnalysisEntity
     public string Tokens { get; set; } = "{}";
     public string? Resolution { get; set; }
     public string? ResolvedAt { get; set; }
+
+    // Git correlation (R3).
+    public string? RepoId { get; set; }
+    public string? GitCommit { get; set; }
+    public string? GitBranch { get; set; }
+    public bool GitDirty { get; set; }
+    public string Status { get; set; } = "open";
+    public string? ResolutionSource { get; set; }
+    public string? ResolvedCommit { get; set; }
 }

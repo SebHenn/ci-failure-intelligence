@@ -31,6 +31,14 @@ public sealed class CiFailDbContext : DbContext
         e.Property(x => x.Tokens).HasColumnName("tokens").IsRequired();
         e.Property(x => x.Resolution).HasColumnName("resolution");
         e.Property(x => x.ResolvedAt).HasColumnName("resolved_at");
+        e.Property(x => x.RepoId).HasColumnName("repo_id");
+        e.Property(x => x.GitCommit).HasColumnName("git_commit");
+        e.Property(x => x.GitBranch).HasColumnName("git_branch");
+        e.Property(x => x.GitDirty).HasColumnName("git_dirty").IsRequired();
+        e.Property(x => x.Status).HasColumnName("status").IsRequired();
+        e.Property(x => x.ResolutionSource).HasColumnName("resolution_source");
+        e.Property(x => x.ResolvedCommit).HasColumnName("resolved_commit");
         e.HasIndex(x => x.Fingerprint).HasDatabaseName("ix_analyses_fingerprint");
+        e.HasIndex(x => new { x.RepoId, x.Status }).HasDatabaseName("ix_analyses_repo_status");
     }
 }

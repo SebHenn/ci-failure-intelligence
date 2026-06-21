@@ -22,6 +22,8 @@ dotnet run --project src/CiFail.Cli -- analyze --json build.log
 cat build.log | dotnet run --project src/CiFail.Cli -- analyze   # stdin
 dotnet run --project src/CiFail.Cli -- history
 dotnet run --project src/CiFail.Cli -- rules list
+dotnet run --project src/CiFail.Cli -- reconcile   # auto-resolve fixed failures (git)
+dotnet run --project src/CiFail.Cli -- init        # install git hooks for auto-reconcile
 
 # Package as a global tool:
 dotnet pack src/CiFail.Cli/CiFail.Cli.csproj -c Release -o ./nupkg
@@ -87,9 +89,31 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
    `--no-history`.
 
 `AnalysisService.CreateDefault()` = rules only, no store (used by tests and the
-offline path). `CreateWithStore(store)` = adds similarity + history. The store is
-injected via the `IAnalysisStore` interface so the pipeline never hard-depends on
-SQLite and tests can use a temp-file repository.
+offline path). `CreateWithStore(store, git?)` = adds similarity + history (and, when an
+`IGitRepo` is passed, git correlation). The store is injected via the `IAnalysisStore`
+interface so the pipeline never hard-depends on SQLite and tests can use a temp-file
+repository.
+
+### Git-correlated auto-resolutions (R3, `Core/Git/` + `Core/Analysis/ResolutionReconciler.cs`)
+
+Each persisted record carries git context (`repo_id` = root commit, `git_commit`,
+`git_branch`, `git_dirty`) plus a lifecycle: `status` (open/resolved), `resolution_source`
+(manual/auto), `resolved_commit`. See `AnalysisStatus`/`ResolutionSource` constants in
+`StoredAnalysis.cs`. Two store methods drive it: `GetOpenFailures(repoId)` and
+`SetAutoResolution(id, commit, note)` — implemented across all providers.
+
+`GitContext.Detect(dir)` shells out to the system `git` (no native lib) and returns null
+when git is missing / not a repo / no commits — so everything degrades to "just SQLite,
+no correlation". It's behind `IGitRepo` so `ResolutionReconciler` is unit-tested with a
+fake (`GitContext` itself is tested against a temp real repo).
+
+`ResolutionReconciler.Reconcile(store, repo, observedFingerprints)`: a failure recorded at
+commit A is auto-resolved when HEAD (B) is a descendant of A **and** its fingerprint isn't
+in `observedFingerprints` (the failures seen in the current run) — crediting the commits in
+`(A, B]`. `SetAutoResolution` only touches still-open rows, so **manual resolutions always
+win**. The CLI runs this after `analyze` (passing the just-seen fingerprints) and via the
+standalone `reconcile` command (empty observed set); `init` installs post-commit/post-merge
+hooks that call `cifail reconcile`. Skip it all with `analyze --no-git`.
 
 ### Rule packs (`Core/rulepacks/*.yaml`)
 

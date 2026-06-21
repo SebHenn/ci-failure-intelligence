@@ -19,6 +19,19 @@ public interface IAnalysisStore : IDisposable
     /// <summary>Load up to <paramref name="max"/> entries (with term vectors) for similarity.</summary>
     IReadOnlyList<CorpusEntry> LoadCorpus(int max);
 
-    /// <summary>Record how a failure was resolved; returns false if the id is unknown.</summary>
+    /// <summary>
+    /// Record a manual resolution (<c>cifail resolve</c>); marks the row resolved with
+    /// source "manual". Returns false if the id is unknown. Manual always overrides auto.
+    /// </summary>
     bool SetResolution(long id, string note);
+
+    /// <summary>Open (unresolved) failures for one repository, newest first (R3).</summary>
+    IReadOnlyList<StoredAnalysis> GetOpenFailures(string repoId);
+
+    /// <summary>
+    /// Record a git-correlated auto-resolution: marks the row resolved with source "auto",
+    /// crediting <paramref name="resolvedCommit"/>. Returns false if the id is unknown or
+    /// the row is already resolved (manual resolutions are never overwritten).
+    /// </summary>
+    bool SetAutoResolution(long id, string resolvedCommit, string note);
 }

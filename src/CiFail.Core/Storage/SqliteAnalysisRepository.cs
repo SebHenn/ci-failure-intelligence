@@ -33,25 +33,81 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IDisposable
 
     private void EnsureSchema()
     {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = """
-            CREATE TABLE IF NOT EXISTS analyses (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                analyzed_at  TEXT    NOT NULL,
-                source       TEXT    NOT NULL,
-                ecosystem    TEXT    NOT NULL,
-                rule_id      TEXT    NOT NULL,
-                matched      INTEGER NOT NULL,
-                fingerprint  TEXT    NOT NULL,
-                log_hash     TEXT    NOT NULL,
-                excerpt      TEXT    NOT NULL,
-                tokens       TEXT    NOT NULL,
-                resolution   TEXT,
-                resolved_at  TEXT
-            );
-            CREATE INDEX IF NOT EXISTS ix_analyses_fingerprint ON analyses(fingerprint);
-            """;
-        cmd.ExecuteNonQuery();
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS analyses (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    analyzed_at  TEXT    NOT NULL,
+                    source       TEXT    NOT NULL,
+                    ecosystem    TEXT    NOT NULL,
+                    rule_id      TEXT    NOT NULL,
+                    matched      INTEGER NOT NULL,
+                    fingerprint  TEXT    NOT NULL,
+                    log_hash     TEXT    NOT NULL,
+                    excerpt      TEXT    NOT NULL,
+                    tokens       TEXT    NOT NULL,
+                    resolution   TEXT,
+                    resolved_at  TEXT
+                );
+                CREATE INDEX IF NOT EXISTS ix_analyses_fingerprint ON analyses(fingerprint);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        MigrateR3Columns();
+    }
+
+    /// <summary>
+    /// Add the R3 git-correlation columns to pre-existing databases. New columns can only
+    /// be appended in SQLite, so we add any that are missing and backfill status/source for
+    /// rows resolved before R3 (a non-null resolution means a manual fix).
+    /// </summary>
+    private void MigrateR3Columns()
+    {
+        var existing = new HashSet<string>(StringComparer.Ordinal);
+        using (var info = _connection.CreateCommand())
+        {
+            info.CommandText = "PRAGMA table_info(analyses);";
+            using var reader = info.ExecuteReader();
+            while (reader.Read()) existing.Add(reader.GetString(reader.GetOrdinal("name")));
+        }
+
+        var additions = new (string Name, string Ddl)[]
+        {
+            ("repo_id",           "ALTER TABLE analyses ADD COLUMN repo_id TEXT;"),
+            ("git_commit",        "ALTER TABLE analyses ADD COLUMN git_commit TEXT;"),
+            ("git_branch",        "ALTER TABLE analyses ADD COLUMN git_branch TEXT;"),
+            ("git_dirty",         "ALTER TABLE analyses ADD COLUMN git_dirty INTEGER NOT NULL DEFAULT 0;"),
+            ("status",            "ALTER TABLE analyses ADD COLUMN status TEXT NOT NULL DEFAULT 'open';"),
+            ("resolution_source", "ALTER TABLE analyses ADD COLUMN resolution_source TEXT;"),
+            ("resolved_commit",   "ALTER TABLE analyses ADD COLUMN resolved_commit TEXT;"),
+        };
+
+        var added = false;
+        foreach (var (name, ddl) in additions)
+        {
+            if (existing.Contains(name)) continue;
+            using var alter = _connection.CreateCommand();
+            alter.CommandText = ddl;
+            alter.ExecuteNonQuery();
+            added = true;
+        }
+
+        if (added)
+        {
+            using var backfill = _connection.CreateCommand();
+            backfill.CommandText = """
+                UPDATE analyses
+                SET status = 'resolved', resolution_source = 'manual'
+                WHERE resolution IS NOT NULL;
+                """;
+            backfill.ExecuteNonQuery();
+        }
+
+        using var idx = _connection.CreateCommand();
+        idx.CommandText = "CREATE INDEX IF NOT EXISTS ix_analyses_repo_status ON analyses(repo_id, status);";
+        idx.ExecuteNonQuery();
     }
 
     public long Save(AnalysisRecord record)
@@ -59,9 +115,11 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IDisposable
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
             INSERT INTO analyses
-                (analyzed_at, source, ecosystem, rule_id, matched, fingerprint, log_hash, excerpt, tokens)
+                (analyzed_at, source, ecosystem, rule_id, matched, fingerprint, log_hash, excerpt, tokens,
+                 repo_id, git_commit, git_branch, git_dirty, status)
             VALUES
-                ($at, $source, $eco, $rule, $matched, $fp, $hash, $excerpt, $tokens);
+                ($at, $source, $eco, $rule, $matched, $fp, $hash, $excerpt, $tokens,
+                 $repo, $commit, $branch, $dirty, 'open');
             SELECT last_insert_rowid();
             """;
         cmd.Parameters.AddWithValue("$at", record.AnalyzedAt.ToString("O"));
@@ -73,6 +131,10 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IDisposable
         cmd.Parameters.AddWithValue("$hash", record.LogHash);
         cmd.Parameters.AddWithValue("$excerpt", record.Excerpt);
         cmd.Parameters.AddWithValue("$tokens", JsonSerializer.Serialize(record.Terms));
+        cmd.Parameters.AddWithValue("$repo", (object?)record.RepoId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$commit", (object?)record.GitCommit ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$branch", (object?)record.GitBranch ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$dirty", record.GitDirty ? 1 : 0);
 
         return (long)(cmd.ExecuteScalar() ?? 0L);
     }
@@ -125,10 +187,12 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IDisposable
 
     public bool SetResolution(long id, string note)
     {
+        // Manual resolution always wins, even over a prior auto-resolution.
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
             UPDATE analyses
-            SET resolution = $note, resolved_at = $at
+            SET resolution = $note, resolved_at = $at,
+                status = 'resolved', resolution_source = 'manual'
             WHERE id = $id;
             """;
         cmd.Parameters.AddWithValue("$note", note);
@@ -137,8 +201,39 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IDisposable
         return cmd.ExecuteNonQuery() > 0;
     }
 
+    public IReadOnlyList<StoredAnalysis> GetOpenFailures(string repoId)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = $"{SelectColumns} WHERE repo_id = $repo AND status = 'open' ORDER BY id DESC;";
+        cmd.Parameters.AddWithValue("$repo", repoId);
+
+        using var reader = cmd.ExecuteReader();
+        var list = new List<StoredAnalysis>();
+        while (reader.Read()) list.Add(ReadStored(reader));
+        return list;
+    }
+
+    public bool SetAutoResolution(long id, string resolvedCommit, string note)
+    {
+        // Only touch still-open rows; never clobber a manual (or prior auto) resolution.
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = """
+            UPDATE analyses
+            SET resolution = $note, resolved_at = $at,
+                status = 'resolved', resolution_source = 'auto', resolved_commit = $commit
+            WHERE id = $id AND status = 'open';
+            """;
+        cmd.Parameters.AddWithValue("$note", note);
+        cmd.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$commit", resolvedCommit);
+        cmd.Parameters.AddWithValue("$id", id);
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
     private const string Columns =
-        "id, analyzed_at, source, ecosystem, rule_id, matched, fingerprint, log_hash, excerpt, resolution, resolved_at";
+        "id, analyzed_at, source, ecosystem, rule_id, matched, fingerprint, log_hash, excerpt, " +
+        "resolution, resolved_at, repo_id, git_commit, git_branch, git_dirty, status, " +
+        "resolution_source, resolved_commit";
 
     private static readonly string SelectColumns = $"SELECT {Columns} FROM analyses";
 
@@ -157,6 +252,13 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IDisposable
         ResolvedAt = r.IsDBNull(r.GetOrdinal("resolved_at"))
             ? null
             : DateTimeOffset.Parse(r.GetString(r.GetOrdinal("resolved_at"))),
+        RepoId = r.IsDBNull(r.GetOrdinal("repo_id")) ? null : r.GetString(r.GetOrdinal("repo_id")),
+        GitCommit = r.IsDBNull(r.GetOrdinal("git_commit")) ? null : r.GetString(r.GetOrdinal("git_commit")),
+        GitBranch = r.IsDBNull(r.GetOrdinal("git_branch")) ? null : r.GetString(r.GetOrdinal("git_branch")),
+        GitDirty = !r.IsDBNull(r.GetOrdinal("git_dirty")) && r.GetInt32(r.GetOrdinal("git_dirty")) != 0,
+        Status = r.GetString(r.GetOrdinal("status")),
+        ResolutionSource = r.IsDBNull(r.GetOrdinal("resolution_source")) ? null : r.GetString(r.GetOrdinal("resolution_source")),
+        ResolvedCommit = r.IsDBNull(r.GetOrdinal("resolved_commit")) ? null : r.GetString(r.GetOrdinal("resolved_commit")),
     };
 
     public void Dispose() => _connection.Dispose();

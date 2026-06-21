@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using CiFail.Cli.Output;
 using CiFail.Core.Analysis;
+using CiFail.Core.Git;
 using CiFail.Core.Models;
 using CiFail.Core.Storage;
 using Spectre.Console;
@@ -41,6 +42,10 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         [CommandOption("--no-history")]
         [Description("Do not persist this analysis to history.")]
         public bool NoHistory { get; init; }
+
+        [CommandOption("--no-git")]
+        [Description("Skip git correlation (don't tag records or auto-resolve past failures).")]
+        public bool NoGit { get; init; }
 
         [CommandOption("--top <N>")]
         [Description("Maximum number of similar past failures to show.")]
@@ -83,15 +88,21 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         // --no-history still queries similarity but skips persisting the current run.
         using var store = StoreSupport.TryCreate(settings);
         if (store is null) return ExitInputError;
-        var service = AnalysisService.CreateWithStore(store);
+
+        // Git correlation (R3): when run inside a repo, tag each record with the commit and
+        // auto-resolve past failures that no longer occur at HEAD.
+        var git = settings.NoGit ? null : GitContext.Detect(Directory.GetCurrentDirectory());
+        var service = AnalysisService.CreateWithStore(store, git);
 
         bool allMatched = true;
         var results = new List<Analysis>(inputs.Count);
+        var observed = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var (source, text) in inputs)
         {
             var analysis = service.Analyze(source, text, options);
             results.Add(analysis);
+            observed.Add(analysis.Fingerprint.ToString());
             allMatched &= analysis.HasMatch;
         }
 
@@ -99,6 +110,12 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             EmitJson(results);
         else
             EmitConsole(results);
+
+        // Failures the current run did not reproduce (and that sit on an ancestor commit)
+        // are credited to the commits since — reported only in the human view.
+        var autoResolved = service.ReconcileResolutions(observed);
+        if (!settings.Json && autoResolved.Count > 0)
+            ReportAutoResolved(autoResolved);
 
         return allMatched ? ExitMatched : ExitNoMatch;
     }
@@ -135,6 +152,18 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             ? JsonOutput.Serialize(results[0])
             : "[" + string.Join(",", results.Select(JsonOutput.Serialize)) + "]";
         Console.Out.WriteLine(payload);
+    }
+
+    private static void ReportAutoResolved(IReadOnlyList<ResolutionReconciler.Resolved> resolved)
+    {
+        AnsiConsole.WriteLine();
+        var noun = resolved.Count == 1 ? "failure" : "failures";
+        AnsiConsole.MarkupLine($"[green]✓[/] Auto-resolved {resolved.Count} past {noun} (no longer happening here):");
+        foreach (var r in resolved)
+        {
+            var shortSha = r.Commit.Length >= 7 ? r.Commit[..7] : r.Commit;
+            AnsiConsole.MarkupLine($"  [grey]#{r.Id}[/] likely fixed by [bold]{Markup.Escape(shortSha)}[/]");
+        }
     }
 
     private static void EmitConsole(IReadOnlyList<Analysis> results)

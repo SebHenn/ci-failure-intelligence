@@ -43,6 +43,11 @@ public sealed class MongoAnalysisStore : IAnalysisStore
             LogHash = record.LogHash,
             Excerpt = record.Excerpt,
             Terms = new Dictionary<string, int>(record.Terms),
+            RepoId = record.RepoId,
+            GitCommit = record.GitCommit,
+            GitBranch = record.GitBranch,
+            GitDirty = record.GitDirty,
+            Status = "open",
         };
         _analyses.InsertOne(doc);
         return doc.Id;
@@ -68,11 +73,32 @@ public sealed class MongoAnalysisStore : IAnalysisStore
 
     public bool SetResolution(long id, string note)
     {
+        // Manual resolution always wins, even over a prior auto-resolution.
         var update = Builders<AnalysisDoc>.Update
             .Set(a => a.Resolution, note)
-            .Set(a => a.ResolvedAt, DateTimeOffset.UtcNow.ToString("O"));
+            .Set(a => a.ResolvedAt, DateTimeOffset.UtcNow.ToString("O"))
+            .Set(a => a.Status, "resolved")
+            .Set(a => a.ResolutionSource, "manual");
         var result = _analyses.UpdateOne(a => a.Id == id, update);
         return result.MatchedCount > 0;
+    }
+
+    public IReadOnlyList<StoredAnalysis> GetOpenFailures(string repoId) =>
+        _analyses.Find(a => a.RepoId == repoId && a.Status == "open")
+            .SortByDescending(a => a.Id)
+            .ToList().Select(Map).ToList();
+
+    public bool SetAutoResolution(long id, string resolvedCommit, string note)
+    {
+        // Only touch still-open rows; never clobber a manual (or prior auto) resolution.
+        var update = Builders<AnalysisDoc>.Update
+            .Set(a => a.Resolution, note)
+            .Set(a => a.ResolvedAt, DateTimeOffset.UtcNow.ToString("O"))
+            .Set(a => a.Status, "resolved")
+            .Set(a => a.ResolutionSource, "auto")
+            .Set(a => a.ResolvedCommit, resolvedCommit);
+        var result = _analyses.UpdateOne(a => a.Id == id && a.Status == "open", update);
+        return result.ModifiedCount > 0;
     }
 
     private long NextId()
@@ -96,6 +122,13 @@ public sealed class MongoAnalysisStore : IAnalysisStore
         Excerpt = a.Excerpt,
         Resolution = a.Resolution,
         ResolvedAt = string.IsNullOrEmpty(a.ResolvedAt) ? null : DateTimeOffset.Parse(a.ResolvedAt),
+        RepoId = a.RepoId,
+        GitCommit = a.GitCommit,
+        GitBranch = a.GitBranch,
+        GitDirty = a.GitDirty,
+        Status = string.IsNullOrEmpty(a.Status) ? "open" : a.Status,
+        ResolutionSource = a.ResolutionSource,
+        ResolvedCommit = a.ResolvedCommit,
     };
 
     public void Dispose() { /* MongoClient is process-shared and self-managing; nothing to release. */ }
@@ -116,6 +149,13 @@ internal sealed class AnalysisDoc
     public Dictionary<string, int> Terms { get; set; } = new();
     public string? Resolution { get; set; }
     public string? ResolvedAt { get; set; }
+    public string? RepoId { get; set; }
+    public string? GitCommit { get; set; }
+    public string? GitBranch { get; set; }
+    public bool GitDirty { get; set; }
+    public string Status { get; set; } = "open";
+    public string? ResolutionSource { get; set; }
+    public string? ResolvedCommit { get; set; }
 }
 
 [BsonIgnoreExtraElements]

@@ -14,6 +14,35 @@ public sealed record StoredAnalysis
     public required string Excerpt { get; init; }
     public string? Resolution { get; init; }
     public DateTimeOffset? ResolvedAt { get; init; }
+
+    // Git correlation (R3). Null when the analysis happened outside a git repo.
+    public string? RepoId { get; init; }
+    public string? GitCommit { get; init; }
+    public string? GitBranch { get; init; }
+    public bool GitDirty { get; init; }
+
+    /// <summary>"open" while unresolved, "resolved" once fixed.</summary>
+    public string Status { get; init; } = AnalysisStatus.Open;
+
+    /// <summary>"manual" (via <c>cifail resolve</c>) or "auto" (git-correlated); null while open.</summary>
+    public string? ResolutionSource { get; init; }
+
+    /// <summary>The commit credited with the fix, for auto-resolutions.</summary>
+    public string? ResolvedCommit { get; init; }
+}
+
+/// <summary>The lifecycle states a failure record can be in.</summary>
+public static class AnalysisStatus
+{
+    public const string Open = "open";
+    public const string Resolved = "resolved";
+}
+
+/// <summary>How a resolution was recorded.</summary>
+public static class ResolutionSource
+{
+    public const string Manual = "manual";
+    public const string Auto = "auto";
 }
 
 /// <summary>The data needed to persist a new analysis (computed by the service).</summary>
@@ -28,6 +57,12 @@ public sealed record AnalysisRecord
     public required string LogHash { get; init; }
     public required string Excerpt { get; init; }
     public required IReadOnlyDictionary<string, int> Terms { get; init; }
+
+    // Git correlation (R3). Null when analyzing outside a git repo.
+    public string? RepoId { get; init; }
+    public string? GitCommit { get; init; }
+    public string? GitBranch { get; init; }
+    public bool GitDirty { get; init; }
 }
 
 /// <summary>A history entry plus its term vector, for similarity ranking.</summary>

@@ -27,6 +27,14 @@ app.Configure(config =>
         .WithDescription("Save how you fixed a failure, so cifail can remind you next time.")
         .WithExample("resolve", "42", "--note", "\"Fixed the package name typo\"");
 
+    config.AddCommand<ReconcileCommand>("reconcile")
+        .WithDescription("Auto-resolve past failures that no longer happen at the current commit.")
+        .WithExample("reconcile");
+
+    config.AddCommand<InitCommand>("init")
+        .WithDescription("Install git hooks so cifail auto-resolves fixed failures on each commit.")
+        .WithExample("init");
+
     config.AddBranch("rules", rules =>
     {
         rules.SetDescription("See the failure patterns cifail knows about.");

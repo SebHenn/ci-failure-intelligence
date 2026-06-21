@@ -114,6 +114,19 @@ cifail analyze samples/nuget-nu1101.log
 There's also `cifail rules list` to see every failure pattern cifail can recognize, and
 `cifail --help` (or `cifail analyze --help`) for the full list of options.
 
+### It remembers your fixes — often without being told
+
+When you run cifail inside a git repository, it tags each failure with the commit you were
+on. Later, when you've moved past that commit and the failure no longer happens, cifail
+marks it **resolved automatically** and credits the commit that fixed it — so the "how did
+we fix this last time?" history fills itself in. In `cifail history` these show up as
+`✓ auto` (versus `✓` for ones you wrote with `cifail resolve`). A manual note always wins.
+
+- It happens on its own every time you `cifail analyze` inside a repo.
+- `cifail reconcile` runs the same check on demand (e.g. after merging).
+- `cifail init` installs git hooks so it runs hands-off on every commit and merge.
+- `cifail analyze --no-git` turns the whole thing off for a run.
+
 ### Handy options for `analyze`
 
 - `--json` — print the result as JSON instead of a panel. Useful inside CI pipelines or
@@ -247,7 +260,7 @@ Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
 - **Pick your database** — keep the built-in SQLite, or point cifail at a shared
   PostgreSQL / MySQL / SQL Server / MongoDB. *(in progress)*
 - **Resolutions that record themselves** — cifail links a failure to the commit that
-  fixed it, so you don't have to run `resolve` by hand. *(planned)*
+  fixed it, so you don't have to run `resolve` by hand. ✅
 - **Docker image, GitHub Action & GitLab template**, then a shared team service. *(planned)*
 - **Optional local AI** suggestions via [Ollama](https://ollama.com) (`--ai`). *(planned)*
 

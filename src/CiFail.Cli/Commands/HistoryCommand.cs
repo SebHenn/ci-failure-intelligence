@@ -58,7 +58,7 @@ public sealed class HistoryCommand : Command<HistoryCommand.Settings>
                 Markup.Escape(r.Ecosystem),
                 Markup.Escape(r.Matched ? r.RuleId : "[unknown]"),
                 Markup.Escape(Truncate(r.Source, 40)),
-                r.Resolution is null ? "[grey]—[/]" : "[green]✓[/]");
+                ResolvedCell(r));
         }
 
         AnsiConsole.Write(table);
@@ -81,15 +81,36 @@ public sealed class HistoryCommand : Command<HistoryCommand.Settings>
         grid.AddRow("[grey]rule[/]", Markup.Escape(r.Matched ? r.RuleId : "[unknown]"));
         grid.AddRow("[grey]fingerprint[/]", Markup.Escape(r.Fingerprint));
         grid.AddRow("[grey]source[/]", Markup.Escape(r.Source));
-        grid.AddRow("[grey]resolution[/]", r.Resolution is null
-            ? "[grey]—[/]"
-            : $"{Markup.Escape(r.Resolution)} [grey]({r.ResolvedAt?.LocalDateTime:yyyy-MM-dd})[/]");
+        if (r.GitCommit is not null)
+            grid.AddRow("[grey]commit[/]", $"{Markup.Escape(Short(r.GitCommit))}"
+                + (r.GitBranch is null ? "" : $" [grey]({Markup.Escape(r.GitBranch)})[/]")
+                + (r.GitDirty ? " [yellow](dirty)[/]" : ""));
+        grid.AddRow("[grey]resolution[/]", ResolutionDetail(r));
 
         AnsiConsole.Write(new Panel(grid).Header($" analysis #{r.Id} ").Border(BoxBorder.Rounded));
         AnsiConsole.Write(new Panel(new Markup(Markup.Escape(r.Excerpt)))
             .Header(" excerpt ").Border(BoxBorder.Rounded).BorderColor(Color.Grey));
         return 0;
     }
+
+    private static string ResolvedCell(StoredAnalysis r)
+    {
+        if (r.Resolution is null) return "[grey]—[/]";
+        return r.ResolutionSource == ResolutionSource.Auto ? "[blue]✓ auto[/]" : "[green]✓[/]";
+    }
+
+    private static string ResolutionDetail(StoredAnalysis r)
+    {
+        if (r.Resolution is null) return "[grey]—[/]";
+
+        var when = r.ResolvedAt?.LocalDateTime.ToString("yyyy-MM-dd");
+        var tag = r.ResolutionSource == ResolutionSource.Auto
+            ? $"[blue](auto{(r.ResolvedCommit is null ? "" : $", {Short(r.ResolvedCommit)}")})[/]"
+            : "[green](manual)[/]";
+        return $"{Markup.Escape(r.Resolution)} {tag} [grey]{when}[/]";
+    }
+
+    private static string Short(string sha) => sha.Length >= 7 ? sha[..7] : sha;
 
     private static string Truncate(string s, int max) =>
         s.Length <= max ? s : "…" + s[^(max - 1)..];

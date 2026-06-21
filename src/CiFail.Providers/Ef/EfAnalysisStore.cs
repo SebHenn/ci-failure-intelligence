@@ -32,6 +32,11 @@ public sealed class EfAnalysisStore : IAnalysisStore
             LogHash = record.LogHash,
             Excerpt = record.Excerpt,
             Tokens = JsonSerializer.Serialize(record.Terms),
+            RepoId = record.RepoId,
+            GitCommit = record.GitCommit,
+            GitBranch = record.GitBranch,
+            GitDirty = record.GitDirty,
+            Status = "open",
         };
         _db.Analyses.Add(entity);
         _db.SaveChanges();
@@ -59,8 +64,31 @@ public sealed class EfAnalysisStore : IAnalysisStore
         var entity = _db.Analyses.FirstOrDefault(a => a.Id == id);
         if (entity is null) return false;
 
+        // Manual resolution always wins, even over a prior auto-resolution.
         entity.Resolution = note;
         entity.ResolvedAt = DateTimeOffset.UtcNow.ToString("O");
+        entity.Status = "resolved";
+        entity.ResolutionSource = "manual";
+        _db.SaveChanges();
+        return true;
+    }
+
+    public IReadOnlyList<StoredAnalysis> GetOpenFailures(string repoId) =>
+        _db.Analyses.Where(a => a.RepoId == repoId && a.Status == "open")
+            .OrderByDescending(a => a.Id)
+            .AsEnumerable().Select(Map).ToList();
+
+    public bool SetAutoResolution(long id, string resolvedCommit, string note)
+    {
+        // Only touch still-open rows; never clobber a manual (or prior auto) resolution.
+        var entity = _db.Analyses.FirstOrDefault(a => a.Id == id && a.Status == "open");
+        if (entity is null) return false;
+
+        entity.Resolution = note;
+        entity.ResolvedAt = DateTimeOffset.UtcNow.ToString("O");
+        entity.Status = "resolved";
+        entity.ResolutionSource = "auto";
+        entity.ResolvedCommit = resolvedCommit;
         _db.SaveChanges();
         return true;
     }
@@ -78,6 +106,13 @@ public sealed class EfAnalysisStore : IAnalysisStore
         Excerpt = a.Excerpt,
         Resolution = a.Resolution,
         ResolvedAt = string.IsNullOrEmpty(a.ResolvedAt) ? null : DateTimeOffset.Parse(a.ResolvedAt),
+        RepoId = a.RepoId,
+        GitCommit = a.GitCommit,
+        GitBranch = a.GitBranch,
+        GitDirty = a.GitDirty,
+        Status = a.Status,
+        ResolutionSource = a.ResolutionSource,
+        ResolvedCommit = a.ResolvedCommit,
     };
 
     private static IReadOnlyDictionary<string, int> DeserializeTerms(string json) =>
