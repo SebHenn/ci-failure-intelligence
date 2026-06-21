@@ -36,6 +36,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "cifail.dbSecretName" . }}
                   key: {{ include "cifail.dbSecretKey" . }}
+            {{- if .Values.auth.enabled }}
+            - name: CIFAIL_SERVER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cifail.authSecretName" . }}
+                  key: {{ include "cifail.authSecretKey" . }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

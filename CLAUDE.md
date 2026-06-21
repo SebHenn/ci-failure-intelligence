@@ -62,8 +62,12 @@ never affect plain build/test/pack.
 `-p:IncludeExternalDb=true`, exactly like `CIFAIL_EXTERNAL_DB`). The slim binaries get
 neither the `serve` command nor ASP.NET Core. The Docker runtime base is therefore
 `dotnet/aspnet:8.0` (not `runtime:8.0`). The Helm chart in `deploy/helm/cifail` runs it; see
-`deploy/README.md`. Auth is **not** built in yet (R9) — don't expose serve on an untrusted
-network. Build it locally with `dotnet build src/CiFail.Cli/CiFail.Cli.csproj -p:IncludeExternalDb=true`
+`deploy/README.md`. Auth (R9): every route except `/healthz` requires `Authorization: Bearer
+<token>` when a token is set via `CIFAIL_SERVER_TOKEN` / `serve --token` (constant-time compare via
+`CryptographicOperations.FixedTimeEquals`); started without one, serve runs open and logs a loud
+warning. Clients send it with `--server-token` / `CIFAIL_SERVER_TOKEN` (see
+`HttpAnalysisStore.TokenEnvVar`, the single source of the env-var name). Build it locally with
+`dotnet build src/CiFail.Cli/CiFail.Cli.csproj -p:IncludeExternalDb=true`
 then `dotnet run --project src/CiFail.Cli -- serve --port 8080` (or hit the in-process host
 in `tests/CiFail.Server.Tests`, which needs no Docker).
 

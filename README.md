@@ -290,6 +290,7 @@ as an HTTP service and point everyone at it. The Docker image includes this `ser
 docker run --rm -p 8080:8080 \
   -e CIFAIL_DB_PROVIDER=postgres \
   -e CIFAIL_DB_CONNECTION="Host=db;Username=ci;Password=secret;Database=cifail" \
+  -e CIFAIL_SERVER_TOKEN="a-long-random-secret" \
   ghcr.io/sebhenn/cifail serve --port 8080
 ```
 
@@ -299,12 +300,19 @@ It exposes a small JSON API (`GET /healthz`, `POST /analyze`, `GET /history`,
 database credentials:
 
 ```console
-cifail history --server http://your-host:8080
-cifail resolve 1 --note "bumped the package version" --server http://your-host:8080
+cifail history --server http://your-host:8080 --server-token "a-long-random-secret"
+cifail resolve 1 --note "bumped the package version" \
+  --server http://your-host:8080 --server-token "a-long-random-secret"
 ```
 
-There's a Helm chart for Kubernetes in [`deploy/`](./deploy). **Heads-up:** the server has
-no authentication yet, so only run it on a trusted network for now.
+**Authentication.** Set `CIFAIL_SERVER_TOKEN` (or `serve --token`) and the server requires
+`Authorization: Bearer <token>` on every request except `/healthz`. Clients send it via
+`--server-token` or the same `CIFAIL_SERVER_TOKEN` env var. If you start `serve` without a
+token it runs open and logs a loud warning — only acceptable on a trusted network. (mTLS is a
+possible future hardening on top of the token.)
+
+There's a Helm chart for Kubernetes in [`deploy/`](./deploy); it sources the token from a
+Secret (`auth.existingSecret`) and injects it as `CIFAIL_SERVER_TOKEN`.
 
 ---
 
@@ -351,7 +359,7 @@ Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
 - **Docker image** (full build, all databases) published to GHCR. ✅
 - **GitHub Action & GitLab template** so a pipeline can explain its own failures. ✅
 - **Shared team service** — `cifail serve` HTTP API (in the full/Docker build) + a Helm
-  chart in [`deploy/`](./deploy). ✅ *(authentication is next)*
+  chart in [`deploy/`](./deploy), protected by a bearer token. ✅
 - **Optional AI** suggestions when the rules are unsure (`--ai`) — local [Ollama](https://ollama.com)
   by default, or hosted Anthropic/OpenAI (opt-in). ✅
 

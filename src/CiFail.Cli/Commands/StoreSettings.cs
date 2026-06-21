@@ -24,6 +24,10 @@ public class StoreSettings : CommandSettings
     [CommandOption("--server <URL>")]
     [Description("Talk to a remote cifail serve instance instead of a database (e.g. http://cifail:8080).")]
     public string? Server { get; init; }
+
+    [CommandOption("--server-token <TOKEN>")]
+    [Description("Bearer token for --server (falls back to CIFAIL_SERVER_TOKEN).")]
+    public string? ServerToken { get; init; }
 }
 
 /// <summary>Helper to open the configured store, reporting a friendly error on failure.</summary>
@@ -39,9 +43,15 @@ public static class StoreSupport
         try
         {
             // --server is shorthand for the remote http provider; it wins over --db-* so a
-            // single flag points the read/resolve commands at a shared service.
+            // single flag points the read/resolve commands at a shared service. The token
+            // (CLI > env) is sent as a bearer header when the server requires auth (R9).
             if (!string.IsNullOrWhiteSpace(settings.Server))
-                return StoreFactory.Create("http", settings.Server);
+            {
+                var token = !string.IsNullOrWhiteSpace(settings.ServerToken)
+                    ? settings.ServerToken
+                    : Environment.GetEnvironmentVariable(HttpAnalysisStore.TokenEnvVar);
+                return new HttpAnalysisStore(settings.Server, token);
+            }
 
             return StoreFactory.Create(settings.DbProvider, settings.DbConnection);
         }

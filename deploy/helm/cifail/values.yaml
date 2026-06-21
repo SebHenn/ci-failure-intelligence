@@ -17,6 +17,17 @@ serve:
     - --port
     - "8080"
 
+# Authentication (R9). When enabled, the server requires `Authorization: Bearer <token>` on
+# every request except /healthz. Strongly recommended for any shared/exposed deployment —
+# the endpoints both read and modify failure history.
+auth:
+  enabled: true
+  # Option A (recommended): reference an existing secret holding the token.
+  existingSecret: ""
+  existingSecretKey: token
+  # Option B (dev only): set the token here and let the chart create a Secret.
+  token: ""
+
 # External database the service persists to. cifail reads CIFAIL_DB_PROVIDER /
 # CIFAIL_DB_CONNECTION (same as the CLI).
 database:

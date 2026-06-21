@@ -1,9 +1,9 @@
 # Deploying cifail as a shared service
 
-> **Status: `cifail serve` is implemented (R7).** The full / Docker build now ships a
-> `cifail serve` HTTP API, and the Helm chart under `helm/cifail` runs it. Authentication
-> is not yet built in (see open questions); don't expose it on an untrusted network until
-> R9 lands. Today, you can also use cifail as a [CLI, Docker image, or CI step](../README.md).
+> **Status: `cifail serve` is implemented (R7) and authenticated (R9).** The full / Docker
+> build ships a `cifail serve` HTTP API protected by a shared bearer token, and the Helm
+> chart under `helm/cifail` runs it. Today, you can also use cifail as a
+> [CLI, Docker image, or CI step](../README.md).
 
 ## Why a service at all?
 
@@ -27,19 +27,25 @@ Mongo exactly like the CLI) and the same `--json` DTO as the wire format. Run it
 `cifail serve --port 8080` (full / Docker build only). Clients can also point the
 `history`/`resolve` commands at it with `cifail history --server http://host:8080`.
 
+All routes except `/healthz` require `Authorization: Bearer <token>` when the server is
+started with a token (see **Auth** below).
+
 | Method & path        | Body / query                          | Returns                              |
 |----------------------|---------------------------------------|--------------------------------------|
-| `GET /healthz`       | —                                     | `200 ok` (liveness/readiness)        |
+| `GET /healthz`       | —                                     | `200 ok` (liveness/readiness, open)  |
 | `POST /analyze`      | raw log text; `?type=&source=&noHistory=` | the analysis JSON (the `--json` DTO) |
 | `GET /history`       | `?limit=N`                            | recent analyses                      |
 | `GET /history/{id}`  | —                                     | one analysis, or `404`               |
 | `POST /resolve/{id}` | `{ "note": "..." }`                   | the updated record                   |
 
-Implemented now (R7) and what's still open:
+Implemented now (R7 + R9) and what's still open:
 - **Stateless**: ✅ the pod holds no state; a fresh store is opened per request and all
   persistence is the external DB, so it scales horizontally behind the Service.
-- **Auth**: ⏳ not built in yet (**R9**). The endpoints expose *and write* failure history,
-  so a real deploy needs at least a shared token / mTLS — keep it off untrusted networks.
+- **Auth**: ✅ (**R9**) a shared bearer token, set via `CIFAIL_SERVER_TOKEN` or
+  `serve --token`, is required on every route except `/healthz` (constant-time compared).
+  Started without a token, serve runs open and logs a loud warning. Clients
+  (`--server`) send it via `--server-token` / `CIFAIL_SERVER_TOKEN`. mTLS is a possible
+  future hardening on top of the token.
 - **Git correlation (R3)**: ⏳ the reconciler needs a working tree, which a central server
   doesn't have. Plan (**R11**): reconciliation stays client-side — the CLI talks to the
   server via the `http` store and runs the existing reconciler locally. The auto-resolution
@@ -51,14 +57,20 @@ Implemented now (R7) and what's still open:
 
 `helm/cifail` runs the **full** Docker image (`ghcr.io/sebhenn/cifail`, which bundles every
 DB driver) with the command `cifail serve --port 8080`, wires `CIFAIL_DB_PROVIDER` /
-`CIFAIL_DB_CONNECTION` from values/secret, and exposes it via a Service (+ optional
-Ingress). Liveness/readiness probes hit `/healthz`.
+`CIFAIL_DB_CONNECTION` and `CIFAIL_SERVER_TOKEN` from values/secret, and exposes it via a
+Service (+ optional Ingress). Liveness/readiness probes hit `/healthz` (open, no token).
 
 ```console
 helm install cifail ./deploy/helm/cifail \
   --set database.provider=postgres \
   --set database.existingSecret=cifail-db \
-  --set database.existingSecretKey=connection-string
+  --set database.existingSecretKey=connection-string \
+  --set auth.existingSecret=cifail-auth \
+  --set auth.existingSecretKey=token
 ```
+
+Auth is on by default (`auth.enabled=true`); provide the token via `auth.existingSecret`
+(recommended) or `auth.token` (dev only, chart-created Secret). Set `auth.enabled=false` to
+run open on a trusted network.
 
 Use `helm template ./deploy/helm/cifail` to review the rendered manifests before installing.

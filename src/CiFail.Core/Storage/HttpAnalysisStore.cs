@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -21,13 +22,18 @@ public sealed class HttpAnalysisStore : IAnalysisStore
 {
     private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
 
+    /// <summary>Env var holding the shared bearer token (matches <c>cifail serve --token</c>).</summary>
+    public const string TokenEnvVar = "CIFAIL_SERVER_TOKEN";
+
     private readonly HttpClient _http;
 
-    public HttpAnalysisStore(string baseUrl)
+    public HttpAnalysisStore(string baseUrl, string? token = null)
     {
         if (string.IsNullOrWhiteSpace(baseUrl))
             throw new ArgumentException("a server URL is required (e.g. http://cifail:8080)", nameof(baseUrl));
         _http = new HttpClient { BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/") };
+        if (!string.IsNullOrWhiteSpace(token))
+            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
     }
 
     public IReadOnlyList<StoredAnalysis> GetRecent(int limit)
@@ -94,5 +100,6 @@ public sealed class HttpStoreProvider : IStoreProvider
 
     public string Description => "Remote cifail serve instance over HTTP (use --server <url>).";
 
-    public IAnalysisStore Create(string? connectionString) => new HttpAnalysisStore(connectionString!);
+    public IAnalysisStore Create(string? connectionString) =>
+        new HttpAnalysisStore(connectionString!, Environment.GetEnvironmentVariable(HttpAnalysisStore.TokenEnvVar));
 }

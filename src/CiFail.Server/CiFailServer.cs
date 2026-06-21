@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using CiFail.Core.Analysis;
 using CiFail.Core.Output;
@@ -7,6 +9,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace CiFail.Server;
 
@@ -46,8 +49,59 @@ public static class CiFailServer
         builder.Services.AddSingleton(storeFactory);
 
         var app = builder.Build();
+        UseBearerAuth(app, options.AuthToken);
         MapEndpoints(app);
         return app;
+    }
+
+    /// <summary>
+    /// Gate every endpoint except <c>/healthz</c> behind a shared bearer token. With no token
+    /// configured the server stays open but logs a loud warning (dev convenience). The token is
+    /// compared in constant time so the comparison can't be used as a timing oracle.
+    /// </summary>
+    private static void UseBearerAuth(WebApplication app, string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            app.Logger.LogWarning(
+                "cifail serve is running WITHOUT authentication — anyone who can reach this port " +
+                "can read and modify failure history. Set CIFAIL_SERVER_TOKEN (or --token) to require " +
+                "a bearer token, and do not expose serve on an untrusted network.");
+            return;
+        }
+
+        app.Use(async (context, next) =>
+        {
+            // Probes hit /healthz unauthenticated (kubelet has no token).
+            if (context.Request.Path == "/healthz")
+            {
+                await next(context);
+                return;
+            }
+
+            if (!IsAuthorized(context.Request, token))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.Headers["WWW-Authenticate"] = "Bearer";
+                await context.Response.WriteAsync("unauthorized");
+                return;
+            }
+
+            await next(context);
+        });
+    }
+
+    private static bool IsAuthorized(HttpRequest request, string token)
+    {
+        const string prefix = "Bearer ";
+        var header = request.Headers.Authorization.ToString();
+        if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var provided = header[prefix.Length..].Trim();
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(provided),
+            Encoding.UTF8.GetBytes(token));
     }
 
     private static void MapEndpoints(WebApplication app)

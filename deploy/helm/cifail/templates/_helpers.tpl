@@ -38,3 +38,17 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "cifail.dbSecretKey" -}}
 {{- .Values.database.existingSecretKey | default "connection-string" -}}
 {{- end -}}
+
+{{/* Name of the secret holding the bearer token. */}}
+{{- define "cifail.authSecretName" -}}
+{{- if .Values.auth.existingSecret -}}
+{{- .Values.auth.existingSecret -}}
+{{- else -}}
+{{- printf "%s-auth" (include "cifail.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Key within the auth secret. */}}
+{{- define "cifail.authSecretKey" -}}
+{{- .Values.auth.existingSecretKey | default "token" -}}
+{{- end -}}

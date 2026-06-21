@@ -18,5 +18,12 @@ public sealed class ServeOptions
     /// <summary>Which database the service persists to (resolved from CLI/env/config).</summary>
     public DatabaseConfig Database { get; init; } = new();
 
+    /// <summary>
+    /// Shared bearer token required on every request except <c>/healthz</c>. When null/empty
+    /// the server runs open (and logs a loud warning) — fine for a trusted network or dev,
+    /// never for an exposed one.
+    /// </summary>
+    public string? AuthToken { get; init; }
+
     public string ResolvedUrl => Url ?? $"http://{Host}:{Port}";
 }
