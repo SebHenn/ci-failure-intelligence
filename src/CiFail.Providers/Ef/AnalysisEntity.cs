@@ -1,3 +1,5 @@
+using Pgvector;
+
 namespace CiFail.Providers.Ef;
 
 /// <summary>
@@ -29,4 +31,10 @@ public sealed class AnalysisEntity
     public string Status { get; set; } = "open";
     public string? ResolutionSource { get; set; }
     public string? ResolvedCommit { get; set; }
+
+    /// <summary>
+    /// Dense embedding for vector similarity (R10). Mapped to a pgvector column only by
+    /// <see cref="PgVectorDbContext"/>; ignored by every other relational provider.
+    /// </summary>
+    public Vector? Embedding { get; set; }
 }

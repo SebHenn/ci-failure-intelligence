@@ -70,4 +70,8 @@ public sealed class AnthropicProvider : IAiProvider
                 $"The anthropic AI provider needs an API key in the {config.ApiKeyEnv} environment variable.");
         return new AnthropicAnalyzer(config.BaseUrl ?? DefaultBaseUrl, config.Model ?? DefaultModel, key);
     }
+
+    // Anthropic has no first-party embeddings API (they recommend a dedicated embeddings
+    // provider), so embedding-backed similarity isn't available with this provider.
+    public IAiEmbedder? CreateEmbedder(AiConfig config) => null;
 }

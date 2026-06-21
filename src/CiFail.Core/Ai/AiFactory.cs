@@ -11,4 +11,16 @@ public static class AiFactory
             ?? throw new AiProviderNotAvailableException(config.Provider, AiRegistry.AvailableNames);
         return provider.Create(config);
     }
+
+    /// <summary>
+    /// Resolve an <see cref="IAiEmbedder"/> for the configured provider, or null if that provider
+    /// has no embeddings API. Throws <see cref="AiProviderNotAvailableException"/> for an unknown
+    /// provider name.
+    /// </summary>
+    public static IAiEmbedder? CreateEmbedder(AiConfig config)
+    {
+        var provider = AiRegistry.Get(config.Provider)
+            ?? throw new AiProviderNotAvailableException(config.Provider, AiRegistry.AvailableNames);
+        return provider.CreateEmbedder(config);
+    }
 }

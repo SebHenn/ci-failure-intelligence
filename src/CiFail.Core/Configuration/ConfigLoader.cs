@@ -15,6 +15,12 @@ public static class ConfigLoader
     public const string AiProviderEnvVar = "CIFAIL_AI_PROVIDER";
     public const string AiModelEnvVar = "CIFAIL_AI_MODEL";
     public const string AiUrlEnvVar = "CIFAIL_AI_URL";
+    public const string AiEmbeddingsEnvVar = "CIFAIL_AI_EMBEDDINGS";
+    public const string AiEmbeddingModelEnvVar = "CIFAIL_AI_EMBED_MODEL";
+    public const string AiEmbeddingDimsEnvVar = "CIFAIL_AI_EMBED_DIM";
+
+    /// <summary>Default embedding size — matches Ollama <c>nomic-embed-text</c>.</summary>
+    public const int DefaultEmbeddingDimensions = 768;
 
     private static readonly IDeserializer Yaml = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -50,10 +56,22 @@ public static class ConfigLoader
         if (!string.IsNullOrWhiteSpace(aiProvider)) config.Ai.Provider = aiProvider.Trim();
         if (!string.IsNullOrWhiteSpace(aiModel)) config.Ai.Model = aiModel;
         if (!string.IsNullOrWhiteSpace(aiUrl)) config.Ai.BaseUrl = aiUrl;
+
+        var aiEmbeddings = Environment.GetEnvironmentVariable(AiEmbeddingsEnvVar);
+        var aiEmbedModel = Environment.GetEnvironmentVariable(AiEmbeddingModelEnvVar);
+        if (IsTruthy(aiEmbeddings)) config.Ai.Embeddings = true;
+        if (!string.IsNullOrWhiteSpace(aiEmbedModel)) config.Ai.EmbeddingModel = aiEmbedModel;
+
+        var aiEmbedDims = Environment.GetEnvironmentVariable(AiEmbeddingDimsEnvVar);
+        if (int.TryParse(aiEmbedDims, out var dims) && dims > 0) config.Ai.EmbeddingDimensions = dims;
+
         config.Ai.Provider = config.Ai.Provider.ToLowerInvariant();
 
         return config;
     }
+
+    private static bool IsTruthy(string? v) =>
+        v is not null && (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
 
     private static CiFailConfig LoadFromFile(string path)
     {

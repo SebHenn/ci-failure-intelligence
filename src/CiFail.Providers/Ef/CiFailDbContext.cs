@@ -1,16 +1,18 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace CiFail.Providers.Ef;
 
 /// <summary>
-/// The single EF Core model shared by every relational provider (Postgres, MySQL,
-/// SQL Server). Column/table/index names mirror the embedded SQLite schema so history
-/// is recognizable across backends. Schema is created on first use via
-/// <c>Database.EnsureCreated()</c> (no migrations — see <see cref="EfAnalysisStore"/>).
+/// Shared EF Core model base for every relational provider. Column/table/index names mirror
+/// the embedded SQLite schema so history is recognizable across backends. Schema is created on
+/// first use via <c>Database.EnsureCreated()</c> (no migrations — see <see cref="EfAnalysisStore"/>).
+/// The only thing that varies per backend is how the optional <see cref="AnalysisEntity.Embedding"/>
+/// is mapped (only pgvector has a vector type), so that step is a virtual hook.
 /// </summary>
-public sealed class CiFailDbContext : DbContext
+public abstract class AnalysisDbContext : DbContext
 {
-    public CiFailDbContext(DbContextOptions<CiFailDbContext> options) : base(options) { }
+    protected AnalysisDbContext(DbContextOptions options) : base(options) { }
 
     public DbSet<AnalysisEntity> Analyses => Set<AnalysisEntity>();
 
@@ -40,5 +42,18 @@ public sealed class CiFailDbContext : DbContext
         e.Property(x => x.ResolvedCommit).HasColumnName("resolved_commit");
         e.HasIndex(x => x.Fingerprint).HasDatabaseName("ix_analyses_fingerprint");
         e.HasIndex(x => new { x.RepoId, x.Status }).HasDatabaseName("ix_analyses_repo_status");
+        MapEmbedding(e);
     }
+
+    /// <summary>Map the optional embedding column. Default: ignore it (no vector type here).</summary>
+    protected virtual void MapEmbedding(EntityTypeBuilder<AnalysisEntity> e) =>
+        e.Ignore(x => x.Embedding);
+}
+
+/// <summary>
+/// The concrete model used by the Postgres / MySQL / SQL Server providers — no vector column.
+/// </summary>
+public sealed class CiFailDbContext : AnalysisDbContext
+{
+    public CiFailDbContext(DbContextOptions<CiFailDbContext> options) : base(options) { }
 }

@@ -57,8 +57,12 @@ Implemented now (R7 + R9 + R11) and what's still open:
 - **Web dashboard**: ✅ (**R12**) a single bundled page at `/` (embedded in the server
   assembly, no separate deploy) — browse/filter failures and resolve them. The shell is public
   so it can load and collect a token; all its data calls hit the authenticated API.
-- **Similarity at scale**: ⏳ the corpus is loaded per request today; a service should push
-  this into the DB (e.g. pgvector) before it's used by large teams (**R10**).
+- **Similarity at scale**: ✅ (**R10**, opt-in) the default is still in-app TF-IDF, but a
+  vector-capable store can do nearest-neighbour search in the database. Use the `pgvector`
+  provider (`CIFAIL_DB_PROVIDER=pgvector`, PostgreSQL + the `vector` extension) and enable
+  embeddings (`CIFAIL_AI_EMBEDDINGS=1`); cifail embeds each failure via the configured AI
+  provider (Ollama by default) and queries with an HNSW cosine index. The embedding size must
+  match the column — set `CIFAIL_AI_EMBED_DIM` if it isn't 768.
 
 ## How the chart maps to it
 

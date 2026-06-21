@@ -325,6 +325,15 @@ network. (mTLS is a possible future hardening on top of the token.)
 There's a Helm chart for Kubernetes in [`deploy/`](./deploy); it sources the token from a
 Secret (`auth.existingSecret`) and injects it as `CIFAIL_SERVER_TOKEN`.
 
+**Similarity at scale (optional).** By default "similar past failures" is computed in-process
+with TF-IDF, which is perfect locally but loads recent history on every call. For a large shared
+history you can switch to vector search: use the `pgvector` database provider (PostgreSQL + the
+`vector` extension) and turn on embeddings (`CIFAIL_AI_EMBEDDINGS=1`). cifail then asks the
+configured AI provider (local Ollama by default, e.g. `ollama pull nomic-embed-text`) for an
+embedding per failure and lets the database do nearest-neighbour search. Everything stays
+**off and TF-IDF by default** — this is purely opt-in. The embedding size must match the column:
+set `CIFAIL_AI_EMBED_DIM` if your model isn't 768-wide.
+
 ---
 
 ## Want to help? Add a pattern
@@ -374,6 +383,8 @@ Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
   dashboard at the server root. ✅
 - **Optional AI** suggestions when the rules are unsure (`--ai`) — local [Ollama](https://ollama.com)
   by default, or hosted Anthropic/OpenAI (opt-in). ✅
+- **Vector similarity at scale** (opt-in) — embeddings + the `pgvector` provider push
+  nearest-neighbour search into the database; TF-IDF stays the offline default. ✅
 
 ## License
 

@@ -1,3 +1,4 @@
+using CiFail.Core.Ai;
 using CiFail.Core.Configuration;
 
 namespace CiFail.Server;
@@ -24,6 +25,12 @@ public sealed class ServeOptions
     /// never for an exposed one.
     /// </summary>
     public string? AuthToken { get; init; }
+
+    /// <summary>
+    /// Optional embedder (R10): when set, each analyzed log is embedded and, if the store is
+    /// vector-capable (pgvector), similarity is served from the database. Null = TF-IDF as before.
+    /// </summary>
+    public IAiEmbedder? Embedder { get; init; }
 
     public string ResolvedUrl => Url ?? $"http://{Host}:{Port}";
 }

@@ -58,6 +58,12 @@ public sealed record AnalysisRecord
     public required string Excerpt { get; init; }
     public required IReadOnlyDictionary<string, int> Terms { get; init; }
 
+    /// <summary>
+    /// Optional dense embedding for vector similarity (R10). Null unless an embedder is wired
+    /// (off by default); vector-capable stores persist it, others ignore it.
+    /// </summary>
+    public float[]? Embedding { get; init; }
+
     // Git correlation (R3). Null when analyzing outside a git repo.
     public string? RepoId { get; init; }
     public string? GitCommit { get; init; }

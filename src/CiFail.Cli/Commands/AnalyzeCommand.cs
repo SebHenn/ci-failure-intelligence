@@ -115,9 +115,13 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
 
         // Optional AI (R8): build the configured analyzer only when --ai is set. A
         // misconfiguration (unknown provider / missing key) warns and proceeds rules-only.
-        var ai = settings.Ai ? BuildAiAnalyzer(settings) : null;
+        // Optional embeddings (R10): built when opted in via config (ai.embeddings); only useful
+        // with a vector-capable store (pgvector), otherwise harmless.
+        var aiConfig = ResolveAiConfig(settings);
+        var ai = settings.Ai ? BuildAiAnalyzer(aiConfig) : null;
+        var embedder = BuildEmbedder(aiConfig);
 
-        var service = AnalysisService.CreateWithStore(store, git, ai);
+        var service = AnalysisService.CreateWithStore(store, git, ai, embedder);
 
         bool allMatched = true;
         var results = new List<Analysis>(inputs.Count);
@@ -145,12 +149,16 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         return allMatched ? ExitMatched : ExitNoMatch;
     }
 
-    private static IAiAnalyzer? BuildAiAnalyzer(Settings settings)
+    private static AiConfig ResolveAiConfig(Settings settings)
     {
         var ai = ConfigLoader.Load().Ai;
         if (!string.IsNullOrWhiteSpace(settings.AiProvider)) ai.Provider = settings.AiProvider.Trim().ToLowerInvariant();
         if (!string.IsNullOrWhiteSpace(settings.AiModel)) ai.Model = settings.AiModel;
+        return ai;
+    }
 
+    private static IAiAnalyzer? BuildAiAnalyzer(AiConfig ai)
+    {
         try
         {
             return AiFactory.Create(ai);
@@ -159,6 +167,25 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         {
             // Don't fail the analysis just because AI is misconfigured — warn and go rules-only.
             AnsiConsole.MarkupLine($"[yellow]warning:[/] AI disabled — {Markup.Escape(ex.Message)}");
+            return null;
+        }
+    }
+
+    private static IAiEmbedder? BuildEmbedder(AiConfig ai)
+    {
+        if (!ai.Embeddings) return null;
+        try
+        {
+            var embedder = AiFactory.CreateEmbedder(ai);
+            if (embedder is null)
+                AnsiConsole.MarkupLine(
+                    $"[yellow]warning:[/] the '{Markup.Escape(ai.Provider)}' AI provider has no embeddings; " +
+                    "using TF-IDF similarity.");
+            return embedder;
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[yellow]warning:[/] embeddings disabled — {Markup.Escape(ex.Message)}");
             return null;
         }
     }

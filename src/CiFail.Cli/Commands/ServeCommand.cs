@@ -1,5 +1,6 @@
 #if CIFAIL_SERVER
 using System.ComponentModel;
+using CiFail.Core.Ai;
 using CiFail.Core.Configuration;
 using CiFail.Core.Storage;
 using CiFail.Server;
@@ -34,20 +35,25 @@ public sealed class ServeCommand : Command<ServeCommand.Settings>
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
-        // Resolve the database the same way every other command does (CLI > env > config > sqlite).
-        var database = ConfigLoader.Load(settings.DbProvider, settings.DbConnection).Database;
+        // Resolve config the same way every other command does (CLI > env > config > defaults).
+        var config = ConfigLoader.Load(settings.DbProvider, settings.DbConnection);
+        var database = config.Database;
 
         // Token precedence: --token > CIFAIL_SERVER_TOKEN. Empty => open (with a warning at startup).
         var token = !string.IsNullOrWhiteSpace(settings.Token)
             ? settings.Token
             : Environment.GetEnvironmentVariable(HttpAnalysisStore.TokenEnvVar);
 
+        // Optional vector embeddings (R10): only when opted in (ai.embeddings / CIFAIL_AI_EMBEDDINGS).
+        var embedder = BuildEmbedder(config.Ai);
+
         var auth = string.IsNullOrWhiteSpace(token)
             ? "[yellow]auth: off[/]"
             : "[green]auth: bearer token[/]";
+        var sim = embedder is null ? "tf-idf" : $"embeddings:{Markup.Escape(config.Ai.Provider)}";
         AnsiConsole.MarkupLine(
             $"[green]cifail serve[/] listening on [bold]http://{settings.Host}:{settings.Port}[/] " +
-            $"(database: [bold]{Markup.Escape(database.Provider)}[/], {auth})");
+            $"(database: [bold]{Markup.Escape(database.Provider)}[/], {auth}, similarity: {sim})");
 
         return CiFailServer.Run(new ServeOptions
         {
@@ -55,7 +61,27 @@ public sealed class ServeCommand : Command<ServeCommand.Settings>
             Port = settings.Port,
             Database = database,
             AuthToken = token,
+            Embedder = embedder,
         });
+    }
+
+    private static IAiEmbedder? BuildEmbedder(AiConfig ai)
+    {
+        if (!ai.Embeddings) return null;
+        try
+        {
+            var embedder = AiFactory.CreateEmbedder(ai);
+            if (embedder is null)
+                AnsiConsole.MarkupLine(
+                    $"[yellow]warning:[/] the '{Markup.Escape(ai.Provider)}' AI provider has no embeddings; " +
+                    "falling back to TF-IDF similarity.");
+            return embedder;
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[yellow]warning:[/] embeddings disabled — {Markup.Escape(ex.Message)}");
+            return null;
+        }
     }
 }
 #endif

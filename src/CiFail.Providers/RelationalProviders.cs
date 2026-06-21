@@ -1,6 +1,8 @@
+using CiFail.Core.Configuration;
 using CiFail.Core.Storage;
 using CiFail.Providers.Ef;
 using Microsoft.EntityFrameworkCore;
+using Pgvector.EntityFrameworkCore;
 
 namespace CiFail.Providers;
 
@@ -48,6 +50,32 @@ public sealed class MySqlStoreProvider : IStoreProvider
         var options = new DbContextOptionsBuilder<CiFailDbContext>()
             .UseMySql(cs, ServerVersion.AutoDetect(cs)).Options;
         return RelationalSupport.Open(options);
+    }
+}
+
+/// <summary>
+/// PostgreSQL + pgvector provider (R10): same relational history as <see cref="PostgresStoreProvider"/>
+/// plus an embedding column and HNSW index for in-database similarity search. The vector size comes
+/// from <c>CIFAIL_AI_EMBED_DIM</c> (default 768, matching Ollama <c>nomic-embed-text</c>) and must
+/// match the embedder that produced the vectors.
+/// </summary>
+public sealed class PgVectorStoreProvider : IStoreProvider
+{
+    public string Name => "pgvector";
+    public string Description => "PostgreSQL + pgvector — shared history with vector similarity (R10).";
+
+    public IAnalysisStore Create(string? connectionString)
+    {
+        var cs = RelationalSupport.Require(Name, connectionString);
+        var options = new DbContextOptionsBuilder<PgVectorDbContext>()
+            .UseNpgsql(cs, o => o.UseVector()).Options;
+        return new PgVectorAnalysisStore(new PgVectorDbContext(options, ResolveDimensions()));
+    }
+
+    private static int ResolveDimensions()
+    {
+        var v = Environment.GetEnvironmentVariable(ConfigLoader.AiEmbeddingDimsEnvVar);
+        return int.TryParse(v, out var d) && d > 0 ? d : ConfigLoader.DefaultEmbeddingDimensions;
     }
 }
 

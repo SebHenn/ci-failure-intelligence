@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CiFail.Core.Storage;
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
 
 namespace CiFail.Providers.Ef;
 
@@ -8,15 +9,17 @@ namespace CiFail.Providers.Ef;
 /// <see cref="IAnalysisStore"/> over EF Core, shared by all relational providers. The
 /// schema is created on first use with <c>EnsureCreated()</c> (no migrations: the model
 /// is append-only and tiny, so create-if-absent is enough and keeps setup zero-touch).
+/// Not sealed so the pgvector store can extend it with in-DB similarity search (R10).
 /// </summary>
-public sealed class EfAnalysisStore : IAnalysisStore
+public class EfAnalysisStore : IAnalysisStore
 {
-    private readonly CiFailDbContext _db;
+    /// <summary>The EF context; exposed to derived stores (e.g. pgvector search).</summary>
+    protected readonly AnalysisDbContext Db;
 
-    public EfAnalysisStore(CiFailDbContext db)
+    public EfAnalysisStore(AnalysisDbContext db)
     {
-        _db = db;
-        _db.Database.EnsureCreated();
+        Db = db;
+        Db.Database.EnsureCreated();
     }
 
     public long Save(AnalysisRecord record)
@@ -32,36 +35,38 @@ public sealed class EfAnalysisStore : IAnalysisStore
             LogHash = record.LogHash,
             Excerpt = record.Excerpt,
             Tokens = JsonSerializer.Serialize(record.Terms),
+            // Only the pgvector model maps this column; every other provider ignores it.
+            Embedding = record.Embedding is null ? null : new Vector(record.Embedding),
             RepoId = record.RepoId,
             GitCommit = record.GitCommit,
             GitBranch = record.GitBranch,
             GitDirty = record.GitDirty,
             Status = "open",
         };
-        _db.Analyses.Add(entity);
-        _db.SaveChanges();
+        Db.Analyses.Add(entity);
+        Db.SaveChanges();
         return entity.Id;
     }
 
     public IReadOnlyList<StoredAnalysis> GetRecent(int limit) =>
-        _db.Analyses.OrderByDescending(a => a.Id).Take(Math.Max(1, limit))
+        Db.Analyses.OrderByDescending(a => a.Id).Take(Math.Max(1, limit))
             .AsEnumerable().Select(Map).ToList();
 
     public StoredAnalysis? GetById(long id)
     {
-        var entity = _db.Analyses.AsNoTracking().FirstOrDefault(a => a.Id == id);
+        var entity = Db.Analyses.AsNoTracking().FirstOrDefault(a => a.Id == id);
         return entity is null ? null : Map(entity);
     }
 
     public IReadOnlyList<CorpusEntry> LoadCorpus(int max) =>
-        _db.Analyses.OrderByDescending(a => a.Id).Take(Math.Max(1, max))
+        Db.Analyses.OrderByDescending(a => a.Id).Take(Math.Max(1, max))
             .AsEnumerable()
             .Select(a => new CorpusEntry { Meta = Map(a), Terms = DeserializeTerms(a.Tokens) })
             .ToList();
 
     public bool SetResolution(long id, string note)
     {
-        var entity = _db.Analyses.FirstOrDefault(a => a.Id == id);
+        var entity = Db.Analyses.FirstOrDefault(a => a.Id == id);
         if (entity is null) return false;
 
         // Manual resolution always wins, even over a prior auto-resolution.
@@ -69,19 +74,19 @@ public sealed class EfAnalysisStore : IAnalysisStore
         entity.ResolvedAt = DateTimeOffset.UtcNow.ToString("O");
         entity.Status = "resolved";
         entity.ResolutionSource = "manual";
-        _db.SaveChanges();
+        Db.SaveChanges();
         return true;
     }
 
     public IReadOnlyList<StoredAnalysis> GetOpenFailures(string repoId) =>
-        _db.Analyses.Where(a => a.RepoId == repoId && a.Status == "open")
+        Db.Analyses.Where(a => a.RepoId == repoId && a.Status == "open")
             .OrderByDescending(a => a.Id)
             .AsEnumerable().Select(Map).ToList();
 
     public bool SetAutoResolution(long id, string resolvedCommit, string note)
     {
         // Only touch still-open rows; never clobber a manual (or prior auto) resolution.
-        var entity = _db.Analyses.FirstOrDefault(a => a.Id == id && a.Status == "open");
+        var entity = Db.Analyses.FirstOrDefault(a => a.Id == id && a.Status == "open");
         if (entity is null) return false;
 
         entity.Resolution = note;
@@ -89,11 +94,11 @@ public sealed class EfAnalysisStore : IAnalysisStore
         entity.Status = "resolved";
         entity.ResolutionSource = "auto";
         entity.ResolvedCommit = resolvedCommit;
-        _db.SaveChanges();
+        Db.SaveChanges();
         return true;
     }
 
-    private static StoredAnalysis Map(AnalysisEntity a) => new()
+    protected static StoredAnalysis Map(AnalysisEntity a) => new()
     {
         Id = a.Id,
         AnalyzedAt = DateTimeOffset.Parse(a.AnalyzedAt),
@@ -118,5 +123,5 @@ public sealed class EfAnalysisStore : IAnalysisStore
     private static IReadOnlyDictionary<string, int> DeserializeTerms(string json) =>
         JsonSerializer.Deserialize<Dictionary<string, int>>(json) ?? new Dictionary<string, int>();
 
-    public void Dispose() => _db.Dispose();
+    public void Dispose() => Db.Dispose();
 }

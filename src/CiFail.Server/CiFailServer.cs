@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using CiFail.Core.Ai;
 using CiFail.Core.Analysis;
 using CiFail.Core.Output;
 using CiFail.Core.Rules;
@@ -51,7 +52,7 @@ public static class CiFailServer
 
         var app = builder.Build();
         UseBearerAuth(app, options.AuthToken);
-        MapEndpoints(app);
+        MapEndpoints(app, options.Embedder);
         return app;
     }
 
@@ -126,7 +127,7 @@ public static class CiFailServer
         return reader.ReadToEnd();
     }
 
-    private static void MapEndpoints(WebApplication app)
+    private static void MapEndpoints(WebApplication app, IAiEmbedder? embedder)
     {
         // The bundled web dashboard (R12) — a single static page that talks to the API below.
         IResult dashboard() => Results.Content(DashboardHtml, "text/html");
@@ -153,7 +154,7 @@ public static class CiFailServer
             var source = request.Query["source"].FirstOrDefault() ?? "upload";
 
             using var store = stores();
-            var service = new AnalysisService(engine, store);
+            var service = new AnalysisService(engine, store, git: null, ai: null, embedder: embedder);
             var analysis = service.Analyze(source, body, options);
             return Json(AnalysisJson.Serialize(analysis));
         });

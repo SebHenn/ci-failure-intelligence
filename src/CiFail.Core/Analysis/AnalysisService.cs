@@ -27,18 +27,24 @@ public sealed class AnalysisService
     /// <summary>How much of the (normalized) log to hand the AI model.</summary>
     private const int AiExcerptMaxChars = 6000;
 
+    /// <summary>How much of the (normalized) log to hand the embedding model.</summary>
+    private const int EmbeddingMaxChars = 8000;
+
     private readonly RuleEngine _engine;
     private readonly IAnalysisStore? _store;
     private readonly IGitRepo? _git;
     private readonly IAiAnalyzer? _ai;
+    private readonly IAiEmbedder? _embedder;
 
     public AnalysisService(
-        RuleEngine engine, IAnalysisStore? store = null, IGitRepo? git = null, IAiAnalyzer? ai = null)
+        RuleEngine engine, IAnalysisStore? store = null, IGitRepo? git = null,
+        IAiAnalyzer? ai = null, IAiEmbedder? embedder = null)
     {
         _engine = engine;
         _store = store;
         _git = git;
         _ai = ai;
+        _embedder = embedder;
     }
 
     /// <summary>Factory that loads embedded + user rule packs, with no history store.</summary>
@@ -47,8 +53,8 @@ public sealed class AnalysisService
 
     /// <summary>Factory that also wires the given history store (similarity + persistence).</summary>
     public static AnalysisService CreateWithStore(
-        IAnalysisStore store, IGitRepo? git = null, IAiAnalyzer? ai = null) =>
-        new(new RuleEngine(RulePackLoader.LoadAll()), store, git, ai);
+        IAnalysisStore store, IGitRepo? git = null, IAiAnalyzer? ai = null, IAiEmbedder? embedder = null) =>
+        new(new RuleEngine(RulePackLoader.LoadAll()), store, git, ai, embedder);
 
     public Models.Analysis Analyze(string source, string rawText, AnalysisOptions? options = null)
     {
@@ -61,6 +67,7 @@ public sealed class AnalysisService
         var fingerprint = FingerprintBuilder.Build(log, rootCause);
 
         var aiSuggestion = MaybeSuggestWithAi(options, log, ecosystem, rootCause);
+        var embedding = MaybeEmbed(log);
 
         IReadOnlyList<SimilarFailure> similar = Array.Empty<SimilarFailure>();
         long? historyId = null;
@@ -68,7 +75,7 @@ public sealed class AnalysisService
         if (_store is not null)
         {
             var queryTerms = Tokenizer.Tokenize(log.NormalizedText);
-            similar = FindSimilar(queryTerms, options.TopSimilar);
+            similar = FindSimilar(queryTerms, embedding, options.TopSimilar);
 
             if (options.RecordHistory)
             {
@@ -83,6 +90,7 @@ public sealed class AnalysisService
                     LogHash = HashRaw(rawText),
                     Excerpt = BuildExcerpt(log, rootCause),
                     Terms = queryTerms,
+                    Embedding = embedding,
                     RepoId = _git?.RepoId,
                     GitCommit = _git?.Head,
                     GitBranch = _git?.Branch,
@@ -131,6 +139,24 @@ public sealed class AnalysisService
         }
     }
 
+    /// <summary>
+    /// Compute a dense embedding for the log when an embedder is wired (R10), best-effort —
+    /// a model that's offline/erroring yields null and similarity falls back to TF-IDF.
+    /// </summary>
+    private float[]? MaybeEmbed(LogDocument log)
+    {
+        if (_embedder is null)
+            return null;
+        try
+        {
+            return _embedder.Embed(TailExcerpt(log.NormalizedText, EmbeddingMaxChars));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static string TailExcerpt(string text, int maxChars)
     {
         text = text.Trim();
@@ -154,8 +180,25 @@ public sealed class AnalysisService
     }
 
     private IReadOnlyList<SimilarFailure> FindSimilar(
-        IReadOnlyDictionary<string, int> queryTerms, int topN)
+        IReadOnlyDictionary<string, int> queryTerms, float[]? queryEmbedding, int topN)
     {
+        // Scale path (R10): when the store searches vectors in the DB and we have an embedding,
+        // use it instead of loading the whole corpus — that's the point of the capability.
+        if (queryEmbedding is not null && _store is ISimilaritySearch vectorStore)
+        {
+            return vectorStore.FindSimilar(queryEmbedding, topN)
+                .Select(h => new SimilarFailure
+                {
+                    Id = h.Meta.Id,
+                    Similarity = Math.Round(h.Score, 4),
+                    RuleId = h.Meta.RuleId,
+                    AnalyzedAt = h.Meta.AnalyzedAt,
+                    Excerpt = h.Meta.Excerpt,
+                    Resolution = h.Meta.Resolution,
+                })
+                .ToList();
+        }
+
         var corpus = _store!.LoadCorpus(CorpusLimit);
         if (corpus.Count == 0) return Array.Empty<SimilarFailure>();
 

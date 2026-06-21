@@ -120,7 +120,12 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
 4. `Analysis/FingerprintBuilder` — `ruleId:hash` identity from scrubbed signature.
 5. Similarity + persistence (only when an `IAnalysisStore` is supplied): TF-IDF cosine
    over scrubbed bag-of-terms vs. stored history; then persists the run unless
-   `--no-history`.
+   `--no-history`. **R10 (opt-in):** when an `IAiEmbedder` is wired *and* the store also
+   implements `Similarity/ISimilaritySearch` (only the `pgvector` provider does), similarity is
+   served from the DB over a stored embedding instead of loading the corpus; the embedding is
+   also saved on the record. No embedder (the default) or a non-vector store → unchanged TF-IDF.
+   The embedder is built only when `ai.embeddings` is opted in (`CIFAIL_AI_EMBEDDINGS`); it's
+   best-effort (offline model → null → TF-IDF fallback), like the AI suggestion path.
 
 `AnalysisService.CreateDefault()` = rules only, no store (used by tests and the
 offline path). `CreateWithStore(store, git?)` = adds similarity + history (and, when an
@@ -189,10 +194,20 @@ stays locked, which breaks temp-file test cleanup). All paths resolve through
 
 ### External database providers (`src/CiFail.Providers`, size-gated)
 
-PostgreSQL/MySQL/SQL Server (EF Core — one `CiFailDbContext` + `AnalysisEntity`, shared
-`EfAnalysisStore`, schema via `EnsureCreated()`, **no migrations**) and MongoDB
+PostgreSQL/MySQL/SQL Server (EF Core — `AnalysisEntity` mapped by an abstract `AnalysisDbContext`,
+shared `EfAnalysisStore`, schema via `EnsureCreated()`, **no migrations**) and MongoDB
 (`MongoAnalysisStore`, document-per-analysis, sequential ids minted from a `counters` doc)
 live in a **separate assembly** so the default native binary stays SQLite-only and small.
+
+- **pgvector (R10):** a `pgvector` provider for vector similarity. `AnalysisDbContext` is now
+  abstract with a virtual `MapEmbedding` hook: `CiFailDbContext` (Postgres/MySQL/SQL Server)
+  **ignores** the `AnalysisEntity.Embedding` (`Pgvector.Vector?`) property; `PgVectorDbContext`
+  maps it to a `vector(N)` column + an HNSW cosine index and declares the `vector` extension.
+  `PgVectorAnalysisStore : EfAnalysisStore, ISimilaritySearch` adds `FindSimilar` (cosine via
+  `Pgvector.EntityFrameworkCore`, `UseNpgsql(cs, o => o.UseVector())`). `EfAnalysisStore` is no
+  longer sealed (`protected Db`/`Map`) and always sets `Embedding` — ignored unless the column
+  exists. `N` comes from `CIFAIL_AI_EMBED_DIM` (default `ConfigLoader.DefaultEmbeddingDimensions`
+  = 768) and **must match the embedder's output**. Packages `Pgvector` + `Pgvector.EntityFrameworkCore`.
 
 - Inclusion is opt-in: the CLI references `CiFail.Providers` and defines the
   `CIFAIL_EXTERNAL_DB` compile symbol **only when built with `-p:IncludeExternalDb=true`**
@@ -205,8 +220,9 @@ live in a **separate assembly** so the default native binary stays SQLite-only a
   behavioural contract for every backend. It runs locally against `EfAnalysisStore` over
   **EF Core SQLite in-memory** (no Docker). Real-engine tests (`RealEngineContractTests`,
   Testcontainers) are `[SkippableFact]` gated on **`CIFAIL_DB_IT=1`** — skipped locally,
-  run by the `db-integration` CI job. `docker-compose.test.yml` spins up all four engines
-  for manual `--db-*` runs.
+  run by the `db-integration` CI job. `PgVectorIntegrationTests` is in the same assembly/gate
+  (uses the `pgvector/pgvector` image). `docker-compose.test.yml` spins up all engines (incl.
+  a `pgvector` service on port 5433) for manual `--db-*` runs.
 
 ### Output (`Cli/Output/`)
 

@@ -13,6 +13,7 @@ public static class ExternalProviders
     public static void RegisterAll()
     {
         StoreRegistry.Register(new PostgresStoreProvider());
+        StoreRegistry.Register(new PgVectorStoreProvider());
         StoreRegistry.Register(new MySqlStoreProvider());
         StoreRegistry.Register(new SqlServerStoreProvider());
         StoreRegistry.Register(new MongoStoreProvider());

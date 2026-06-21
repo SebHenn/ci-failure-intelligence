@@ -17,4 +17,10 @@ public interface IAiProvider
     /// <summary>Build an analyzer from the resolved AI config (may throw if misconfigured,
     /// e.g. a hosted provider missing its API key).</summary>
     IAiAnalyzer Create(AiConfig config);
+
+    /// <summary>
+    /// Build a text embedder for similarity search (R10), or null when this provider has no
+    /// embeddings API. May throw if misconfigured (e.g. a hosted provider missing its key).
+    /// </summary>
+    IAiEmbedder? CreateEmbedder(AiConfig config);
 }

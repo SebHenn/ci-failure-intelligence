@@ -21,6 +21,23 @@ public sealed class AiConfig
 
     /// <summary>Env var holding the API key for hosted providers (not the key itself).</summary>
     public string ApiKeyEnv { get; set; } = "CIFAIL_AI_KEY";
+
+    /// <summary>
+    /// Opt-in (R10): compute a dense embedding per analysis so a vector-capable store
+    /// (e.g. pgvector) can do nearest-neighbour similarity. Off by default — the offline
+    /// default uses in-app TF-IDF and needs no model.
+    /// </summary>
+    public bool Embeddings { get; set; }
+
+    /// <summary>Embedding model name; null means the provider's embedding default.</summary>
+    public string? EmbeddingModel { get; set; }
+
+    /// <summary>
+    /// Output dimensionality of the embeddings — must match the vector column the store creates
+    /// (the pgvector provider reads the same value). Default suits the Ollama
+    /// <c>nomic-embed-text</c> default; hosted providers that support it are asked to emit this size.
+    /// </summary>
+    public int EmbeddingDimensions { get; set; } = 768;
 }
 
 /// <summary>Which storage backend to use and how to connect to it.</summary>
