@@ -203,6 +203,18 @@ surfaces the diagnostics the normal load path silently skips, using `RulePackLoa
 (unfiltered) + `EmbeddedDocuments()`. Duplicate id within a tier = error; embedded↔user = override
 warning. See `CONTRIBUTING.md` for the add-a-rule workflow.
 
+**AI-assisted authoring (R23, `cifail suggest-rule`):** for a log no rule matches, an AI drafts a
+rule and **cifail's validators gate it**. `Ai/IAiRuleDrafter` is a side-interface (like `IAiEmbedder`,
+not on `IAiAnalyzer`) implemented by `OllamaAnalyzer`; `AiPrompt.BuildRuleDraft` + `AiRuleDraftParser`
+build/parse the draft; `AiFactory.CreateDrafter` returns the raw provider (not the rate-limit wrapper —
+drafting is one interactive call). `Rules/RuleDraftValidator.Validate(draft, log)` is the gate: reuses
+`RulePackValidator` for the standard lint, then enforces the draft-specific rules — regex compiles
+within a **1s timeout** (ReDoS guard), **actually matches the log** (anti-hallucination), isn't
+overbroad (`.*`/`.+`/…), id is kebab-case, and forces a conservative `DraftConfidence` (the model never
+asserts its own). `SuggestRuleCommand` previews the YAML and, with `--write`, deserialize-appends it to
+`~/.cifail/rules/suggested.yaml` (`CiFailPaths.SuggestedRulesPath`, serialized via `RulePackLoader.Serialize`).
+Offline-degrades (no model → friendly message, exit 1).
+
 ### Rule packs (`Core/rulepacks/*.yaml`)
 
 Rules are **data, not code** — this is the primary extension point. Each pack is a

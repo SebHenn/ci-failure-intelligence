@@ -32,4 +32,7 @@ public static class CiFailPaths
 
     /// <summary>Directory for user-supplied rule packs (*.yaml).</summary>
     public static string UserRulesDir => Path.Combine(Home, "rules");
+
+    /// <summary>The user pack that <c>cifail suggest-rule --write</c> appends drafted rules to (R23).</summary>
+    public static string SuggestedRulesPath => Path.Combine(UserRulesDir, "suggested.yaml");
 }

@@ -24,6 +24,12 @@ A rule is one entry in a YAML pack under
 [`src/CiFail.Core/rulepacks`](./src/CiFail.Core/rulepacks). Packs are embedded resources, so
 adding a rule to an existing file is enough — no project changes.
 
+> **Tip — let cifail draft it for you.** For a log that nothing matches yet, `cifail suggest-rule
+> <log>` asks a local AI to draft a rule and validates it (it must compile, actually match the log,
+> and not be overbroad) before showing it. Use the preview as a starting point, refine it by hand,
+> then move the final rule into the appropriate pack below. Needs a local model (Ollama); it
+> degrades to a friendly message when none is configured.
+
 ### 1. Write the rule
 
 ```yaml

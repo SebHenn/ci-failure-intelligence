@@ -17,6 +17,18 @@ public static class RulePackLoader
         .IgnoreUnmatchedProperties()
         .Build();
 
+    private static readonly ISerializer YamlOut = new SerializerBuilder()
+        .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
+        .Build();
+
+    /// <summary>
+    /// Serialize rules back to a YAML pack (a sequence of mappings matching the rule-pack schema),
+    /// used by <c>suggest-rule --write</c> (R23) to append a drafted rule to a user pack.
+    /// </summary>
+    public static string Serialize(IEnumerable<RuleDefinition> rules) =>
+        YamlOut.Serialize(rules.ToList());
+
     /// <summary>Default directory for user-supplied rule packs.</summary>
     public static string DefaultUserRulesDir => CiFailPaths.UserRulesDir;
 

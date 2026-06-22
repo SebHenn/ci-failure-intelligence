@@ -52,14 +52,41 @@ public static class AiPrompt
         return new AiSuggestion { Model = model, RootCause = "AI suggestion", Fix = text.Trim() };
     }
 
-    private static string? GetStr(JsonElement obj, string name) =>
+    /// <summary>
+    /// Build the prompt that asks the model to draft a detection rule for an unmatched log (R23).
+    /// The model only drafts; <see cref="Rules.RuleDraftValidator"/> is the gate.
+    /// </summary>
+    public static string BuildRuleDraft(AiRuleDraftRequest r)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("You help author detection rules for a CI/build/test failure tool.");
+        sb.AppendLine("From the log excerpt, draft ONE rule as a JSON object with these keys:");
+        sb.AppendLine("  id: a short kebab-case identifier (lowercase letters, digits, hyphens), e.g. \"npm-missing-module\".");
+        sb.AppendLine("  category: one lowercase word, e.g. dependency, compile, test, environment, network.");
+        sb.AppendLine("  title: a short human-readable summary of the failure.");
+        sb.AppendLine("  match: a .NET regular expression matching the KEY error line in the excerpt. Make it");
+        sb.AppendLine("         specific — anchor on the distinctive error text; never use \".*\" by itself.");
+        sb.AppendLine("         Use named groups (?<name>...) ONLY for values you reference in fix as {name}.");
+        sb.AppendLine("  fix: 1-3 sentences telling the user how to fix it.");
+        sb.AppendLine("Respond ONLY with the JSON object. No prose, no code fences.");
+        sb.AppendLine();
+        sb.AppendLine($"Ecosystem: {r.Ecosystem.ToString().ToLowerInvariant()}");
+        if (r.WeakMatch is not null)
+            sb.AppendLine($"An existing rule weakly matched (\"{r.WeakMatch.Rule.Title}\"); write a more specific one.");
+        sb.AppendLine();
+        sb.AppendLine("Log excerpt:");
+        sb.AppendLine(r.LogExcerpt);
+        return sb.ToString();
+    }
+
+    internal static string? GetStr(JsonElement obj, string name) =>
         obj.ValueKind == JsonValueKind.Object
         && obj.TryGetProperty(name, out var v)
         && v.ValueKind == JsonValueKind.String
             ? v.GetString()
             : null;
 
-    private static string? ExtractJsonObject(string text)
+    internal static string? ExtractJsonObject(string text)
     {
         var start = text.IndexOf('{');
         var end = text.LastIndexOf('}');

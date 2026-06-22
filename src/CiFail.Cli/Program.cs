@@ -32,6 +32,11 @@ app.Configure(config =>
         .WithDescription("Save how you fixed a failure, so cifail can remind you next time.")
         .WithExample("resolve", "42", "--note", "\"Fixed the package name typo\"");
 
+    config.AddCommand<SuggestRuleCommand>("suggest-rule")
+        .WithDescription("Draft a new rule (with AI) for a log no rule matches, validated before you save it.")
+        .WithExample("suggest-rule", "build.log")
+        .WithExample("suggest-rule", "build.log", "--write");
+
     config.AddCommand<ReconcileCommand>("reconcile")
         .WithDescription("Auto-resolve past failures that no longer happen at the current commit.")
         .WithExample("reconcile");

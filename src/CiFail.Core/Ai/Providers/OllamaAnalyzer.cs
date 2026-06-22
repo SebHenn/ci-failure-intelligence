@@ -10,7 +10,7 @@ namespace CiFail.Core.Ai.Providers;
 /// <c>format: json</c> so the model returns a JSON object directly. Fully offline — nothing
 /// leaves the machine.
 /// </summary>
-public sealed class OllamaAnalyzer : IAiAnalyzer
+public sealed class OllamaAnalyzer : IAiAnalyzer, IAiRuleDrafter
 {
     private readonly string _baseUrl;
     private readonly string _model;
@@ -21,13 +21,20 @@ public sealed class OllamaAnalyzer : IAiAnalyzer
         _model = model;
     }
 
-    public AiSuggestion? Suggest(AiRequest request)
+    public AiSuggestion? Suggest(AiRequest request) =>
+        AiPrompt.Parse($"ollama/{_model}", Generate(AiPrompt.Build(request)));
+
+    public AiRuleDraft? DraftRule(AiRuleDraftRequest request) =>
+        AiRuleDraftParser.Parse($"ollama/{_model}", Generate(AiPrompt.BuildRuleDraft(request)));
+
+    /// <summary>POST a prompt to <c>/api/generate</c> with <c>format: json</c> and return the response text.</summary>
+    private string? Generate(string prompt)
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
         var payload = new
         {
             model = _model,
-            prompt = AiPrompt.Build(request),
+            prompt,
             stream = false,
             format = "json",
         };
@@ -39,8 +46,7 @@ public sealed class OllamaAnalyzer : IAiAnalyzer
         using var response = client.Send(http);
         response.EnsureSuccessStatusCode();
         using var doc = JsonDocument.Parse(response.Content.ReadAsStream());
-        var text = doc.RootElement.TryGetProperty("response", out var r) ? r.GetString() : null;
-        return AiPrompt.Parse($"ollama/{_model}", text);
+        return doc.RootElement.TryGetProperty("response", out var r) ? r.GetString() : null;
     }
 }
 

@@ -513,8 +513,10 @@ shared server, and CI integration all work now.
 **In progress (v5):**
 - **More ecosystems** — PHP/Composer, C/C++ (gcc/clang/CMake), Swift/Xcode, Android/Gradle, and
   infra (Docker/Terraform) rule packs — twelve ecosystems in all. ✅
-- **AI-assisted rule authoring**, **SARIF + Markdown report output**, **failure clustering**,
-  **per-test flakiness**, and **more notification channels** (Discord/Teams/GitHub). 🚧
+- **AI-assisted rule authoring** — `cifail suggest-rule` drafts a rule for an unmatched log (local
+  AI), validated locally (must compile, actually match, not be overbroad) before you save it. ✅
+- **SARIF + Markdown report output**, **failure clustering**, **per-test flakiness**, and **more
+  notification channels** (Discord/Teams/GitHub). 🚧
 
 ## License
 
