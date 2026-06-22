@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using CiFail.Core.Ingest;
 using CiFail.Core.Models;
 
 namespace CiFail.Core.Output;
@@ -50,6 +51,65 @@ public static class AnalysisJson
     /// <summary>Serialize an analysis to the public JSON string.</summary>
     public static string Serialize(Models.Analysis analysis) =>
         JsonSerializer.Serialize(ToDto(analysis), Options);
+
+    /// <summary>Parse the public JSON string back into a DTO.</summary>
+    public static AnalysisDto? Deserialize(string json) =>
+        JsonSerializer.Deserialize<AnalysisDto>(json, Options);
+
+    /// <summary>
+    /// Reconstruct a domain <see cref="Models.Analysis"/> from its DTO, so a result fetched from
+    /// a remote <c>cifail serve</c> (R18) renders through the same <c>ConsoleRenderer</c> / <c>--json</c>
+    /// path as a local one. <c>ToDto(FromDto(dto))</c> round-trips the public fields exactly.
+    /// </summary>
+    public static Models.Analysis FromDto(AnalysisDto d)
+    {
+        EcosystemDetector.TryParse(d.Ecosystem, out var ecosystem); // unknown -> Ecosystem.Unknown
+        var sep = d.Fingerprint.IndexOf(':');
+        var fingerprint = sep < 0
+            ? new FailureFingerprint { RuleId = d.Fingerprint, Hash = "" }
+            : new FailureFingerprint { RuleId = d.Fingerprint[..sep], Hash = d.Fingerprint[(sep + 1)..] };
+
+        return new Models.Analysis
+        {
+            Source = d.Source,
+            Ecosystem = ecosystem,
+            Matches = d.Matches.Select(FromMatchDto).ToList(),
+            Fingerprint = fingerprint,
+            HistoryId = d.HistoryId,
+            AnalyzedAt = d.AnalyzedAt,
+            SimilarFailures = d.SimilarFailures.Select(s => new SimilarFailure
+            {
+                Id = s.Id,
+                Similarity = s.Similarity,
+                RuleId = s.RuleId,
+                AnalyzedAt = s.AnalyzedAt,
+                Resolution = s.Resolution,
+            }).ToList(),
+            AiSuggestion = d.Ai is { } ai
+                ? new AiSuggestion { Model = ai.Model, RootCause = ai.RootCause, Fix = ai.Fix }
+                : null,
+        };
+    }
+
+    private static RuleMatch FromMatchDto(MatchDto m) => new()
+    {
+        Rule = new RuleDefinition
+        {
+            Id = m.RuleId,
+            Title = m.Title,
+            Category = m.Category,
+            Confidence = m.Confidence,
+            Match = string.Empty, // the regex isn't part of the public contract
+            Fix = m.Fix,
+            Docs = m.Docs,
+        },
+        Captures = m.Captures is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(m.Captures),
+        MatchedLine = m.MatchedLine,
+        Score = m.Confidence,
+        Fix = m.Fix,
+    };
 
     private static MatchDto ToMatchDto(RuleMatch m) => new()
     {

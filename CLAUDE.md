@@ -92,8 +92,12 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
 - **`src/CiFail.Server`** — `cifail serve` HTTP API (ASP.NET Core), size-gated into the
   full build only (`CIFAIL_SERVER`); a thin host over `AnalysisService` + `IAnalysisStore`.
   The shared JSON contract lives in `Core/Output/AnalysisJson.cs` + `StoredAnalysisJson.cs`
-  so the CLI `--json` and the server serialize one identical schema. `Core/Storage/
-  HttpAnalysisStore.cs` is the matching client (`http` store provider; `--server <url>`).
+  so the CLI `--json` and the server serialize one identical schema (`AnalysisJson.FromDto`
+  reconstructs the domain `Analysis` from the DTO; `ToDto∘FromDto` round-trips byte-for-byte).
+  `Core/Storage/HttpAnalysisStore.cs` is the matching read/resolve client (`http` store provider;
+  `--server <url>`); **R18** adds `Core/Storage/HttpAnalyzeClient.cs` which POSTs to the server's
+  `/analyze` so `cifail analyze --server` runs the full pipeline server-side (the CLI builds units
+  client-side, supporting `--format`, and renders the reconstructed result identically to a local run).
   R12 adds a bundled web dashboard: `src/CiFail.Server/wwwroot/index.html` is an
   **EmbeddedResource** (one zero-build page, no node stage), read once and served at `/` +
   `/index.html`; those paths plus `/healthz` are in `PublicPaths` (exempt from the R9 token —

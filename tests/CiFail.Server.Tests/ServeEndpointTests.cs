@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using CiFail.Core.Analysis;
 using CiFail.Core.Output;
 using CiFail.Core.Storage;
 using FluentAssertions;
@@ -100,6 +101,34 @@ public sealed class ServeEndpointTests : IClassFixture<ServeFixture>
 
         stats.Total.Should().BeGreaterThan(0);
         stats.TopFailures.Should().Contain(f => f.Fingerprint == analysis.Fingerprint);
+    }
+
+    [Fact]
+    public void HttpAnalyzeClient_remote_analyze_matches_local()
+    {
+        // R18: `cifail analyze --server` posts to /analyze and reconstructs the domain result.
+        using var client = new HttpAnalyzeClient(_client.BaseAddress!.ToString());
+        var remote = client.Analyze(MatchingLog, type: null, source: "test.log", noHistory: true);
+
+        var local = AnalysisService.CreateDefault().Analyze("test.log", MatchingLog);
+
+        remote.HasMatch.Should().Be(local.HasMatch);
+        remote.RootCause!.Rule.Id.Should().Be(local.RootCause!.Rule.Id);
+        remote.Fingerprint.ToString().Should().Be(local.Fingerprint.ToString());
+        remote.Ecosystem.Should().Be(local.Ecosystem);
+    }
+
+    [Fact]
+    public async Task Analysis_json_round_trips_through_FromDto()
+    {
+        // Byte-identical contract: re-serializing the reconstructed analysis equals the server body.
+        var response = await _client.PostAsync("analyze?source=test.log&noHistory=1",
+            new StringContent(MatchingLog, Encoding.UTF8, "text/plain"));
+        response.EnsureSuccessStatusCode();
+        var serverJson = await response.Content.ReadAsStringAsync();
+
+        var reconstructed = AnalysisJson.FromDto(AnalysisJson.Deserialize(serverJson)!);
+        AnalysisJson.Serialize(reconstructed).Should().Be(serverJson);
     }
 
     [Fact]

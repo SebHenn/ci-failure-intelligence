@@ -322,6 +322,8 @@ returns the exact same shape as `cifail analyze --json`. Your CLI can browse and
 shared history, and reconcile fixed failures, without any database credentials:
 
 ```console
+# Analyze a log against the shared server (it runs the pipeline + stores the result):
+cifail analyze build.log --server http://your-host:8080 --server-token "a-long-random-secret"
 cifail history --server http://your-host:8080 --server-token "a-long-random-secret"
 cifail resolve 1 --note "bumped the package version" \
   --server http://your-host:8080 --server-token "a-long-random-secret"
@@ -329,8 +331,10 @@ cifail resolve 1 --note "bumped the package version" \
 cifail reconcile --server http://your-host:8080 --server-token "a-long-random-secret"
 ```
 
-Reconciliation runs on your machine (it reads your git history) and writes the results back to
-the shared server, so a central service needs no checkout of its own.
+`analyze --server` posts the log to the server's `POST /analyze`, so the whole team's runs land
+in one shared history (and fire any configured notifications) — the result renders identically to
+a local analyze. Reconciliation runs on your machine (it reads your git history) and writes the
+results back to the shared server, so a central service needs no checkout of its own.
 
 **Web dashboard.** Open the server's root (`http://your-host:8080/`) in a browser for a small
 built-in dashboard: a trends strip at the top (totals, recurrence rate, mean time to resolve,

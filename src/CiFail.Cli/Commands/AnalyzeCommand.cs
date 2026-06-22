@@ -133,15 +133,11 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             TopSimilar = settings.Top,
         };
 
-        // analyze runs the full pipeline locally (save + similarity), which the remote http
-        // store doesn't serve yet — posting logs to a server lands in a later release.
+        // analyze --server (R18): the server's POST /analyze runs the full pipeline (rules +
+        // similarity + persistence + notifications) itself, so route there instead of the local
+        // store. Git correlation is a no-op remotely (the server has no working tree, as in R11).
         if (!string.IsNullOrWhiteSpace(settings.Server))
-        {
-            AnsiConsole.MarkupLine("[red]error:[/] [bold]analyze --server[/] isn't supported. " +
-                "Run [bold]analyze[/] against a local/direct database; use [bold]history[/]/[bold]resolve[/]/" +
-                "[bold]reconcile[/] to work against a server.");
-            return ExitInputError;
-        }
+            return AnalyzeViaServer(settings, units, options.RecordHistory);
 
         // History + similarity are backed by the configured store (SQLite by default).
         // --no-history still queries similarity but skips persisting the current run.
@@ -283,6 +279,42 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
 
     private static string EscapeAnnotationProperty(string s) =>
         EscapeAnnotationData(s).Replace(":", "%3A").Replace(",", "%2C");
+
+    /// <summary>
+    /// Analyze each unit against a remote <c>cifail serve</c> via <c>POST /analyze</c>, then render
+    /// with the same console/--json path as a local run. The token comes from --server-token or
+    /// the env var, matching the other remote commands.
+    /// </summary>
+    private static int AnalyzeViaServer(Settings settings, IReadOnlyList<AnalysisUnit> units, bool recordHistory)
+    {
+        var token = !string.IsNullOrWhiteSpace(settings.ServerToken)
+            ? settings.ServerToken
+            : Environment.GetEnvironmentVariable(HttpAnalysisStore.TokenEnvVar);
+
+        var results = new List<Analysis>(units.Count);
+        try
+        {
+            using var client = new HttpAnalyzeClient(settings.Server!, token);
+            foreach (var unit in units)
+                results.Add(client.Analyze(unit.Text, settings.Type, unit.Source, noHistory: !recordHistory));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or UriFormatException)
+        {
+            AnsiConsole.MarkupLine(
+                $"[red]error:[/] could not analyze against {Markup.Escape(settings.Server!)} — {Markup.Escape(ex.Message)}");
+            return ExitInputError;
+        }
+
+        if (settings.Json)
+            EmitJson(results);
+        else
+            EmitConsole(results);
+
+        if (settings.Annotations)
+            EmitAnnotations(units, results);
+
+        return results.All(r => r.HasMatch) ? ExitMatched : ExitNoMatch;
+    }
 
     private static List<(string, string)> ReadInputs(IReadOnlyList<string> paths)
     {
