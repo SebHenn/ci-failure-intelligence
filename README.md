@@ -144,8 +144,8 @@ we fix this last time?" history fills itself in. In `cifail history` these show 
 
 - `--json` — print the result as JSON instead of a panel. Useful inside CI pipelines or
   other scripts.
-- `--type dotnet|node|python|generic` — tell cifail what kind of log this is, if it
-  guesses wrong.
+- `--type dotnet|node|python|java|go|rust|ruby|generic` — tell cifail what kind of log
+  this is, if it guesses wrong.
 - `--ai` — when cifail isn't sure (no rule matched, or only a low-confidence one), also ask
   an AI model for a root cause and fix. **Off by default**, and only consulted when the rules
   fall short — so cifail stays fast and fully offline unless you opt in. If the model is
@@ -222,8 +222,10 @@ If you've installed the binary (or are in a `cifail` container), just pipe into 
 
 cifail tries to keep things plain, but a few terms show up:
 
-- **ecosystem** — the kind of project the log came from: `dotnet`, `node`, `python`, or
-  `generic` (anything else). cifail guesses this automatically.
+- **ecosystem** — the kind of project the log came from: `dotnet`, `node`, `python`,
+  `java`, `go`, `rust`, `ruby`, or `generic` (anything else, plus cross-cutting failures
+  like timeouts, disk-full, DNS/TLS, rate limits, and Docker build errors). cifail guesses
+  this automatically.
 - **confidence** — how sure cifail is about the cause: **high**, **medium**, or **low**.
   Low confidence means "this is my best guess — double-check it".
 - **rule / pattern** — a single known failure cifail can recognize (for example, "NuGet
@@ -363,8 +365,14 @@ channel is logged-and-swallowed and never affects analysis.
 
 The easiest way to contribute is to teach cifail a new failure. Patterns are written in
 plain YAML files (no C# needed) — see the existing ones in
-[`src/CiFail.Core/rulepacks`](./src/CiFail.Core/rulepacks). A full `CONTRIBUTING.md` is
-coming soon.
+[`src/CiFail.Core/rulepacks`](./src/CiFail.Core/rulepacks). [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+walks through adding a rule end-to-end, and these commands help while authoring:
+
+```bash
+cifail rules test "<regex>" --file build.log   # try a regex, see its captures
+cifail rules explain <id>                       # show one rule's full definition
+cifail rules validate src/CiFail.Core/rulepacks # lint packs (CI runs this too)
+```
 
 ### Build from source
 

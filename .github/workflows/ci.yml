@@ -25,6 +25,11 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
+      # Lint the shipped rule packs (malformed regex / missing fields / duplicate ids).
+      # Fails the build on any error so a bad pack can't be merged.
+      - name: Validate rule packs
+        run: dotnet run --project src/CiFail.Cli --configuration Release --no-build -- rules validate src/CiFail.Core/rulepacks
+
       # Integration tests skip here (CIFAIL_DB_IT unset) — the db-integration job runs them.
       - name: Test
         run: dotnet test --configuration Release --no-build --verbosity normal

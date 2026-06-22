@@ -65,15 +65,59 @@ public static class RulePackLoader
         return rules;
     }
 
+    /// <summary>
+    /// The raw text of every embedded rule-pack resource, keyed by a short pack name
+    /// (e.g. "generic.yaml"). Used by validation/explain tooling that needs the source.
+    /// </summary>
+    public static IReadOnlyList<(string Source, string Yaml)> EmbeddedDocuments()
+    {
+        var assembly = typeof(RulePackLoader).Assembly;
+        var docs = new List<(string, string)>();
+
+        foreach (var name in assembly.GetManifestResourceNames())
+        {
+            if (!name.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase) &&
+                !name.EndsWith(".yml", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            using var stream = assembly.GetManifestResourceStream(name);
+            if (stream is null) continue;
+            using var reader = new StreamReader(stream);
+            docs.Add((ShortName(name), reader.ReadToEnd()));
+        }
+
+        return docs;
+    }
+
+    /// <summary>Reduce a manifest resource name to its trailing file name (e.g. "generic.yaml").</summary>
+    private static string ShortName(string resourceName)
+    {
+        // Embedded names look like "CiFail.Core.rulepacks.generic.yaml"; keep "<file>.yaml".
+        var dot = resourceName.LastIndexOf('.', resourceName.Length - ".yaml".Length - 1);
+        return dot >= 0 ? resourceName[(dot + 1)..] : resourceName;
+    }
+
     /// <summary>Parse a single YAML document containing a list of rule definitions.</summary>
     public static IReadOnlyList<RuleDefinition> ParseDocument(string yaml)
     {
         if (string.IsNullOrWhiteSpace(yaml))
             return Array.Empty<RuleDefinition>();
 
-        var rules = Yaml.Deserialize<List<RuleDefinition>>(yaml) ?? new List<RuleDefinition>();
-        return rules
+        return DeserializeRaw(yaml)
             .Where(r => !string.IsNullOrWhiteSpace(r.Id) && !string.IsNullOrWhiteSpace(r.Match))
             .ToList();
+    }
+
+    /// <summary>
+    /// Deserialize a rule-pack document <em>without</em> dropping invalid rules. Validation
+    /// tooling uses this so it can report missing ids/matches; the normal load path filters.
+    /// Throws <see cref="YamlDotNet.Core.YamlException"/> on malformed YAML.
+    /// </summary>
+    public static IReadOnlyList<RuleDefinition> DeserializeRaw(string yaml)
+    {
+        if (string.IsNullOrWhiteSpace(yaml))
+            return Array.Empty<RuleDefinition>();
+
+        return Yaml.Deserialize<List<RuleDefinition>>(yaml) ?? new List<RuleDefinition>();
     }
 }

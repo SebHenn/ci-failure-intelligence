@@ -43,9 +43,18 @@ app.Configure(config =>
 
     config.AddBranch("rules", rules =>
     {
-        rules.SetDescription("See the failure patterns cifail knows about.");
+        rules.SetDescription("See and author the failure patterns cifail knows about.");
         rules.AddCommand<RulesListCommand>("list")
             .WithDescription("List every pattern cifail can recognize.");
+        rules.AddCommand<RulesTestCommand>("test")
+            .WithDescription("Try a regex against a log and show its matches + captures.")
+            .WithExample("rules", "test", "\"error NU(?<code>\\d+)\"", "--file", "build.log");
+        rules.AddCommand<RulesValidateCommand>("validate")
+            .WithDescription("Lint rule packs; exits non-zero on any error (CI-friendly).")
+            .WithExample("rules", "validate", "src/CiFail.Core/rulepacks");
+        rules.AddCommand<RulesExplainCommand>("explain")
+            .WithDescription("Show one rule's full definition and where it came from.")
+            .WithExample("rules", "explain", "nuget-nu1101");
     });
 });
 
