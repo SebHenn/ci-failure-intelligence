@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using CiFail.Core.Analysis;
 using CiFail.Core.Output;
 
 namespace CiFail.Core.Storage;
@@ -19,7 +20,7 @@ namespace CiFail.Core.Storage;
 /// (<see cref="Save"/>, <see cref="LoadCorpus"/>) are not served remotely — a server analyzes
 /// and stores logs itself via <c>POST /analyze</c>.
 /// </summary>
-public sealed class HttpAnalysisStore : IAnalysisStore
+public sealed class HttpAnalysisStore : IAnalysisStore, IAnalysisStats
 {
     private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -87,6 +88,22 @@ public sealed class HttpAnalysisStore : IAnalysisStore
         if (response.StatusCode == HttpStatusCode.NotFound) return false;
         response.EnsureSuccessStatusCode();
         return true;
+    }
+
+    public StatsSnapshot ComputeStats(StatsQuery query)
+    {
+        // Stats are aggregated server-side (GET /stats); we just rebuild the snapshot from
+        // the shared JSON contract — so `cifail stats --server` matches a local run exactly.
+        var qs = new List<string> { $"top={query.Top}" };
+        if (query.Since is { } since)
+            qs.Add($"since={Uri.EscapeDataString(since.ToUniversalTime().ToString("O"))}");
+        if (!string.IsNullOrWhiteSpace(query.RepoId))
+            qs.Add($"repo={Uri.EscapeDataString(query.RepoId)}");
+
+        var dto = GetJson<StatsJson.StatsDto>($"stats?{string.Join("&", qs)}");
+        return dto is null
+            ? StatsComputer.Compute(Array.Empty<StoredAnalysis>(), query)
+            : StatsJson.FromDto(dto);
     }
 
     public long Save(AnalysisRecord record) => throw new NotSupportedException(

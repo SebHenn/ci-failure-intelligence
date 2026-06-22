@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CiFail.Core.Analysis;
 using CiFail.Core.Storage;
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
@@ -11,7 +12,7 @@ namespace CiFail.Providers.Ef;
 /// is append-only and tiny, so create-if-absent is enough and keeps setup zero-touch).
 /// Not sealed so the pgvector store can extend it with in-DB similarity search (R10).
 /// </summary>
-public class EfAnalysisStore : IAnalysisStore, IFingerprintCounter
+public class EfAnalysisStore : IAnalysisStore, IFingerprintCounter, IAnalysisStats
 {
     /// <summary>The EF context; exposed to derived stores (e.g. pgvector search).</summary>
     protected readonly AnalysisDbContext Db;
@@ -100,6 +101,18 @@ public class EfAnalysisStore : IAnalysisStore, IFingerprintCounter
 
     public int CountByFingerprint(string fingerprint) =>
         Db.Analyses.Count(a => a.Fingerprint == fingerprint);
+
+    public StatsSnapshot ComputeStats(StatsQuery query)
+    {
+        // Filter by repo in SQL (so the scan budget is spent on the right rows), then let the
+        // shared StatsComputer handle since-filtering + aggregation — identical to every backend.
+        IQueryable<AnalysisEntity> q = Db.Analyses;
+        if (query.RepoId is not null) q = q.Where(a => a.RepoId == query.RepoId);
+
+        var rows = q.OrderByDescending(a => a.Id).Take(Math.Max(1, query.ScanLimit))
+            .AsEnumerable().Select(Map).ToList();
+        return StatsComputer.Compute(rows, query);
+    }
 
     protected static StoredAnalysis Map(AnalysisEntity a) => new()
     {

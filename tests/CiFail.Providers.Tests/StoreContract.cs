@@ -1,3 +1,4 @@
+using CiFail.Core.Analysis;
 using CiFail.Core.Storage;
 using FluentAssertions;
 
@@ -23,6 +24,7 @@ public static class StoreContract
         Open_failures_are_scoped_to_their_repo(store);
         Auto_resolution_records_source_and_commit(store);
         Manual_resolution_overrides_and_wins(store);
+        Stats_reflect_saved_failures(store);
     }
 
     private static AnalysisRecord SampleRecord(
@@ -137,6 +139,27 @@ public static class StoreContract
 
         // A second auto-resolution is a no-op (already resolved).
         store.SetAutoResolution(id, "another", "nope").Should().BeFalse();
+    }
+
+    private static void Stats_reflect_saved_failures(IAnalysisStore store)
+    {
+        // Scope to a fresh repo so the assertions are deterministic regardless of prior data.
+        // Goes through StatsService so it covers both the store's IAnalysisStats (SQLite/EF/Mongo)
+        // and the in-app fallback identically.
+        var repo = $"repo-{Guid.NewGuid():N}";
+        var recurring = store.Save(SampleRecord("recur", repoId: repo, commit: "a"));
+        store.Save(SampleRecord("recur", repoId: repo, commit: "b"));   // same fingerprint -> recurrence
+        store.Save(SampleRecord("single", repoId: repo, commit: "c"));
+        store.SetResolution(recurring, "fixed").Should().BeTrue();
+
+        var stats = StatsService.Compute(store, new StatsQuery { RepoId = repo, Top = 10 });
+
+        stats.Total.Should().Be(3);
+        stats.Resolved.Should().Be(1);
+        stats.Open.Should().Be(2);
+        stats.ByEcosystem.Should().ContainSingle(c => c.Key == "dotnet").Which.Count.Should().Be(3);
+        stats.TopFailures.Should().Contain(f => f.Fingerprint == "recur:abc123" && f.Count == 2);
+        stats.RecurrenceRate.Should().BeApproximately(0.5, 0.001); // 1 of 2 distinct fingerprints recurred
     }
 
     private static void Manual_resolution_overrides_and_wins(IAnalysisStore store)

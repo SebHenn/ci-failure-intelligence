@@ -1,3 +1,4 @@
+using CiFail.Core.Analysis;
 using CiFail.Core.Storage;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
@@ -12,7 +13,7 @@ namespace CiFail.Providers.Mongo;
 /// <c>cifail resolve &lt;id&gt;</c> works identically). Term vectors are stored natively
 /// as a sub-document rather than a JSON string.
 /// </summary>
-public sealed class MongoAnalysisStore : IAnalysisStore, IFingerprintCounter
+public sealed class MongoAnalysisStore : IAnalysisStore, IFingerprintCounter, IAnalysisStats
 {
     private readonly IMongoClient _client;
     private readonly IMongoCollection<AnalysisDoc> _analyses;
@@ -103,6 +104,20 @@ public sealed class MongoAnalysisStore : IAnalysisStore, IFingerprintCounter
 
     public int CountByFingerprint(string fingerprint) =>
         (int)_analyses.CountDocuments(a => a.Fingerprint == fingerprint);
+
+    public StatsSnapshot ComputeStats(StatsQuery query)
+    {
+        // Filter by repo in the query, then let the shared StatsComputer aggregate (since +
+        // flaky + MTTR), so Mongo matches every other backend exactly.
+        var filter = query.RepoId is null
+            ? FilterDefinition<AnalysisDoc>.Empty
+            : Builders<AnalysisDoc>.Filter.Eq(a => a.RepoId, query.RepoId);
+
+        var rows = _analyses.Find(filter)
+            .SortByDescending(a => a.Id).Limit(Math.Max(1, query.ScanLimit))
+            .ToList().Select(Map).ToList();
+        return StatsComputer.Compute(rows, query);
+    }
 
     private long NextId()
     {

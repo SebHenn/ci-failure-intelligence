@@ -111,7 +111,7 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
    timestamps. Also exposes `Scrub()`, which collapses volatile tokens (paths,
    numbers, GUIDs) — used for fingerprints and similarity so cosmetic differences
    don't matter.
-2. `Ingest/EcosystemDetector.Detect` — marker-count heuristic (dotnet/node/python),
+2. `Ingest/EcosystemDetector.Detect` — marker-count heuristic (dotnet/node/python/java/go/rust/ruby),
    falls back to `generic`; overridable via `--type`.
 3. `Rules/RuleEngine.Match` — runs applicable rules, returns matches ranked by
    confidence. Rules whose `ecosystem` is `generic` always apply; ecosystem-specific
@@ -157,6 +157,30 @@ standalone `reconcile` command (empty observed set); `init` installs post-commit
 hooks that call `cifail reconcile`. Skip it all with `analyze --no-git`. `reconcile --server
 <url>` (R11) runs the same flow against a remote server — the git context is always detected on
 the client (the server has no working tree); only the store differs.
+
+### Insights / stats (R16, `Core/Analysis/StatsComputer.cs` + `Storage/IAnalysisStats`)
+
+`cifail stats` turns history into signal: open/resolved/unmatched counts, by-ecosystem
+breakdown, top recurring fingerprints, recurrence rate, mean-time-to-resolution, and a
+**flaky** flag (a fingerprint that recurred *after* it had been resolved). `StatsComputer.Compute`
+is a **pure** function over `StoredAnalysis` rows — the single source of truth, so every backend
+returns identical numbers. `IAnalysisStats` is a **side-interface** (like `IFingerprintCounter`):
+SQLite/EF/Mongo implement it by pushing the cheap filters (repo, and for SQLite `since`) into the
+query then delegating to `StatsComputer`; `HttpAnalysisStore` implements it by calling the server's
+`GET /stats`. `StatsService.Compute(store, query)` routes to the interface when present, else falls
+back to `GetRecent(scanLimit)` + `StatsComputer`. JSON contract: `Output/StatsJson.cs` (PascalCase,
+durations as seconds). The server exposes `GET /stats?since=&repo=&top=` and the bundled dashboard
+renders a trends strip from it. Add new aggregations in `StatsComputer` (+ `StatsSnapshot`/`StatsJson`),
+not per-store.
+
+### Rule authoring tooling (R15, `Core/Rules/RulePackValidator.cs` + `Cli/Commands/Rules*.cs`)
+
+`cifail rules` has `list`, plus `test <regex>` (try a regex against a log, show captures),
+`validate [path]` (lint packs — malformed regex, missing id/match, bad confidence, duplicate ids;
+non-zero exit on error, run in CI on the shipped packs), and `explain <id>`. `RulePackValidator`
+surfaces the diagnostics the normal load path silently skips, using `RulePackLoader.DeserializeRaw`
+(unfiltered) + `EmbeddedDocuments()`. Duplicate id within a tier = error; embedded↔user = override
+warning. See `CONTRIBUTING.md` for the add-a-rule workflow.
 
 ### Rule packs (`Core/rulepacks/*.yaml`)
 

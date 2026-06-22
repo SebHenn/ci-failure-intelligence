@@ -23,6 +23,11 @@ app.Configure(config =>
         .WithExample("history")
         .WithExample("history", "42");
 
+    config.AddCommand<StatsCommand>("stats")
+        .WithDescription("Show trends across your history: top failures, flaky tests, resolution times.")
+        .WithExample("stats")
+        .WithExample("stats", "--since", "7d", "--top", "5");
+
     config.AddCommand<ResolveCommand>("resolve")
         .WithDescription("Save how you fixed a failure, so cifail can remind you next time.")
         .WithExample("resolve", "42", "--note", "\"Fixed the package name typo\"");

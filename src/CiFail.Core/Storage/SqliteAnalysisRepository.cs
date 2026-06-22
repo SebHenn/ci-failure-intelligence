@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CiFail.Core.Analysis;
 using Microsoft.Data.Sqlite;
 
 namespace CiFail.Core.Storage;
@@ -7,7 +8,7 @@ namespace CiFail.Core.Storage;
 /// SQLite-backed history store. Defaults to <c>~/.cifail/history.db</c>; pass an
 /// explicit path (or <c>":memory:"</c>) for tests. The schema is created on first use.
 /// </summary>
-public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCounter, IDisposable
+public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCounter, IAnalysisStats, IDisposable
 {
     private readonly SqliteConnection _connection;
 
@@ -228,6 +229,35 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCount
         cmd.Parameters.AddWithValue("$commit", resolvedCommit);
         cmd.Parameters.AddWithValue("$id", id);
         return cmd.ExecuteNonQuery() > 0;
+    }
+
+    public StatsSnapshot ComputeStats(StatsQuery query)
+    {
+        // Push the since/repo filters into SQL (ISO-8601 strings sort chronologically), then
+        // let the shared StatsComputer do the aggregation so every backend matches exactly.
+        using var cmd = _connection.CreateCommand();
+        var where = new List<string>();
+        if (query.Since is not null)
+        {
+            where.Add("analyzed_at >= $since");
+            cmd.Parameters.AddWithValue("$since", query.Since.Value.ToUniversalTime().ToString("O"));
+        }
+        if (query.RepoId is not null)
+        {
+            where.Add("repo_id = $repo");
+            cmd.Parameters.AddWithValue("$repo", query.RepoId);
+        }
+
+        var clause = where.Count == 0 ? "" : " WHERE " + string.Join(" AND ", where);
+        cmd.CommandText = $"{SelectColumns}{clause} ORDER BY id DESC LIMIT $scan;";
+        cmd.Parameters.AddWithValue("$scan", Math.Max(1, query.ScanLimit));
+
+        using var reader = cmd.ExecuteReader();
+        var rows = new List<StoredAnalysis>();
+        while (reader.Read()) rows.Add(ReadStored(reader));
+
+        // Filters are already applied in SQL; computer re-applies them harmlessly.
+        return StatsComputer.Compute(rows, query);
     }
 
     public int CountByFingerprint(string fingerprint)

@@ -127,6 +127,20 @@ cifail analyze samples/nuget-nu1101.log
 There's also `cifail rules list` to see every failure pattern cifail can recognize, and
 `cifail --help` (or `cifail analyze --help`) for the full list of options.
 
+### See the trends: `cifail stats`
+
+Once you've got some history, `cifail stats` turns it into signal — your most common
+failures, how many are still open vs resolved, a breakdown by ecosystem, how long fixes
+take on average, and a **flaky** flag for failures that were resolved and then came back
+(so the fix didn't really stick).
+
+```bash
+cifail stats                 # all-time summary
+cifail stats --since 7d      # just the last week (also: 24h, 2w, or a date)
+cifail stats --top 5 --json  # machine-readable, top 5 recurring failures
+cifail stats --server http://your-host:8080   # against a shared serve instance
+```
+
 ### It remembers your fixes — often without being told
 
 When you run cifail inside a git repository, it tags each failure with the commit you were
@@ -313,7 +327,9 @@ Reconciliation runs on your machine (it reads your git history) and writes the r
 the shared server, so a central service needs no checkout of its own.
 
 **Web dashboard.** Open the server's root (`http://your-host:8080/`) in a browser for a small
-built-in dashboard: browse recent failures, filter by ecosystem/status/repo, read the details
+built-in dashboard: a trends strip at the top (totals, recurrence rate, mean time to resolve,
+top recurring and flaky failures), then browse recent failures, filter by ecosystem/status/repo,
+read the details
 and resolution status (`✓` manual, `✓ auto`), and mark a failure resolved. It's a single
 bundled page (no separate install) that calls the same JSON API; if the server requires a
 token, paste it into the field at the top once and it's remembered in your browser.

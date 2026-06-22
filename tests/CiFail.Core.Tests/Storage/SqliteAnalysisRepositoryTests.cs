@@ -49,6 +49,22 @@ public class SqliteAnalysisRepositoryTests : IDisposable
     }
 
     [Fact]
+    public void ComputeStats_applies_since_filter_and_aggregates_in_sql_path()
+    {
+        var old = DateTimeOffset.UtcNow.AddDays(-30);
+        var now = DateTimeOffset.UtcNow;
+        _repo.Save(Record("old-rule") with { AnalyzedAt = old });
+        _repo.Save(Record("recur") with { AnalyzedAt = now });
+        _repo.Save(Record("recur") with { AnalyzedAt = now.AddMinutes(1) }); // same fingerprint
+
+        var stats = _repo.ComputeStats(new StatsQuery { Since = DateTimeOffset.UtcNow.AddDays(-1), Top = 10 });
+
+        stats.Total.Should().Be(2); // the 30-day-old row is filtered out in SQL
+        stats.TopFailures.Should().Contain(f => f.Fingerprint == "recur:abc123" && f.Count == 2);
+        stats.ByEcosystem.Should().ContainSingle(c => c.Key == "dotnet").Which.Count.Should().Be(2);
+    }
+
+    [Fact]
     public void GetRecent_returns_newest_first()
     {
         var first = _repo.Save(Record("a", "x"));

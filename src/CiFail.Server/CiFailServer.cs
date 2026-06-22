@@ -181,6 +181,29 @@ public static class CiFailServer
             return Json(JsonSerializer.Serialize(dtos, AnalysisJson.Options));
         });
 
+        // Aggregate stats over history (R16). Filters: ?since=<ISO-8601>&repo=<id>&top=N.
+        // Uses the store's IAnalysisStats when available, else an in-app fallback — identical
+        // numbers either way (see StatsService / StatsComputer).
+        app.MapGet("/stats", (HttpRequest request, Func<IAnalysisStore> stores) =>
+        {
+            DateTimeOffset? since = null;
+            if (DateTimeOffset.TryParse(request.Query["since"].FirstOrDefault(),
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
+                since = parsed;
+
+            var query = new StatsQuery
+            {
+                Since = since,
+                RepoId = request.Query["repo"].FirstOrDefault() is { Length: > 0 } r ? r : null,
+                Top = int.TryParse(request.Query["top"].FirstOrDefault(), out var t) && t > 0 ? t : 10,
+            };
+
+            using var store = stores();
+            var stats = StatsService.Compute(store, query);
+            return Json(JsonSerializer.Serialize(StatsJson.ToDto(stats), AnalysisJson.Options));
+        });
+
         // A single record, or 404.
         app.MapGet("/history/{id:long}", (long id, Func<IAnalysisStore> stores) =>
         {

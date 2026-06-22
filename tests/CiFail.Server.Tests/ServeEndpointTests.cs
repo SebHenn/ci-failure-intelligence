@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using CiFail.Core.Output;
+using CiFail.Core.Storage;
 using FluentAssertions;
 
 namespace CiFail.Server.Tests;
@@ -69,6 +70,36 @@ public sealed class ServeEndpointTests : IClassFixture<ServeFixture>
         updated.Status.Should().Be("resolved");
         updated.ResolutionSource.Should().Be("manual");
         updated.Resolution.Should().Be("fixed the typo");
+    }
+
+    [Fact]
+    public async Task Stats_endpoint_reports_aggregates()
+    {
+        var analysis = await Analyze(MatchingLog);
+
+        var response = await _client.GetAsync("stats?top=20");
+        response.EnsureSuccessStatusCode();
+        var stats = JsonSerializer.Deserialize<StatsJson.StatsDto>(
+            await response.Content.ReadAsStringAsync(), Json)!;
+
+        stats.Total.Should().BeGreaterThan(0);
+        (stats.Open + stats.Resolved).Should().Be(stats.Total);
+        stats.TopFailures.Should().Contain(f => f.Fingerprint == analysis.Fingerprint);
+        stats.ByEcosystem.Should().Contain(c => c.Key == "dotnet");
+    }
+
+    [Fact]
+    public async Task HttpStore_ComputeStats_round_trips_from_server()
+    {
+        // `cifail stats --server` path: the http store delegates to GET /stats and rebuilds
+        // the snapshot from the shared JSON contract.
+        var analysis = await Analyze(MatchingLog);
+
+        using var store = new HttpAnalysisStore(_client.BaseAddress!.ToString());
+        var stats = store.ComputeStats(new StatsQuery { Top = 20 });
+
+        stats.Total.Should().BeGreaterThan(0);
+        stats.TopFailures.Should().Contain(f => f.Fingerprint == analysis.Fingerprint);
     }
 
     [Fact]

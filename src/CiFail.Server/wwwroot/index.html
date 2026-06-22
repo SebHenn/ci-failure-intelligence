@@ -53,6 +53,17 @@
   .kv div:nth-child(odd) { color: var(--muted); }
   code { color: var(--accent); }
   .ph { color: var(--muted); padding: 40px 16px; text-align: center; }
+  .trends { display: flex; gap: 12px; flex-wrap: wrap; padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  .trends:empty { display: none; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; min-width: 86px; }
+  .card .n { font-size: 20px; font-weight: 600; }
+  .card .n.warn { color: var(--amber); }
+  .card .l { color: var(--muted); font-size: 12px; }
+  .card.wide { flex: 1; min-width: 220px; }
+  .card.wide ul { margin: 6px 0 0; padding: 0; list-style: none; }
+  .card.wide li { display: flex; justify-content: space-between; gap: 10px; }
+  .card.wide li + li { margin-top: 2px; }
+  .card.wide li span { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -71,6 +82,7 @@
     <button id="refresh" class="primary">Refresh</button>
   </header>
   <div id="banner" class="banner"></div>
+  <div id="trends" class="trends"></div>
   <div class="layout">
     <div class="list">
       <table>
@@ -195,15 +207,46 @@ async function resolve(id) {
   } catch (e) { banner(e.message); }
 }
 
+function fmtPct(x) { return Math.round((x || 0) * 100) + "%"; }
+function fmtDur(secs) {
+  if (secs == null) return "—";
+  if (secs >= 86400) return (secs / 86400).toFixed(1) + "d";
+  if (secs >= 3600) return (secs / 3600).toFixed(1) + "h";
+  if (secs >= 60) return Math.round(secs / 60) + "m";
+  return Math.round(secs) + "s";
+}
+
+async function loadStats() {
+  // Trends are best-effort; hard auth/network errors are already surfaced by load().
+  try {
+    const s = await (await api("stats?top=5")).json();
+    const card = (n, l, cls = "") => `<div class="card"><div class="n ${cls}">${esc(n)}</div><div class="l">${esc(l)}</div></div>`;
+    const li = (f) => `<li><code>${esc(f.RuleId)}</code><span>${f.Count}×${f.Flaky ? " ⚠" : ""}</span></li>`;
+    const top = (s.TopFailures || []).map(li).join("") || `<li class="muted">none</li>`;
+    const flaky = (s.Flaky || []).map(li).join("") || `<li class="muted">none 🎉</li>`;
+    $("trends").innerHTML =
+      card(s.Total, "failures") +
+      card(s.Open, "open") +
+      card(s.Resolved, "resolved") +
+      card(s.Unmatched, "unmatched", s.Unmatched ? "warn" : "") +
+      card(fmtPct(s.RecurrenceRate), "recurrence") +
+      card(fmtDur(s.MeanTimeToResolutionSeconds), "mean resolve") +
+      `<div class="card wide"><div class="l">top recurring</div><ul>${top}</ul></div>` +
+      `<div class="card wide"><div class="l">flaky (resolved → recurred)</div><ul>${flaky}</ul></div>`;
+  } catch { $("trends").innerHTML = ""; }
+}
+
 async function load() {
   try {
     banner("");
     all = await (await api("history?limit=200")).json();
     ecoOptions();
     renderList();
+    loadStats();
   } catch (e) {
     banner(e.message);
     all = []; renderList();
+    $("trends").innerHTML = "";
   }
 }
 
