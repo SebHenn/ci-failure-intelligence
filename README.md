@@ -160,6 +160,12 @@ we fix this last time?" history fills itself in. In `cifail history` these show 
   other scripts.
 - `--type dotnet|node|python|java|go|rust|ruby|generic` — tell cifail what kind of log
   this is, if it guesses wrong.
+- `--format auto|log|junit|trx` — feed cifail a **structured test report** instead of a raw
+  log. `auto` (the default) sniffs JUnit XML and .NET TRX by their extension/root element;
+  each *failing test* is analyzed on its own, so similarity and history work per test. A
+  report with no failures exits 0.
+- `--annotations` — when running under GitHub Actions, also print `::error::` annotations for
+  each failing test so they show up inline on the PR (pairs with `--format junit|trx`).
 - `--ai` — when cifail isn't sure (no rule matched, or only a low-confidence one), also ask
   an AI model for a root cause and fix. **Off by default**, and only consulted when the rules
   fall short — so cifail stays fast and fully offline unless you opt in. If the model is

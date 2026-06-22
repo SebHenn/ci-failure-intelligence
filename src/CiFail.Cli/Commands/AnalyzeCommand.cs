@@ -1,9 +1,11 @@
 using System.ComponentModel;
+using System.Xml;
 using CiFail.Cli.Output;
 using CiFail.Core.Ai;
 using CiFail.Core.Analysis;
 using CiFail.Core.Configuration;
 using CiFail.Core.Git;
+using CiFail.Core.Ingest.Reports;
 using CiFail.Core.Models;
 using CiFail.Core.Storage;
 using Spectre.Console;
@@ -36,6 +38,14 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         [CommandOption("--json")]
         [Description("Emit machine-readable JSON instead of a human report.")]
         public bool Json { get; init; }
+
+        [CommandOption("--format <FORMAT>")]
+        [Description("Input format: auto (default), log, junit, trx. Report formats analyze each failing test.")]
+        public string? Format { get; init; }
+
+        [CommandOption("--annotations")]
+        [Description("Emit GitHub Actions ::error:: annotations per failing test (when running under Actions).")]
+        public bool Annotations { get; init; }
 
         [CommandOption("--ai")]
         [Description("Consult an AI model (default: local Ollama) when rule confidence is low.")]
@@ -86,6 +96,35 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             return ExitInputError;
         }
 
+        // R17: a raw log is one unit; a JUnit/TRX report expands into one unit per failing
+        // test, so similarity/history/fingerprints work per test.
+        var format = TestReportParser.TryParseFormat(settings.Format);
+        if (format is null)
+        {
+            AnsiConsole.MarkupLine($"[red]error:[/] unknown --format '{Markup.Escape(settings.Format!)}' " +
+                "(use auto, log, junit, or trx).");
+            return ExitInputError;
+        }
+
+        List<AnalysisUnit> units;
+        try
+        {
+            units = BuildUnits(inputs, format.Value);
+        }
+        catch (XmlException ex)
+        {
+            AnsiConsole.MarkupLine($"[red]error:[/] could not parse the report — {Markup.Escape(ex.Message)}");
+            return ExitInputError;
+        }
+
+        if (units.Count == 0)
+        {
+            // A report that parsed cleanly but had no failing tests is a success.
+            if (!settings.Json)
+                AnsiConsole.MarkupLine("[green]✓[/] No failing tests found.");
+            return ExitMatched;
+        }
+
         var options = new AnalysisOptions
         {
             EcosystemOverride = settings.Type,
@@ -124,12 +163,12 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         var service = AnalysisService.CreateWithStore(store, git, ai, embedder);
 
         bool allMatched = true;
-        var results = new List<Analysis>(inputs.Count);
+        var results = new List<Analysis>(units.Count);
         var observed = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var (source, text) in inputs)
+        foreach (var unit in units)
         {
-            var analysis = service.Analyze(source, text, options);
+            var analysis = service.Analyze(unit.Source, unit.Text, options);
             results.Add(analysis);
             observed.Add(analysis.Fingerprint.ToString());
             allMatched &= analysis.HasMatch;
@@ -139,6 +178,10 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             EmitJson(results);
         else
             EmitConsole(results);
+
+        // GitHub annotations (R17): surface each failing test inline on the PR.
+        if (settings.Annotations)
+            EmitAnnotations(units, results);
 
         // Failures the current run did not reproduce (and that sit on an ancestor commit)
         // are credited to the commits since — reported only in the human view.
@@ -189,6 +232,57 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             return null;
         }
     }
+
+    /// <summary>One thing to analyze: a raw log, or a single failing test from a report.</summary>
+    private readonly record struct AnalysisUnit(string Source, string Text, TestFailure? Test);
+
+    /// <summary>
+    /// Expand raw inputs into analysis units. A log becomes one unit; a JUnit/TRX report becomes
+    /// one unit per failing test. In <c>auto</c> the format is sniffed per input.
+    /// </summary>
+    private static List<AnalysisUnit> BuildUnits(IReadOnlyList<(string source, string text)> inputs, ReportFormat requested)
+    {
+        var units = new List<AnalysisUnit>();
+        foreach (var (source, text) in inputs)
+        {
+            var fmt = requested == ReportFormat.Auto ? TestReportParser.Detect(source, text) : requested;
+            if (fmt is ReportFormat.Log or ReportFormat.Auto)
+            {
+                units.Add(new AnalysisUnit(source, text, null));
+                continue;
+            }
+
+            foreach (var failure in TestReportParser.ParseFailures(fmt, text))
+                units.Add(new AnalysisUnit($"{source}::{failure.FullName}", failure.ToLogText(), failure));
+        }
+        return units;
+    }
+
+    /// <summary>
+    /// Emit a GitHub Actions <c>::error::</c> annotation per failing test, so failures show
+    /// inline on the PR. Only fires under Actions (GITHUB_ACTIONS=true); a no-op elsewhere.
+    /// </summary>
+    private static void EmitAnnotations(IReadOnlyList<AnalysisUnit> units, IReadOnlyList<Analysis> results)
+    {
+        if (!string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        for (int i = 0; i < units.Count; i++)
+        {
+            if (units[i].Test is not { } test) continue;
+            var analysis = results[i];
+            var message = analysis.RootCause is { } rc ? $"{rc.Rule.Title} — {rc.Fix}" : test.Message;
+            Console.Out.WriteLine(
+                $"::error title={EscapeAnnotationProperty(test.FullName)}::{EscapeAnnotationData(message)}");
+        }
+    }
+
+    // GitHub workflow-command escaping (https://docs.github.com/actions ... workflow-commands).
+    private static string EscapeAnnotationData(string s) =>
+        s.Replace("%", "%25").Replace("\r", "%0D").Replace("\n", "%0A");
+
+    private static string EscapeAnnotationProperty(string s) =>
+        EscapeAnnotationData(s).Replace(":", "%3A").Replace(",", "%2C");
 
     private static List<(string, string)> ReadInputs(IReadOnlyList<string> paths)
     {

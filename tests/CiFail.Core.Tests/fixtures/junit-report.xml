@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="all" tests="3" failures="1" errors="1">
+  <testsuite name="com.example.OrderTests" tests="3" failures="1" errors="1">
+    <testcase name="computes_total" classname="com.example.OrderTests" time="0.012"/>
+    <testcase name="applies_discount" classname="com.example.OrderTests" time="0.004">
+      <failure message="expected: &lt;90.0&gt; but was: &lt;100.0&gt;" type="AssertionFailedError">
+org.opentest4j.AssertionFailedError: expected: &lt;90.0&gt; but was: &lt;100.0&gt;
+	at com.example.OrderTests.applies_discount(OrderTests.java:42)
+      </failure>
+    </testcase>
+    <testcase name="loads_config" classname="com.example.OrderTests" time="0.001">
+      <error message="java.lang.NullPointerException">
+java.lang.NullPointerException
+	at com.example.OrderTests.loads_config(OrderTests.java:51)
+      </error>
+    </testcase>
+  </testsuite>
+</testsuites>

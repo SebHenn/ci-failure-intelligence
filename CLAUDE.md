@@ -158,6 +158,16 @@ hooks that call `cifail reconcile`. Skip it all with `analyze --no-git`. `reconc
 <url>` (R11) runs the same flow against a remote server — the git context is always detected on
 the client (the server has no working tree); only the store differs.
 
+### Structured test-report ingestion (R17, `Core/Ingest/Reports/TestReportParser.cs`)
+
+`analyze --format auto|log|junit|trx` (default `auto`: sniff by extension/root element). JUnit XML
+and .NET TRX are parsed (BCL `System.Xml.Linq`, namespaces ignored by local-name match → ships slim)
+into `TestFailure`s; the CLI expands each failing test into its own **analysis unit**
+(`source = <path>::<FullName>`, text = `TestFailure.ToLogText()`) so rules/similarity/fingerprints
+run per test. A clean report with no failures exits 0. `--annotations` emits GitHub
+`::error title=…::…` lines per failing test (only under `GITHUB_ACTIONS=true`; escaped per the
+workflow-command rules). Unit-building + annotation logic live in `AnalyzeCommand`; the parser is in Core.
+
 ### Insights / stats (R16, `Core/Analysis/StatsComputer.cs` + `Storage/IAnalysisStats`)
 
 `cifail stats` turns history into signal: open/resolved/unmatched counts, by-ecosystem

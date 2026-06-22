@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TestRun id="00000000-0000-0000-0000-000000000000" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Results>
+    <UnitTestResult testName="CiFail.Core.Tests.RuleEngineTests.Matches_nu1101" outcome="Passed" duration="00:00:00.01" />
+    <UnitTestResult testName="CiFail.Core.Tests.OrderTests.AppliesDiscount" outcome="Failed" duration="00:00:00.02">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Values differ. Expected: 90 Actual: 100</Message>
+          <StackTrace>   at CiFail.Core.Tests.OrderTests.AppliesDiscount() in OrderTests.cs:line 42</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+</TestRun>
