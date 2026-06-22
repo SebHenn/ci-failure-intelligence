@@ -1,0 +1,59 @@
+# Go / go build / go test rule pack
+
+- id: go-undefined
+  ecosystem: go
+  category: compile
+  title: Go undefined symbol
+  match: "(?<file>[^\\s:]+\\.go):(?<line>\\d+):\\d+: undefined: (?<symbol>[\\w.]+)"
+  confidence: 0.8
+  fix: |
+    {file}:{line} references '{symbol}', which the compiler can't find. Check for a
+    typo, a missing import, or an unexported name from another package. Run
+    `go build ./...` locally to reproduce.
+
+- id: go-cannot-find-package
+  ecosystem: go
+  category: dependency
+  title: Go cannot find package
+  match: "cannot find package \"(?<package>[^\"]+)\"|no required module provides package (?<package2>[^\\s;]+)"
+  confidence: 0.85
+  fix: |
+    Go could not resolve a required package. Run `go mod tidy` to add the missing
+    requirement, confirm the import path is spelled correctly, and that the module
+    is reachable (GOPROXY / private-module auth).
+  docs: https://go.dev/ref/mod
+
+- id: go-mod-mismatch
+  ecosystem: go
+  category: dependency
+  title: go.mod / go.sum out of sync
+  match: "(?:missing go\\.sum entry|updates to go\\.mod needed|inconsistent vendoring|go\\.sum is out of date)"
+  confidence: 0.85
+  fix: |
+    go.mod/go.sum are out of sync with the source. Run `go mod tidy` (and commit the
+    result), or `go mod download` to populate go.sum. In CI, build with
+    `-mod=mod` only if you intend modules to be updated.
+  docs: https://go.dev/ref/mod#go-mod-tidy
+
+- id: go-build-failed
+  ecosystem: go
+  category: build
+  title: Go build failed
+  match: "(?<file>[^\\s:]+\\.go):(?<line>\\d+):\\d+: (?<message>.+)"
+  confidence: 0.55
+  fix: |
+    Go failed to compile {file}:{line}: {message}
+    Fix the reported line and re-run `go build ./...`. This is a generic compile
+    error; a more specific rule (e.g. undefined symbol) wins when it applies.
+
+- id: go-test-failed
+  ecosystem: go
+  category: test
+  title: Go test failed
+  match: "--- FAIL: (?<test>[\\w/]+)|^FAIL\\s+(?<package>[\\w./\\-]+)"
+  confidence: 0.65
+  fix: |
+    A Go test failed ({test}{package}). Scroll up to the FAIL block for the assertion
+    and t.Errorf/t.Fatalf message. Reproduce a single test with
+    `go test -run '^{test}$' ./...`.
+  docs: https://pkg.go.dev/testing

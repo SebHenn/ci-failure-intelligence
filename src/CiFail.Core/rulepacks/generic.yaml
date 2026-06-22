@@ -56,3 +56,86 @@
     A step exited with code {code}. This is a generic failure signal — the real
     cause is in that command's own output above. Re-run that command locally to
     reproduce and capture the specific error.
+
+- id: generic-timeout
+  ecosystem: generic
+  category: ci
+  title: Step or job timed out
+  match: "(?:The (?:job|operation|step) (?:running|was) .*?canceled|timed out after|timeout after|Cancelling since a higher priority|The job running on runner .* has exceeded the maximum execution time|ETIMEDOUT|context deadline exceeded)"
+  confidence: 0.6
+  fix: |
+    A step or job was cancelled for exceeding its time limit. Find the slow step
+    (often a hung test, a network wait, or an infinite retry) and add a tighter
+    per-command timeout, or raise the job's timeout-minutes if the work is genuinely
+    that long. A hang usually points at a missing input or a deadlock.
+
+- id: generic-disk-space
+  ecosystem: generic
+  category: environment
+  title: No space left on device
+  match: "(?:No space left on device|ENOSPC|write error: No space|disk quota exceeded)"
+  confidence: 0.8
+  fix: |
+    The runner ran out of disk. Free space before the heavy step (prune Docker
+    images/layers, delete caches/artifacts you don't need, clean build output), or
+    use a larger runner. Hosted runners are small — large Docker builds and node_modules
+    are the usual culprits.
+
+- id: generic-network-dns
+  ecosystem: generic
+  category: network
+  title: Network / DNS failure
+  match: "(?:Temporary failure in name resolution|Could not resolve host|getaddrinfo (?:ENOTFOUND|EAI_AGAIN)|Connection refused|Connection timed out|Network is unreachable|ECONNREFUSED|ECONNRESET)"
+  confidence: 0.6
+  fix: |
+    A network connection failed (DNS or connectivity). Often transient — retry the
+    step. If it persists, check the host/URL is correct and reachable from the
+    runner, that no firewall/proxy is blocking it, and that any required VPN or
+    service container is up before this step runs.
+
+- id: generic-tls-cert
+  ecosystem: generic
+  category: network
+  title: TLS / certificate verification failed
+  match: "(?:certificate verify failed|SSL certificate problem|unable to get local issuer certificate|x509: certificate signed by unknown authority|CERTIFICATE_VERIFY_FAILED|self.signed certificate)"
+  confidence: 0.7
+  fix: |
+    A TLS handshake failed because the certificate couldn't be verified. Install the
+    CA chain on the runner (corporate/private mirrors often need a custom root CA),
+    fix an expired/misconfigured server cert, or check the clock is correct. Disabling
+    verification is a last resort and a security risk.
+
+- id: generic-rate-limit
+  ecosystem: generic
+  category: network
+  title: Rate limited (HTTP 429)
+  match: "(?:HTTP(?:/\\d(?:\\.\\d)?)? 429|429 Too Many Requests|rate limit exceeded|You have exceeded a secondary rate limit|API rate limit exceeded)"
+  confidence: 0.7
+  fix: |
+    A service rejected requests for rate limiting (429). Authenticate so you get a
+    higher quota (e.g. a token for registry/API pulls), add caching to cut request
+    volume, or back off and retry. For Docker Hub pulls, log in or mirror the image.
+
+- id: generic-docker-build
+  ecosystem: generic
+  category: build
+  title: Docker build failed
+  match: "(?:failed to solve|ERROR: failed to solve|COPY failed|ADD failed|manifest unknown|failed to compute cache key|dockerfile parse error|returned a non-zero code)"
+  confidence: 0.6
+  fix: |
+    A Docker image build failed. Read the failing build step (BuildKit prints the
+    Dockerfile line). Common causes: a COPY/ADD source path that doesn't exist in the
+    build context, a base image tag that's gone (manifest unknown), or a RUN command
+    that exited non-zero. Reproduce with `docker build .` locally.
+
+- id: generic-registry-auth
+  ecosystem: generic
+  category: auth
+  title: Registry authentication / authorization failed
+  match: "(?:denied: requested access to the resource is denied|unauthorized: authentication required|401 Unauthorized|403 Forbidden|pull access denied|no basic auth credentials|authentication required)"
+  confidence: 0.65
+  fix: |
+    Access to a registry/artifact was denied (401/403). Provide valid credentials in
+    CI (a registry login step or a token secret), confirm the token has the right
+    scope (read:packages / pull), and that the image/package name and visibility are
+    correct. Expired or unset secrets are the usual cause.

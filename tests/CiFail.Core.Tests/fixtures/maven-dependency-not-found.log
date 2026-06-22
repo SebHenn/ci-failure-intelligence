@@ -1,0 +1,7 @@
+[INFO] Scanning for projects...
+[INFO] Building payment-gateway 2.3.1
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal on project payment-gateway: Could not resolve dependencies for project com.acme:payment-gateway:jar:2.3.1
+[ERROR] Could not find artifact com.stripe:stripe-java:jar:24.1.0 in central (https://repo.maven.apache.org/maven2)
+[ERROR] -> [Help 1]
+[INFO] BUILD FAILURE

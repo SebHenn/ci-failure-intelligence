@@ -1,0 +1,6 @@
+Fetching gem metadata from https://rubygems.org/...
+Resolving dependencies...
+Could not find gem 'nokogiri (~> 1.16)' in rubygems repository https://rubygems.org/ or installed locally.
+The source contains the following gems matching 'nokogiri':
+  * nokogiri-1.15.4
+Run `bundle install` to install missing gems.

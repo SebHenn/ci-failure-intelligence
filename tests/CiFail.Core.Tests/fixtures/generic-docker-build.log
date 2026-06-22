@@ -1,0 +1,6 @@
+#8 [4/7] COPY ./app /usr/src/app
+#8 ERROR: failed to compute cache key: "/app" not found: not found
+------
+ > [4/7] COPY ./app /usr/src/app:
+------
+ERROR: failed to solve: failed to compute cache key

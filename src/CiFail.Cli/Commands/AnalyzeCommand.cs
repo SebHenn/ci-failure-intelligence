@@ -30,7 +30,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         public string[] Paths { get; init; } = Array.Empty<string>();
 
         [CommandOption("-t|--type <ECOSYSTEM>")]
-        [Description("Force ecosystem (dotnet|node|python|generic) instead of auto-detecting.")]
+        [Description("Force ecosystem (dotnet|node|python|java|go|rust|ruby|generic) instead of auto-detecting.")]
         public string? Type { get; init; }
 
         [CommandOption("--json")]

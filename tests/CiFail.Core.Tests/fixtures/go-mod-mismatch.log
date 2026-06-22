@@ -1,0 +1,5 @@
+go: downloading github.com/spf13/cobra v1.8.0
+go test ./...
+go: updates to go.mod needed; to update it:
+	go mod tidy
+missing go.sum entry for module providing package github.com/spf13/cobra

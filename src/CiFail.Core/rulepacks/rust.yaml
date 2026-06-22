@@ -1,0 +1,48 @@
+# Rust / Cargo rule pack
+
+- id: rust-error-code
+  ecosystem: rust
+  category: compile
+  title: Rust compile error
+  match: "error\\[(?<code>E\\d{4})\\]: (?<message>.+)"
+  confidence: 0.8
+  fix: |
+    The Rust compiler rejected the code ({code}): {message}
+    Run `cargo build` locally to see the annotated source span, and
+    `rustc --explain {code}` for a detailed explanation of this error class.
+  docs: https://doc.rust-lang.org/error_codes/error-index.html
+
+- id: rust-unresolved-import
+  ecosystem: rust
+  category: dependency
+  title: Rust unresolved import / crate
+  match: "error\\[E0432\\]: unresolved import `(?<import>[^`]+)`|error\\[E0433\\]: failed to resolve: (?<message>.+)"
+  confidence: 0.82
+  fix: |
+    Rust couldn't resolve an import ('{import}{message}'). Add the crate to
+    Cargo.toml ([dependencies]) and run `cargo build`, check the module path/`use`
+    statement, and confirm the feature gating the item is enabled.
+  docs: https://doc.rust-lang.org/cargo/guide/dependencies.html
+
+- id: cargo-could-not-compile
+  ecosystem: rust
+  category: build
+  title: Cargo could not compile a crate
+  match: "error: could not compile `(?<crate>[^`]+)`"
+  confidence: 0.6
+  fix: |
+    Cargo aborted while compiling crate '{crate}'. The real cause is the error[E####]
+    line(s) above this summary. Fix those, then re-run `cargo build`. Use
+    `cargo build -v` for the exact rustc invocation.
+
+- id: rust-test-panic
+  ecosystem: rust
+  category: test
+  title: Rust test panicked / failed
+  match: "thread '(?<thread>[^']+)' panicked at (?<location>[^\\n]+)|test result: FAILED\\. \\d+ passed; (?<failed>\\d+) failed"
+  confidence: 0.65
+  fix: |
+    A Rust test failed{thread}. Read the panic message/location above ({location})
+    for the assertion that fired. Reproduce with
+    `cargo test <test_name> -- --nocapture` and set RUST_BACKTRACE=1 for a backtrace.
+  docs: https://doc.rust-lang.org/book/ch11-01-writing-tests.html

@@ -10,5 +10,9 @@ public enum Ecosystem
     Dotnet,
     Node,
     Python,
+    Java,
+    Go,
+    Rust,
+    Ruby,
     Generic,
 }

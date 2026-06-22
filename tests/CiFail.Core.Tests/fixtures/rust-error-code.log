@@ -1,0 +1,7 @@
+   Compiling widget v0.4.2 (/home/runner/work/widget)
+error[E0425]: cannot find value `recieve_buffer` in this scope
+   --> src/net/socket.rs:120:21
+    |
+120 |         let n = recieve_buffer.len();
+    |                 ^^^^^^^^^^^^^^ help: a local variable with a similar name exists: `receive_buffer`
+error: could not compile `widget` (bin "widget") due to 1 previous error

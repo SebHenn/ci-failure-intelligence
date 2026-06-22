@@ -15,6 +15,13 @@ public class RulePackBreadthTests
     [InlineData("node-missing-module.log", Ecosystem.Node, "npm-missing-module")]
     [InlineData("python-modulenotfound.log", Ecosystem.Python, "py-module-not-found")]
     [InlineData("python-pip-resolution.log", Ecosystem.Python, "pip-resolution-impossible")]
+    [InlineData("java-compile-error.log", Ecosystem.Java, "java-compile-error")]
+    [InlineData("maven-dependency-not-found.log", Ecosystem.Java, "maven-dependency-not-found")]
+    [InlineData("go-undefined.log", Ecosystem.Go, "go-undefined")]
+    [InlineData("go-mod-mismatch.log", Ecosystem.Go, "go-mod-mismatch")]
+    [InlineData("rust-error-code.log", Ecosystem.Rust, "rust-error-code")]
+    [InlineData("ruby-bundler-gem.log", Ecosystem.Ruby, "bundler-gem-not-found")]
+    [InlineData("ruby-loaderror.log", Ecosystem.Ruby, "ruby-load-error")]
     public void Detects_ecosystem_and_picks_expected_rule(string fixture, Ecosystem eco, string ruleId)
     {
         var analysis = Service.Analyze(fixture, Fixtures.Load(fixture));
@@ -47,5 +54,33 @@ public class RulePackBreadthTests
         analysis.HasMatch.Should().BeTrue();
         // Generic rules apply across ecosystems; the OOM rule should be the top signal.
         analysis.Matches.Should().Contain(m => m.Rule.Id == "generic-oom");
+    }
+
+    [Theory]
+    [InlineData("generic-disk-space.log", "generic-disk-space")]
+    [InlineData("generic-network-dns.log", "generic-network-dns")]
+    [InlineData("generic-rate-limit.log", "generic-rate-limit")]
+    [InlineData("generic-docker-build.log", "generic-docker-build")]
+    public void Cross_cutting_generic_rule_matches(string fixture, string ruleId)
+    {
+        var analysis = Service.Analyze(fixture, Fixtures.Load(fixture));
+
+        analysis.HasMatch.Should().BeTrue();
+        analysis.Matches.Should().Contain(m => m.Rule.Id == ruleId);
+    }
+
+    [Fact]
+    public void Captures_error_code_for_rust()
+    {
+        var analysis = Service.Analyze("r", Fixtures.Load("rust-error-code.log"));
+        analysis.RootCause!.Captures["code"].Should().Be("E0425");
+        analysis.RootCause.Fix.Should().Contain("E0425");
+    }
+
+    [Fact]
+    public void Captures_symbol_for_go_undefined()
+    {
+        var analysis = Service.Analyze("g", Fixtures.Load("go-undefined.log"));
+        analysis.RootCause!.Captures["symbol"].Should().Be("render.JSONResponse");
     }
 }

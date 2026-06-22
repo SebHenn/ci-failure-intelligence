@@ -1,0 +1,48 @@
+# Ruby / Bundler / RSpec / Rake rule pack
+
+- id: bundler-gem-not-found
+  ecosystem: ruby
+  category: dependency
+  title: Bundler could not find a gem
+  match: "Could not find gem '(?<gem>[^']+)'|An error occurred while installing (?<gem2>[\\w\\-]+) \\("
+  confidence: 0.85
+  fix: |
+    Bundler couldn't resolve a gem. Check the name/version in the Gemfile, run
+    `bundle install` locally, and confirm the source (rubygems.org or a private gem
+    server) is declared and reachable from the runner.
+  docs: https://bundler.io/man/bundle-install.1.html
+
+- id: ruby-load-error
+  ecosystem: ruby
+  category: dependency
+  title: Ruby LoadError (cannot load file)
+  match: "(?:cannot load such file|LoadError) -- (?<file>[^\\s]+)"
+  confidence: 0.8
+  fix: |
+    Ruby couldn't load '{file}'. If it's a gem, add it to the Gemfile and run it via
+    `bundle exec` so the bundled gems are on the load path. If it's a local file,
+    check the require path (relative vs absolute) and casing.
+
+- id: rspec-failure
+  ecosystem: ruby
+  category: test
+  title: RSpec examples failed
+  match: "(?<counts>\\d+ examples?, (?<failed>[1-9]\\d*) failures?)"
+  confidence: 0.65
+  fix: |
+    RSpec reported failures ({counts}). Scroll up to the "Failures:" section for the
+    expected vs got values and the offending spec file:line. Re-run just those with
+    `bundle exec rspec ./spec/path_spec.rb:<line>`.
+  docs: https://rspec.info/documentation/
+
+- id: rake-aborted
+  ecosystem: ruby
+  category: build
+  title: Rake task aborted
+  match: "rake aborted!\\s*\\n?(?<message>[^\\n]+)?"
+  confidence: 0.55
+  fix: |
+    A Rake task aborted{message}. The underlying exception and the failing task are
+    on the lines just below "rake aborted!". Re-run with `rake <task> --trace` to get
+    the full backtrace.
+  docs: https://ruby.github.io/rake/

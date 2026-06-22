@@ -1,0 +1,5 @@
+rake aborted!
+LoadError: cannot load such file -- nokogiri
+/home/runner/work/app/config/application.rb:7:in `require'
+/home/runner/work/app/Rakefile:4:in `<main>'
+(See full trace by running task with --trace)

@@ -1,0 +1,3 @@
+Cloning into 'deps'...
+fatal: unable to access 'https://internal.example.com/repo.git/': Could not resolve host: internal.example.com
+ssh: Temporary failure in name resolution

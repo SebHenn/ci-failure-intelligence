@@ -1,0 +1,5 @@
+go build ./...
+# github.com/acme/widget/internal/server
+internal/server/handler.go:88:14: undefined: render.JSONResponse
+internal/server/handler.go:91:9: undefined: log.Infow
+note: module requires Go 1.21

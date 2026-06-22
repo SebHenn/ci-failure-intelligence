@@ -1,0 +1,85 @@
+# Java / Maven / Gradle / JUnit rule pack
+# Each rule: id, ecosystem, category, title, match (regex, named groups allowed),
+# confidence (0..1), fix (template with {group} placeholders), docs (optional).
+
+- id: java-compile-error
+  ecosystem: java
+  category: compile
+  title: Java compilation error
+  match: "\\[ERROR\\] (?<file>[^\\s:]+\\.java):\\[(?<line>\\d+),\\d+\\] (?<message>.+)"
+  confidence: 0.7
+  fix: |
+    The Java compiler rejected {file} at line {line}: {message}
+    Fix the offending source line and rebuild. Run `mvn compile` (or
+    `./gradlew compileJava`) locally to iterate quickly.
+
+- id: maven-dependency-not-found
+  ecosystem: java
+  category: dependency
+  title: Maven could not resolve a dependency
+  match: "Could not (?:find|resolve) (?:artifact|dependencies for project)?\\s*(?<artifact>[\\w.\\-]+:[\\w.\\-]+:[\\w.\\-]+(?::[\\w.\\-]+)?)"
+  confidence: 0.85
+  fix: |
+    Maven could not resolve '{artifact}'. Check the groupId/artifactId/version for
+    typos, confirm the repository hosting it is declared in pom.xml or settings.xml,
+    and that any private repo credentials are configured on the runner.
+  docs: https://maven.apache.org/guides/mini/guide-multiple-repositories.html
+
+- id: maven-build-failure
+  ecosystem: java
+  category: build
+  title: Maven build failed
+  match: "\\[INFO\\] BUILD FAILURE|\\[ERROR\\] Failed to execute goal (?<goal>[\\w.\\-:]+)"
+  confidence: 0.5
+  fix: |
+    The Maven build failed{goal}. The real cause is in the [ERROR] lines just above
+    this summary — usually a failing plugin goal, a compile error, or a test
+    failure. Re-run with `mvn -e` for stack traces or `-X` for full debug output.
+
+- id: gradle-build-failed
+  ecosystem: java
+  category: build
+  title: Gradle build failed
+  match: "FAILURE: Build failed with an exception|\\* What went wrong:\\s*\\n?(?<reason>.+)?"
+  confidence: 0.5
+  fix: |
+    The Gradle build failed. Read the "* What went wrong:" section above for the
+    failing task and cause. Re-run with `./gradlew build --stacktrace` (or `--info`)
+    to see the underlying exception.
+  docs: https://docs.gradle.org/current/userguide/troubleshooting.html
+
+- id: junit-assertion-failed
+  ecosystem: java
+  category: test
+  title: JUnit test assertion failed
+  match: "(?:org\\.opentest4j\\.AssertionFailedError|java\\.lang\\.AssertionError)(?:: (?<message>.+))?"
+  confidence: 0.65
+  fix: |
+    A JUnit test failed an assertion{message}. Compare the expected vs actual values
+    in the lines that follow. Reproduce a single test with
+    `mvn test -Dtest=<ClassName>#<methodName>` or `./gradlew test --tests <Class>`.
+  docs: https://junit.org/junit5/docs/current/user-guide/
+
+- id: java-out-of-memory
+  ecosystem: java
+  category: environment
+  title: Java out of memory
+  match: "java\\.lang\\.OutOfMemoryError: (?<kind>[^\\n]+)"
+  confidence: 0.8
+  fix: |
+    The JVM ran out of memory ({kind}). Raise the heap with MAVEN_OPTS/JAVA_OPTS
+    (e.g. -Xmx2g), give the runner/container more memory, or for "GC overhead limit"
+    /"Metaspace" investigate a leak or a too-small Metaspace.
+  docs: https://docs.oracle.com/javase/8/docs/technotes/guides/troubleshoot/memleaks001.html
+
+- id: gradle-daemon-disappeared
+  ecosystem: java
+  category: environment
+  title: Gradle daemon disappeared
+  match: "Gradle build daemon disappeared unexpectedly|The message received from the daemon indicates that the daemon has disappeared"
+  confidence: 0.7
+  fix: |
+    The Gradle daemon was killed mid-build — almost always the OS OOM-killer on a
+    memory-starved runner. Lower org.gradle.jvmargs (-Xmx), give the runner more
+    memory, or disable the daemon in CI with `--no-daemon`.
+  docs: https://docs.gradle.org/current/userguide/gradle_daemon.html
