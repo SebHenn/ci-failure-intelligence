@@ -1,0 +1,7 @@
+> phpunit
+PHP Fatal error:  Uncaught RuntimeException: Database connection failed in /app/src/Db.php:42
+Stack trace:
+#0 /app/src/App.php(17): App\Db->connect()
+#1 {main}
+  thrown in /app/src/Db.php on line 42
+Script php artisan test handling the test event returned with error code 255

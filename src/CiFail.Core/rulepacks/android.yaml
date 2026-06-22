@@ -1,0 +1,76 @@
+# Android / Gradle (Android-specific) rule pack.
+# Java/Gradle JVM errors live in java.yaml; these are Android-toolchain specific.
+
+- id: android-resource-not-found
+  ecosystem: android
+  category: build
+  title: Android resource linking failed
+  match: "(?:error: )?resource (?<resource>[\\w.@/:+-]+) not found|AAPT: error: resource (?<resource2>[\\w.@/:+-]+) not found"
+  confidence: 0.8
+  fix: |
+    AAPT couldn't resolve a resource reference. Check it exists in res/ with the right
+    name and type, that the referenced library/module is a dependency, and that you
+    didn't typo an @drawable/@string id. A clean build (`./gradlew clean`) clears stale
+    R classes.
+  docs: https://developer.android.com/studio/build
+
+- id: android-duplicate-class
+  ecosystem: android
+  category: dependency
+  title: Duplicate class on the classpath
+  match: "Duplicate class (?<class>[\\w.$]+) found in (?:modules|the modules)"
+  confidence: 0.8
+  fix: |
+    Two dependencies bundle the same class {class}. Find the conflicting versions with
+    `./gradlew :app:dependencies`, then exclude one transitive copy or align versions
+    (a BOM/`resolutionStrategy`). Mixing a library with its `-jvm`/support variant is a
+    common cause.
+  docs: https://developer.android.com/build/dependencies
+
+- id: android-manifest-merger
+  ecosystem: android
+  category: build
+  title: Manifest merger failed
+  match: "Manifest merger failed ?: (?<message>.+)"
+  confidence: 0.8
+  fix: |
+    The Android manifest merger hit a conflict: {message}
+    A library's AndroidManifest declares something incompatible with yours (often
+    minSdk, an attribute, or a duplicate). Add a `tools:replace`/`tools:remove` rule or
+    align the setting; the merged-manifest report shows each contributor.
+
+- id: android-sdk-license
+  ecosystem: android
+  category: environment
+  title: Android SDK component not accepted/installed
+  match: "(?:You have not accepted the license agreements|Failed to install the following Android SDK packages|SDK location not found)"
+  confidence: 0.8
+  fix: |
+    The build couldn't use an Android SDK component on the runner. Accept licenses with
+    `yes | sdkmanager --licenses` (or the android-actions/setup-android action), install
+    the required platform/build-tools, and set ANDROID_SDK_ROOT / local.properties
+    `sdk.dir`.
+
+- id: android-gradle-task-failed
+  ecosystem: android
+  category: build
+  title: Android Gradle task failed
+  match: "Execution failed for task '(?<task>:[\\w:-]+)'"
+  confidence: 0.55
+  fix: |
+    A Gradle task failed ({task}). The real cause is the lines just below the "What
+    went wrong" header. Re-run with `--stacktrace` (or `--info`) for detail and
+    reproduce locally; a more specific rule (resources, duplicate class, manifest) wins
+    when it applies.
+
+- id: android-dexing-error
+  ecosystem: android
+  category: build
+  title: Dexing / method limit error
+  match: "(?:Cannot fit requested classes in a single dex file|The number of method references .* exceed|com\\.android\\.dex\\.DexException)"
+  confidence: 0.75
+  fix: |
+    The app exceeded the 64K method limit for a single dex file. Enable multidex
+    (`multiDexEnabled true` and the multidex dependency, or minSdk 21+ which has it by
+    default), and shrink the method count with R8/ProGuard in release builds.
+  docs: https://developer.android.com/build/multidex

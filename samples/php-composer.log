@@ -1,0 +1,8 @@
+Loading composer repositories with package information
+Updating dependencies
+Your requirements could not be resolved to an installable set of packages.
+
+  Problem 1
+    - Root composer.json requires guzzlehttp/guzzle ^9.0, it could not be found in any version.
+
+Could not find package guzzlehttp/guzzle with stability stable.

@@ -1,0 +1,8 @@
+Acquiring state lock. This may take a few moments...
+╷
+│ Error: Error acquiring the state lock
+│
+│ Error message: ConditionalCheckFailedException: The conditional request failed
+│   ID:        7a1b2c3d-0000-1111-2222-333344445555
+│   Operation: OperationTypeApply
+╵

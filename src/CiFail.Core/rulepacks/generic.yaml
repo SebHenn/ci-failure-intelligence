@@ -139,3 +139,27 @@
     CI (a registry login step or a token secret), confirm the token has the right
     scope (read:packages / pull), and that the image/package name and visibility are
     correct. Expired or unset secrets are the usual cause.
+
+- id: generic-segfault
+  ecosystem: generic
+  category: runtime
+  title: Segmentation fault / process crash
+  match: "(?:Segmentation fault|SIGSEGV|signal: segmentation fault|core dumped|caught signal SIGABRT|signal SIGBUS)"
+  confidence: 0.65
+  fix: |
+    A process crashed with a memory fault. This usually points at a native bug — a bad
+    pointer in compiled code, a mismatched native dependency/ABI, or a stack overflow
+    from deep recursion. Re-run with sanitizers/a debugger locally, or pin the native
+    library version that last worked.
+
+- id: generic-git-auth
+  ecosystem: generic
+  category: auth
+  title: Git authentication / clone failed
+  match: "(?:fatal: (?:Authentication failed|could not read Username|repository '.*' not found)|Permission denied \\(publickey\\)|remote: (?:Invalid username or password|Repository not found)|could not read Password)"
+  confidence: 0.7
+  fix: |
+    Git couldn't authenticate to a remote. For HTTPS, supply a valid token (a PAT/CI
+    token with repo read scope) instead of a password; for SSH, add the deploy key to
+    the runner and the repo. Check the remote URL and that the secret hasn't expired —
+    private submodules need credentials too.

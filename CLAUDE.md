@@ -122,7 +122,7 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
    timestamps. Also exposes `Scrub()`, which collapses volatile tokens (paths,
    numbers, GUIDs) — used for fingerprints and similarity so cosmetic differences
    don't matter.
-2. `Ingest/EcosystemDetector.Detect` — marker-count heuristic (dotnet/node/python/java/go/rust/ruby),
+2. `Ingest/EcosystemDetector.Detect` — marker-count heuristic (dotnet/node/python/java/go/rust/ruby/php/cpp/infra/swift/android),
    falls back to `generic`; overridable via `--type`.
 3. `Rules/RuleEngine.Match` — runs applicable rules, returns matches ranked by
    confidence. Rules whose `ecosystem` is `generic` always apply; ecosystem-specific

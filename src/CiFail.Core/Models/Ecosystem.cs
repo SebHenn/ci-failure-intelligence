@@ -14,5 +14,10 @@ public enum Ecosystem
     Go,
     Rust,
     Ruby,
+    Php,
+    Cpp,
+    Infra,
+    Swift,
+    Android,
     Generic,
 }

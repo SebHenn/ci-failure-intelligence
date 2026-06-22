@@ -1,0 +1,9 @@
+Loading composer repositories with package information
+Updating dependencies
+Your requirements could not be resolved to an installable set of packages.
+
+  Problem 1
+    - Root composer.json requires monolog/monolog ^4.0, it could not be found in any version, there may be a typo in the package name.
+
+Could not find package monolog/monolog with stability stable.
+composer install failed

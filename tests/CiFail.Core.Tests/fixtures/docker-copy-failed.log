@@ -1,0 +1,14 @@
+$ docker build -t myapp:latest .
+#5 [2/4] COPY package.json ./
+#5 ERROR: failed to compute cache key: failed to calculate checksum of ref: "/package.json": not found
+------
+ > [2/4] COPY package.json ./:
+------
+Dockerfile:4
+--------------------
+   2 |     WORKDIR /app
+   3 |
+   4 | >>> COPY package.json ./
+   5 |     RUN npm ci
+--------------------
+ERROR: failed to solve: failed to compute cache key

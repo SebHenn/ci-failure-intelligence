@@ -1,0 +1,6 @@
+> Task :app:processDebugResources FAILED
+com.android.builder.internal.aapt.v2.Aapt2Exception: Android resource linking failed
+ERROR:/home/runner/app/src/main/res/layout/activity_main.xml:8: AAPT: error: resource color/brand_primary not found.
+
+FAILURE: Build failed with an exception.
+Execution failed for task ':app:processDebugResources'.

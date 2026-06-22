@@ -1,0 +1,12 @@
+Initializing the backend...
+Acquiring state lock. This may take a few moments...
+╷
+│ Error: Error acquiring the state lock
+│
+│ Error message: ConditionalCheckFailedException: The conditional request
+│ failed. Lock Info:
+│   ID:        9f3c1a2b-1234-5678-9abc-def012345678
+│   Path:      tfstate/prod/terraform.tfstate
+│   Operation: OperationTypeApply
+╵
+terraform apply exited with code 1

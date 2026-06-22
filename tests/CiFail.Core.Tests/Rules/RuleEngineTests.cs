@@ -48,6 +48,29 @@ public class RuleEngineTests
     }
 
     [Fact]
+    public void Match_starting_on_a_newline_does_not_crash()
+    {
+        // A pattern whose first token is \s can match the preceding newline, so the match index
+        // lands on '\n'. MatchedLine must not produce a negative-length slice (regression).
+        var engine = new RuleEngine(new[]
+        {
+            new RuleDefinition
+            {
+                Id = "nl-test", Ecosystem = "generic", Category = "test", Title = "nl",
+                Match = @"\s+boom", Confidence = 0.9, Fix = "x",
+            },
+        });
+        var log = LogNormalizer.Build("t", "line one\nboom happened here");
+
+        var act = () => engine.Match(log, Ecosystem.Generic);
+
+        act.Should().NotThrow();
+        var matches = engine.Match(log, Ecosystem.Generic);
+        matches.Should().ContainSingle();
+        matches[0].MatchedLine.Should().Be("boom happened here");
+    }
+
+    [Fact]
     public void Embedded_rules_have_unique_ids_and_valid_fields()
     {
         var rules = RulePackLoader.LoadEmbedded();

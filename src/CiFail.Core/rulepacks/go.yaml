@@ -57,3 +57,37 @@
     t.Errorf/t.Fatalf message. Reproduce a single test with
     `go test -run '^<TestName>$' ./...`.
   docs: https://pkg.go.dev/testing
+
+- id: go-type-mismatch
+  ecosystem: go
+  category: compile
+  title: Go type mismatch
+  match: "(?<file>[^\\s:]+\\.go):(?<line>\\d+):\\d+: cannot use .+ as (?<type>[\\w.\\[\\]*]+) (?:value|type)"
+  confidence: 0.78
+  fix: |
+    A value's type doesn't match what {file}:{line} expects ({type}). Convert it
+    explicitly, fix the variable's declared type, or check you're passing the right
+    argument. `go build ./...` shows the full context.
+
+- id: go-import-cycle
+  ecosystem: go
+  category: build
+  title: Go import cycle
+  match: "import cycle not allowed"
+  confidence: 0.85
+  fix: |
+    Two Go packages import each other (directly or transitively), which Go forbids.
+    Break the cycle by moving the shared types/interfaces into a third package both can
+    depend on, or by inverting one dependency. The lines below list the cycle.
+  docs: https://go.dev/ref/spec#Import_declarations
+
+- id: go-version-mismatch
+  ecosystem: go
+  category: environment
+  title: Go toolchain version too old
+  match: "note: module requires Go (?<version>[\\d.]+)|go: go\\.mod requires go >= (?<version2>[\\d.]+)"
+  confidence: 0.8
+  fix: |
+    The module needs a newer Go than the runner has. Bump the Go version in CI (e.g.
+    actions/setup-go's `go-version`) to satisfy the `go` directive in go.mod, or lower
+    that directive if you must support the older toolchain.

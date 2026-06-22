@@ -17,6 +17,12 @@ public class EcosystemDetectorTests
     [InlineData("go build ./...\nmain.go:1:1: undefined: foo", Ecosystem.Go)]
     [InlineData("error[E0432]: unresolved import\n --> src/main.rs:1:1", Ecosystem.Rust)]
     [InlineData("rake aborted!\nLoadError -- nokogiri\napp.rb:1:in `require'", Ecosystem.Ruby)]
+    [InlineData("composer install\nCould not find package monolog/monolog\nPHP Fatal error: boom", Ecosystem.Php)]
+    [InlineData("g++ -o app main.cpp\nmain.cpp:(.text+0x2a): undefined reference to `foo'\ncollect2: error: ld", Ecosystem.Cpp)]
+    [InlineData("docker build -t app .\nDockerfile:4\nERROR: failed to solve", Ecosystem.Infra)]
+    [InlineData("terraform apply\n│ Error: Error acquiring the state lock", Ecosystem.Infra)]
+    [InlineData("xcodebuild\nMain.swift:3:8: error: no such module 'Foo'\n** BUILD FAILED **", Ecosystem.Swift)]
+    [InlineData("> Task :app:processDebugResources\nAAPT: error: resource x not found\ncom.android.foo", Ecosystem.Android)]
     [InlineData("some unrelated process exited with code 7", Ecosystem.Generic)]
     public void Detect_picks_expected_ecosystem(string text, Ecosystem expected)
     {

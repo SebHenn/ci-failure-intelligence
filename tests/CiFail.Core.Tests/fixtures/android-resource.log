@@ -1,0 +1,7 @@
+> Task :app:processDebugResources FAILED
+com.android.builder.internal.aapt.v2.Aapt2Exception: Android resource linking failed
+ERROR:/home/runner/app/src/main/res/layout/activity_main.xml:12: AAPT: error: resource style/Widget.App.Button not found.
+
+FAILURE: Build failed with an exception.
+* What went wrong:
+Execution failed for task ':app:processDebugResources'.

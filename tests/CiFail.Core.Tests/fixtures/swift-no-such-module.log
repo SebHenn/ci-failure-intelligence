@@ -1,0 +1,9 @@
+CompileSwift normal arm64 /Users/ci/app/Sources/App/Main.swift
+/Users/ci/app/Sources/App/Main.swift:3:8: error: no such module 'Alamofire'
+import Alamofire
+       ^
+** BUILD FAILED **
+
+The following build commands failed:
+	CompileSwiftSources normal arm64 com.apple.xcode.tools.swift.compiler
+xcodebuild exited with code 65

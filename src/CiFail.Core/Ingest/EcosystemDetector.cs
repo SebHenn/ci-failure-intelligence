@@ -27,6 +27,11 @@ public static partial class EcosystemDetector
             [Ecosystem.Go] = Count(GoMarkers(), text),
             [Ecosystem.Rust] = Count(RustMarkers(), text),
             [Ecosystem.Ruby] = Count(RubyMarkers(), text),
+            [Ecosystem.Php] = Count(PhpMarkers(), text),
+            [Ecosystem.Cpp] = Count(CppMarkers(), text),
+            [Ecosystem.Infra] = Count(InfraMarkers(), text),
+            [Ecosystem.Swift] = Count(SwiftMarkers(), text),
+            [Ecosystem.Android] = Count(AndroidMarkers(), text),
         };
 
         var best = scores.OrderByDescending(kv => kv.Value).First();
@@ -44,6 +49,11 @@ public static partial class EcosystemDetector
             "go" or "golang" => Ecosystem.Go,
             "rust" or "cargo" or "rs" => Ecosystem.Rust,
             "ruby" or "rb" or "bundler" or "gem" or "rails" => Ecosystem.Ruby,
+            "php" or "composer" or "phpunit" => Ecosystem.Php,
+            "cpp" or "c++" or "c" or "gcc" or "clang" or "g++" or "cmake" or "make" => Ecosystem.Cpp,
+            "infra" or "docker" or "dockerfile" or "terraform" or "tf" or "tofu" or "opentofu" => Ecosystem.Infra,
+            "swift" or "xcode" or "xcodebuild" or "ios" => Ecosystem.Swift,
+            "android" or "aapt" => Ecosystem.Android,
             "generic" or "ci" => Ecosystem.Generic,
             _ => Ecosystem.Unknown,
         };
@@ -72,4 +82,19 @@ public static partial class EcosystemDetector
 
     [GeneratedRegex(@"\bbundle(?:r)?\b|Gemfile|\brake\b|\bgem\b|LoadError|\(RSpec|rspec|\.rb:\d+:in ", RegexOptions.IgnoreCase)]
     private static partial Regex RubyMarkers();
+
+    [GeneratedRegex(@"\bcomposer\b|PHP Fatal error|PHP Parse error|PHPUnit|Fatal error: Uncaught|Call to undefined|vendor/autoload|\.php\b|psr-4", RegexOptions.IgnoreCase)]
+    private static partial Regex PhpMarkers();
+
+    [GeneratedRegex(@"undefined reference to|\bg\+\+\b|\bgcc\b|\bclang\b|CMakeLists\.txt|\bcmake\b|No rule to make target|fatal error: .*\.h|\bld:|\.cpp:\d+|\.cc:\d+|collect2:", RegexOptions.IgnoreCase)]
+    private static partial Regex CppMarkers();
+
+    [GeneratedRegex(@"docker build|failed to solve|Dockerfile|\bterraform\b|\btofu\b|Error acquiring the state lock|denied: |unauthorized: |\bbuildkit\b|Step \d+/\d+", RegexOptions.IgnoreCase)]
+    private static partial Regex InfraMarkers();
+
+    [GeneratedRegex(@"\bswiftc\b|\bxcodebuild\b|\bXcode\b|no such module|Code Sign(?:ing)?|Provisioning profile|\.swift:\d+|\*\* BUILD FAILED \*\*|CompileSwift", RegexOptions.IgnoreCase)]
+    private static partial Regex SwiftMarkers();
+
+    [GeneratedRegex(@"\baapt2?\b|AndroidManifest|:app:|com\.android|SDK location|Android resource|Execution failed for task ':app|lint(?:Debug|Release)|dexing", RegexOptions.IgnoreCase)]
+    private static partial Regex AndroidMarkers();
 }

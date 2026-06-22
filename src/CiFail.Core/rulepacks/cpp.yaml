@@ -1,0 +1,69 @@
+# C / C++ (gcc, clang, CMake, Make) rule pack
+
+- id: cpp-undefined-reference
+  ecosystem: cpp
+  category: link
+  title: Undefined reference (linker error)
+  match: "undefined reference to [`']?(?<symbol>[^'`\\n]+)"
+  confidence: 0.85
+  fix: |
+    The linker couldn't find a definition for {symbol}. The declaration exists but the
+    implementation isn't linked: add the missing source file or library to the link
+    line (-l<lib> / target_link_libraries), check for a name-mangling mismatch (wrap C
+    headers in `extern "C"`), and confirm the symbol isn't only declared.
+
+- id: cpp-fatal-no-such-file
+  ecosystem: cpp
+  category: compile
+  title: Header file not found
+  match: "fatal error: (?<header>[^\\s:]+\\.(?:h|hpp|hh)): No such file or directory|fatal error: '(?<header2>[^']+)' file not found"
+  confidence: 0.85
+  fix: |
+    The compiler couldn't find an #include'd header. Add its directory with -I (or
+    include_directories/target_include_directories in CMake), install the -dev package
+    that provides it, or fix the include path/spelling.
+
+- id: cpp-compile-error
+  ecosystem: cpp
+  category: compile
+  title: C/C++ compile error
+  match: "(?<file>[^\\s:]+\\.(?:c|cc|cpp|cxx|h|hpp)):(?<line>\\d+):(?:\\d+:)? error: (?<message>.+)"
+  confidence: 0.7
+  fix: |
+    The compiler rejected {file}:{line}: {message}
+    Fix the reported line and rebuild. A more specific rule (missing header, linker
+    error) wins when it applies.
+
+- id: cmake-package-not-found
+  ecosystem: cpp
+  category: build
+  title: CMake could not find a package
+  match: "Could NOT find (?<package>[\\w.+-]+)|Could not find a package configuration file provided by \"(?<package2>[^\"]+)\""
+  confidence: 0.8
+  fix: |
+    CMake's find_package() failed. Install the library's development package (it
+    provides the CMake config or Find module), or point CMake at it with
+    -D<Pkg>_DIR=/path or CMAKE_PREFIX_PATH. Check the exact package name and casing.
+  docs: https://cmake.org/cmake/help/latest/command/find_package.html
+
+- id: make-no-rule
+  ecosystem: cpp
+  category: build
+  title: Make has no rule to build a target
+  match: "make(?:\\[\\d+\\])?: \\*\\*\\* No rule to make target [`'](?<target>[^'`]+)"
+  confidence: 0.8
+  fix: |
+    make couldn't build {target} — usually a missing file or a stale/incorrect path in
+    the Makefile. Confirm the prerequisite exists (it may not have been generated yet),
+    check for a typo, and that the file wasn't excluded from the checkout.
+
+- id: cpp-linker-collect2
+  ecosystem: cpp
+  category: link
+  title: Linking failed (collect2 / ld error)
+  match: "collect2: error: ld returned \\d+ exit status|ld: cannot find -l(?<library>[\\w.+-]+)"
+  confidence: 0.7
+  fix: |
+    The link step failed. If it's "cannot find -l<lib>", install that library or add
+    its directory with -L; otherwise the real cause is the undefined-reference lines
+    just above. Check the link order (libraries after the objects that use them).

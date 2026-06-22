@@ -46,3 +46,37 @@
     that fired. Reproduce with `cargo test <test_name> -- --nocapture` and set
     RUST_BACKTRACE=1 for a backtrace.
   docs: https://doc.rust-lang.org/book/ch11-01-writing-tests.html
+
+- id: cargo-dependency-resolution
+  ecosystem: rust
+  category: dependency
+  title: Cargo could not resolve dependencies
+  match: "error: failed to select a version for [`'](?<crate>[^'`]+)|failed to resolve dependencies|could not find [`'](?<crate2>[^'`]+)[`'] in registry"
+  confidence: 0.8
+  fix: |
+    Cargo couldn't pick compatible versions. Read the conflict it prints, relax or
+    align version requirements in Cargo.toml, and run `cargo update`. Commit Cargo.lock
+    (for binaries) so CI resolves exactly what you do.
+  docs: https://doc.rust-lang.org/cargo/reference/resolver.html
+
+- id: rust-toolchain-mismatch
+  ecosystem: rust
+  category: environment
+  title: Rust toolchain too old / wrong channel
+  match: "(?:package .* cannot be built because it requires rustc (?<version>[\\d.]+)|requires rustc (?<version2>[\\d.]+) or newer|this feature requires a nightly)"
+  confidence: 0.8
+  fix: |
+    The crate needs a newer (or nightly) Rust than the runner has. Update the toolchain
+    in CI (rustup, or the dtolnay/rust-toolchain action) to the required version, pin it
+    with a rust-toolchain.toml, or lower the crate's rust-version if you can.
+
+- id: cargo-lock-out-of-date
+  ecosystem: rust
+  category: dependency
+  title: Cargo.lock out of date (--locked)
+  match: "(?:the lock file .*needs to be updated but --locked was passed|Cargo\\.lock is out of date)"
+  confidence: 0.8
+  fix: |
+    CI built with `--locked`/`--frozen` but Cargo.lock doesn't match Cargo.toml. Run
+    `cargo update` (or `cargo build` without --locked) locally and commit the updated
+    Cargo.lock so the lockfile and manifest agree.

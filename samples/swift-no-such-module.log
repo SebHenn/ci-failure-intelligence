@@ -1,0 +1,6 @@
+CompileSwift normal arm64 /Users/ci/App/Sources/Main.swift
+/Users/ci/App/Sources/Main.swift:2:8: error: no such module 'SnapKit'
+import SnapKit
+       ^
+** BUILD FAILED **
+xcodebuild exited with code 65

@@ -46,3 +46,37 @@
     lines just below "rake aborted!". Re-run with `rake <task> --trace` to get the
     full backtrace.
   docs: https://ruby.github.io/rake/
+
+- id: ruby-syntax-error
+  ecosystem: ruby
+  category: compile
+  title: Ruby syntax error
+  match: "(?<file>[^\\s:]+\\.rb):(?<line>\\d+): syntax error, (?<message>.+)"
+  confidence: 0.85
+  fix: |
+    Ruby couldn't parse {file}:{line}: {message}
+    Fix the syntax at that line — a missing `end`, unbalanced bracket, or stray comma
+    are common. `ruby -c <file>` checks syntax without running the file.
+
+- id: ruby-nomethod-error
+  ecosystem: ruby
+  category: runtime
+  title: NoMethodError / NameError
+  match: "(?:NoMethodError|NameError)\\b.*?(?:undefined (?:method|local variable or method) [`'](?<name>[^'`]+)|uninitialized constant (?<constant>[\\w:]+))"
+  confidence: 0.7
+  fix: |
+    Ruby called a method or referenced a name that doesn't exist on the receiver
+    (often a nil, a typo, or a missing require/autoload). Read the backtrace for the
+    file:line, and check the object is the type you expect at that point.
+
+- id: bundler-version-conflict
+  ecosystem: ruby
+  category: dependency
+  title: Bundler version conflict
+  match: "Bundler could not find compatible versions for gem [\"'](?<gem>[^\"']+)|Could not find compatible versions"
+  confidence: 0.8
+  fix: |
+    Two gems require incompatible versions of a shared dependency. Read the conflict
+    Bundler prints, then relax or align the version constraints in the Gemfile and run
+    `bundle update <gem>`. Committing Gemfile.lock keeps CI and local in sync.
+  docs: https://bundler.io/man/bundle-update.1.html

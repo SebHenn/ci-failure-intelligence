@@ -1,0 +1,11 @@
+-- Configuring incomplete, errors occurred!
+CMake Error at CMakeLists.txt:14 (find_package):
+  Could NOT find Boost (missing: Boost_INCLUDE_DIR system filesystem)
+
+  Could not find a package configuration file provided by "Boost" with any of
+  the following names:
+
+    BoostConfig.cmake
+    boost-config.cmake
+
+cmake --build build failed

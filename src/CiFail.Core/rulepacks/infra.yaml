@@ -1,0 +1,77 @@
+# Infrastructure: Docker build + Terraform/OpenTofu rule pack.
+# Generic docker/registry rules also exist in generic.yaml; these are more specific
+# and ecosystem-scoped so they win when an infra log is detected.
+
+- id: terraform-state-lock
+  ecosystem: infra
+  category: state
+  title: Terraform could not acquire the state lock
+  match: "Error acquiring the state lock"
+  confidence: 0.85
+  fix: |
+    Terraform couldn't lock the state — usually another apply is running or a previous
+    run crashed and left the lock. Wait for the other run, or if you're sure it's
+    stale, release it with `terraform force-unlock <LOCK_ID>` (the ID is printed
+    above). Don't force-unlock while a real apply is in progress.
+  docs: https://developer.hashicorp.com/terraform/language/state/locking
+
+- id: terraform-provider-unavailable
+  ecosystem: infra
+  category: dependency
+  title: Terraform provider could not be installed
+  match: "Failed to (?:query available provider packages|install provider)|Could not retrieve the list of available versions for provider (?<provider>[\\w./-]+)"
+  confidence: 0.8
+  fix: |
+    Terraform init couldn't fetch a provider. Check the source address and version
+    constraint in required_providers, that the registry is reachable from the runner
+    (proxy/network), and run `terraform init -upgrade`. Commit `.terraform.lock.hcl`
+    so CI resolves the same versions you do.
+  docs: https://developer.hashicorp.com/terraform/language/providers/requirements
+
+- id: terraform-error
+  ecosystem: infra
+  category: build
+  title: Terraform reported an error
+  match: "(?:^|\\s)│\\s*Error: (?<message>.+)"
+  confidence: 0.6
+  fix: |
+    Terraform failed: {message}
+    Read the framed error block for the resource and file:line it points to. Run
+    `terraform validate` and `terraform plan` locally to reproduce; a more specific
+    rule (state lock, provider) wins when it applies.
+
+- id: docker-copy-not-found
+  ecosystem: infra
+  category: build
+  title: Docker COPY/ADD source not found
+  match: "(?:COPY|ADD) failed: (?:file not found in build context|stat )(?<path>[^\\n:]+)?|failed to compute cache key: .*?\"(?<path2>[^\"]+)\": not found"
+  confidence: 0.8
+  fix: |
+    A Docker COPY/ADD referenced a path that isn't in the build context. Check the
+    source path is relative to the build context (the directory you pass to
+    `docker build`), that it isn't excluded by .dockerignore, and that an earlier
+    build stage actually produced it.
+  docs: https://docs.docker.com/reference/dockerfile/#copy
+
+- id: dockerfile-parse-error
+  ecosystem: infra
+  category: build
+  title: Dockerfile parse error
+  match: "dockerfile parse error.*?: (?<message>.+)|Unknown instruction: (?<instruction>[\\w-]+)"
+  confidence: 0.8
+  fix: |
+    BuildKit couldn't parse the Dockerfile. Check the reported line for a typo in an
+    instruction, a missing line continuation (`\\`), or a heredoc/quote that isn't
+    closed. Lint it with `docker build --check` or hadolint.
+
+- id: terraform-unsupported-argument
+  ecosystem: infra
+  category: config
+  title: Terraform unsupported or missing argument
+  match: "Error: (?:Unsupported argument|Missing required argument|Unsupported block type)"
+  confidence: 0.7
+  fix: |
+    The configuration doesn't match the provider/resource schema — an argument was
+    renamed, removed, or is required. Check the provider docs for the resource and the
+    provider version you pinned; `terraform validate` reports the exact file and line.
+  docs: https://developer.hashicorp.com/terraform/language

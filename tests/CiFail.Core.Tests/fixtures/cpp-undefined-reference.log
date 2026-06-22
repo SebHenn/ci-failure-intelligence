@@ -1,0 +1,5 @@
+g++ -o app main.cpp util.cpp
+/usr/bin/ld: /tmp/ccABC123.o: in function `main':
+main.cpp:(.text+0x2a): undefined reference to `compute(int, int)'
+collect2: error: ld returned 1 exit status
+make: *** [Makefile:12: app] Error 1

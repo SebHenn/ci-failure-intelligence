@@ -22,6 +22,14 @@ public class RulePackBreadthTests
     [InlineData("rust-error-code.log", Ecosystem.Rust, "rust-error-code")]
     [InlineData("ruby-bundler-gem.log", Ecosystem.Ruby, "bundler-gem-not-found")]
     [InlineData("ruby-loaderror.log", Ecosystem.Ruby, "ruby-load-error")]
+    [InlineData("php-composer-not-found.log", Ecosystem.Php, "composer-package-not-found")]
+    [InlineData("php-fatal.log", Ecosystem.Php, "php-fatal-uncaught")]
+    [InlineData("cpp-undefined-reference.log", Ecosystem.Cpp, "cpp-undefined-reference")]
+    [InlineData("cmake-not-found.log", Ecosystem.Cpp, "cmake-package-not-found")]
+    [InlineData("terraform-state-lock.log", Ecosystem.Infra, "terraform-state-lock")]
+    [InlineData("docker-copy-failed.log", Ecosystem.Infra, "docker-copy-not-found")]
+    [InlineData("swift-no-such-module.log", Ecosystem.Swift, "swift-no-such-module")]
+    [InlineData("android-resource.log", Ecosystem.Android, "android-resource-not-found")]
     public void Detects_ecosystem_and_picks_expected_rule(string fixture, Ecosystem eco, string ruleId)
     {
         var analysis = Service.Analyze(fixture, Fixtures.Load(fixture));

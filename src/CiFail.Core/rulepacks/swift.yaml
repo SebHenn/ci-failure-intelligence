@@ -1,0 +1,60 @@
+# Swift / Xcode (iOS/macOS) rule pack
+
+- id: swift-no-such-module
+  ecosystem: swift
+  category: dependency
+  title: Swift module not found
+  match: "(?:error: )?no such module '(?<module>[^']+)'"
+  confidence: 0.85
+  fix: |
+    Swift couldn't import module '{module}'. If it's a package, resolve dependencies
+    (`swift package resolve` or File > Packages > Resolve in Xcode) and confirm it's a
+    dependency of this target. For CocoaPods/Carthage, open the .xcworkspace (not the
+    .xcodeproj) and check the framework search paths.
+
+- id: swift-compile-error
+  ecosystem: swift
+  category: compile
+  title: Swift compile error
+  match: "(?<file>[^\\s:]+\\.swift):(?<line>\\d+):(?:\\d+:)? error: (?<message>.+)"
+  confidence: 0.7
+  fix: |
+    The Swift compiler rejected {file}:{line}: {message}
+    Fix the reported line and rebuild. A more specific rule (missing module, code
+    signing) wins when it applies.
+
+- id: xcode-code-signing
+  ecosystem: swift
+  category: signing
+  title: Code signing / provisioning failed
+  match: "(?:Code Sign(?:ing)? error|No (?:profile|certificate|signing certificate)|requires a provisioning profile|Provisioning profile .* (?:doesn't|does not) (?:match|include)|errSecInternalComponent)"
+  confidence: 0.8
+  fix: |
+    The build failed to code-sign. Confirm the signing certificate and a matching
+    provisioning profile are installed on the runner's keychain, the bundle id and
+    team match the profile, and (in CI) that the keychain is unlocked. Automatic
+    signing often needs manual profiles for CI.
+  docs: https://developer.apple.com/documentation/xcode/signing-your-app
+
+- id: xcode-build-failed
+  ecosystem: swift
+  category: build
+  title: Xcode build failed
+  match: "\\*\\* (?:BUILD|TEST|ARCHIVE) FAILED \\*\\*"
+  confidence: 0.55
+  fix: |
+    xcodebuild reported failure. The real cause is the first `error:` line above this
+    summary (compile, linker, or signing). Reproduce with the same `xcodebuild`
+    invocation locally and add `-quiet` to cut noise, or open the project in Xcode.
+
+- id: swift-linker-symbols
+  ecosystem: swift
+  category: link
+  title: Undefined symbols (linker)
+  match: "Undefined symbols for architecture (?<arch>[\\w]+):|ld: symbol\\(s\\) not found for architecture"
+  confidence: 0.75
+  fix: |
+    The linker couldn't resolve symbols. Usually a framework/library isn't linked or a
+    target membership is missing: add the framework under "Link Binary With
+    Libraries", check the source file belongs to the target, and that any C/ObjC
+    bridging is set up.

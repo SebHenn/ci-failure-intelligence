@@ -1,0 +1,72 @@
+# PHP / Composer / PHPUnit rule pack
+
+- id: composer-package-not-found
+  ecosystem: php
+  category: dependency
+  title: Composer could not find a package
+  match: "Could not find (?:a matching version of package |package )(?<package>[\\w./-]+)|Root composer\\.json requires (?<package2>[\\w./-]+) .*could not be found"
+  confidence: 0.85
+  fix: |
+    Composer couldn't resolve a required package. Check the name and version
+    constraint in composer.json, run `composer update` to refresh composer.lock, and
+    confirm the package exists on Packagist (or that your private repository is
+    configured and reachable).
+  docs: https://getcomposer.org/doc/articles/troubleshooting.md
+
+- id: composer-platform-requirement
+  ecosystem: php
+  category: environment
+  title: Missing PHP extension / platform requirement
+  match: "(?:the requested PHP extension |requires )(?<ext>ext-[\\w]+)|PHP extension (?<ext2>[\\w]+) is (?:missing|required)"
+  confidence: 0.8
+  fix: |
+    Composer found a platform requirement the runner doesn't satisfy (a missing PHP
+    extension or version). Install the extension on the CI image (e.g. the
+    shivammathur/setup-php action's `extensions:` input), or relax the constraint.
+    `composer check-platform-reqs` lists what's missing.
+  docs: https://getcomposer.org/doc/03-cli.md#check-platform-reqs
+
+- id: php-fatal-uncaught
+  ecosystem: php
+  category: runtime
+  title: PHP uncaught exception
+  match: "PHP Fatal error:\\s+Uncaught (?<exception>[\\w\\\\]+): (?<message>[^\\n]+)"
+  confidence: 0.8
+  fix: |
+    PHP threw an uncaught {exception}. Read the message and the stack trace below it
+    for the originating file and line, add handling (try/catch) or fix the cause, and
+    reproduce locally with the same input.
+
+- id: php-call-undefined
+  ecosystem: php
+  category: runtime
+  title: Call to an undefined function or method
+  match: "PHP (?:Fatal error|Error):\\s+(?:Uncaught Error: )?Call to undefined (?:function|method) (?<symbol>[\\w:\\\\>-]+)"
+  confidence: 0.8
+  fix: |
+    PHP called {symbol}, which doesn't exist at runtime. Check for a typo, a missing
+    `use` import/namespace, or a missing extension/package that provides it. If it's a
+    Composer dependency, run `composer install` so the autoloader can find it.
+
+- id: php-parse-error
+  ecosystem: php
+  category: compile
+  title: PHP syntax / parse error
+  match: "PHP Parse error:\\s+(?<message>.+)"
+  confidence: 0.85
+  fix: |
+    PHP could not parse a source file: {message}
+    Fix the syntax at the reported file and line. `php -l <file>` lints a single file
+    without running it.
+
+- id: phpunit-failures
+  ecosystem: php
+  category: test
+  title: PHPUnit tests failed
+  match: "(?:^FAILURES!|There (?:was|were) (?<count>\\d+) (?:failure|error))"
+  confidence: 0.6
+  fix: |
+    PHPUnit reported failing tests. Scroll up to each numbered failure for the
+    assertion, expected/actual, and the file:line. Reproduce one with
+    `vendor/bin/phpunit --filter <TestName>`.
+  docs: https://docs.phpunit.de/

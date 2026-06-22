@@ -39,7 +39,8 @@ somewhere in the middle. Figuring out *which* line, and what to do about it, tak
 experience. cifail does that first pass for you:
 
 - It knows the common failure patterns for **.NET, Node/npm, Python/pip, Java, Go, Rust,
-  Ruby**, and generic CI errors, so it can point straight at the cause.
+  Ruby, PHP, C/C++, Swift, Android, and infra (Docker/Terraform)**, plus generic CI errors,
+  so it can point straight at the cause.
 - It **remembers** every failure you analyze. The next time a similar one shows up, it
   reminds you — including the fix you wrote down last time.
 
@@ -469,7 +470,7 @@ installed `cifail` command.)* See [CLAUDE.md](./CLAUDE.md) for architecture note
 
 ## Project status & roadmap
 
-🚀 Usable today, with a deep feature set. Offline analysis, memory, eight ecosystems, a
+🚀 Usable today, with a deep feature set. Offline analysis, memory, a dozen ecosystems, a
 shared server, and CI integration all work now.
 
 **Core (v1):**
@@ -508,6 +509,12 @@ shared server, and CI integration all work now.
   post the analysis on the MR/PR, updated in place. ✅
 - **Hardened serve** — per-client bearer tokens (rotate/revoke individually), opt-in mutual TLS,
   and AI cost guardrails. ✅
+
+**In progress (v5):**
+- **More ecosystems** — PHP/Composer, C/C++ (gcc/clang/CMake), Swift/Xcode, Android/Gradle, and
+  infra (Docker/Terraform) rule packs — twelve ecosystems in all. ✅
+- **AI-assisted rule authoring**, **SARIF + Markdown report output**, **failure clustering**,
+  **per-test flakiness**, and **more notification channels** (Discord/Teams/GitHub). 🚧
 
 ## License
 

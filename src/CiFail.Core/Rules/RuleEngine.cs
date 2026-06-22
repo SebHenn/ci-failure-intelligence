@@ -86,8 +86,14 @@ public sealed class RuleEngine
 
     private static string MatchedLine(string text, int index)
     {
-        var start = text.LastIndexOf('\n', Math.Min(index, text.Length - 1)) + 1;
-        var end = text.IndexOf('\n', index);
+        if (text.Length == 0) return string.Empty;
+
+        // The match can begin on a newline itself (e.g. a pattern starting with \s), so anchor on
+        // the line start and search the line end forward from there — never backwards (which would
+        // yield a negative-length slice).
+        index = Math.Clamp(index, 0, text.Length - 1);
+        var start = text.LastIndexOf('\n', index) + 1;
+        var end = text.IndexOf('\n', start);
         if (end < 0) end = text.Length;
         return text[start..end].Trim();
     }
