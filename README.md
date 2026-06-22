@@ -38,8 +38,8 @@ A failing CI log can be hundreds of lines long, and the line that matters is bur
 somewhere in the middle. Figuring out *which* line, and what to do about it, takes
 experience. cifail does that first pass for you:
 
-- It knows the common failure patterns for **.NET, Node/npm, Python/pip**, and generic
-  CI errors, so it can point straight at the cause.
+- It knows the common failure patterns for **.NET, Node/npm, Python/pip, Java, Go, Rust,
+  Ruby**, and generic CI errors, so it can point straight at the cause.
 - It **remembers** every failure you analyze. The next time a similar one shows up, it
   reminds you — including the fix you wrote down last time.
 
@@ -469,14 +469,14 @@ installed `cifail` command.)* See [CLAUDE.md](./CLAUDE.md) for architecture note
 
 ## Project status & roadmap
 
-🚧 Early but usable. Offline analysis, memory, and the .NET/Node/Python/Generic patterns
-all work today.
+🚀 Usable today, with a deep feature set. Offline analysis, memory, eight ecosystems, a
+shared server, and CI integration all work now.
 
-Done:
+**Core (v1):**
 - **Explain failures offline** (.NET, Node, Python, generic patterns), human or `--json`. ✅
 - **Remember** past failures and your fixes, and surface similar ones. ✅
 
-Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
+**Scale & integration (v2–v3):**
 - **One-command install** as a native binary on any OS — no .NET needed. ✅
 - **Pick your database** — keep the built-in SQLite, or point cifail at a shared
   PostgreSQL / MySQL / SQL Server / MongoDB. ✅
@@ -493,6 +493,21 @@ Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
   nearest-neighbour search into the database; TF-IDF stays the offline default. ✅
 - **Notifications** (opt-in) — the shared server can alert Slack, a generic webhook, or
   email when a failure appears, recurs, or is resolved. ✅
+
+**Coverage, insights & depth (v4):**
+- **Eight ecosystems** — added Java, Go, Rust, and Ruby patterns alongside .NET/Node/Python,
+  plus more language-agnostic ones (timeouts, disk space, DNS/TLS, rate limits, Docker). ✅
+- **Rule authoring tooling** — `cifail rules test | validate | explain`, a CI lint step, and
+  a [CONTRIBUTING](./CONTRIBUTING.md) guide so patterns are easy to add. ✅
+- **Insights** — `cifail stats` (and the dashboard trends strip): recurrence, flaky failures,
+  mean-time-to-resolution, by-ecosystem breakdown. ✅
+- **Structured test reports** — `analyze --format junit|trx` expands each failing test into its
+  own analysis; `--annotations` emits GitHub Actions annotations. ✅
+- **Analyze against the server** — `analyze --server <url>` runs the full pipeline remotely. ✅
+- **Merge-request / pull-request comments** — a GitLab CI/CD component and the GitHub Action can
+  post the analysis on the MR/PR, updated in place. ✅
+- **Hardened serve** — per-client bearer tokens (rotate/revoke individually), opt-in mutual TLS,
+  and AI cost guardrails. ✅
 
 ## License
 
