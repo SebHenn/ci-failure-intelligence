@@ -29,8 +29,15 @@
     Self-contained single-file publishing so end users need no .NET runtime.
     These only apply when a RuntimeIdentifier is given (i.e. `dotnet publish -r <rid>`,
     see scripts/publish.sh and release.yml), so plain build/test/pack are unaffected.
-    Trimming is intentionally OFF: EF Core + reflection-based YAML/JSON don't trim
-    safely. NativeAOT is likewise deferred for the same reason.
+
+    Trimming is intentionally OFF. Re-evaluated under R21 (2026-06): a `PublishTrimmed=true`
+    spike on the *slim* build still emits pervasive IL2026 trim warnings from reflection-based
+    System.Text.Json (the stable PascalCase contract in AnalysisJson/StatsJson, the per-row term
+    vectors in SqliteAnalysisRepository, the notification payloads, the AI providers, HttpAnalysisStore)
+    plus IL2104 from Spectre.Console.Cli and the YAML rule-pack loader. Making it trim-safe would mean
+    source-generated JSON contexts throughout and replacing YamlDotNet — disproportionate to the size
+    win for a tool already shipped as a single self-contained file. So trimming (and NativeAOT, which
+    is stricter still) stays deferred; revisit if these dependencies gain trim/AOT support.
   -->
   <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
     <PublishSingleFile>true</PublishSingleFile>

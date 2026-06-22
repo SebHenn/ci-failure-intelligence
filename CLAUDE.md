@@ -235,7 +235,11 @@ are chosen at runtime by name through a small registry:
 first use, term vectors stored as JSON per row and reloaded as the similarity corpus, and
 `Pooling=False` so the db file handle releases promptly on dispose (otherwise the file
 stays locked, which breaks temp-file test cleanup). All paths resolve through
-`CiFailPaths`, which honors `CIFAIL_HOME`.
+`CiFailPaths`, which honors `CIFAIL_HOME`. **R21:** `LoadCorpus` caches its result keyed on a
+cheap `(row-count, max-id, limit)` signature so analyzing a structured report (which expands into
+many units that each ask for the same corpus) doesn't reload up to 2000 rows per unit; inserts move
+the signature and in-place updates (`Save`/`SetResolution`/`SetAutoResolution`) clear the cache, so
+it stays consistent with the DB.
 
 ### External database providers (`src/CiFail.Providers`, size-gated)
 
@@ -253,6 +257,11 @@ live in a **separate assembly** so the default native binary stays SQLite-only a
   longer sealed (`protected Db`/`Map`) and always sets `Embedding` — ignored unless the column
   exists. `N` comes from `CIFAIL_AI_EMBED_DIM` (default `ConfigLoader.DefaultEmbeddingDimensions`
   = 768) and **must match the embedder's output**. Packages `Pgvector` + `Pgvector.EntityFrameworkCore`.
+  **R21:** the index method is selectable via `CIFAIL_AI_VECTOR_INDEX` (`hnsw` default | `ivfflat`),
+  normalized by `PgVectorDbContext.NormalizeIndexMethod` and threaded through `PgVectorStoreProvider`.
+  `ivfflat` learns centroids from existing rows, so an index built on the empty table that
+  `EnsureCreated()` produces has poor recall until rebuilt — `hnsw` is the safe default. Covered by `PgVectorIntegrationTests`
+  (Docker-gated) + a non-gated `NormalizeIndexMethod` theory.
 
 - Inclusion is opt-in: the CLI references `CiFail.Providers` and defines the
   `CIFAIL_EXTERNAL_DB` compile symbol **only when built with `-p:IncludeExternalDb=true`**

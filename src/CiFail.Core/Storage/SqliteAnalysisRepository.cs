@@ -137,7 +137,9 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCount
         cmd.Parameters.AddWithValue("$branch", (object?)record.GitBranch ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$dirty", record.GitDirty ? 1 : 0);
 
-        return (long)(cmd.ExecuteScalar() ?? 0L);
+        var id = (long)(cmd.ExecuteScalar() ?? 0L);
+        _corpusCache = null; // a new row changes the corpus
+        return id;
     }
 
     public IReadOnlyList<StoredAnalysis> GetRecent(int limit)
@@ -162,8 +164,21 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCount
         return reader.Read() ? ReadStored(reader) : null;
     }
 
+    // Corpus cache (R21): a single `cifail analyze` of a structured report expands into many
+    // analysis units that each ask for the same similarity corpus. Reloading up to CorpusLimit
+    // rows per unit is wasteful, so we cache the result keyed on a cheap (row-count, max-id, limit)
+    // signature. Inserts move the signature; in-place updates (resolve) explicitly clear the cache
+    // (see the write methods). So the cache stays transparent and always consistent with the DB.
+    private (long Count, long MaxId, int Max)? _corpusKey;
+    private IReadOnlyList<CorpusEntry>? _corpusCache;
+
     public IReadOnlyList<CorpusEntry> LoadCorpus(int max)
     {
+        max = Math.Max(1, max);
+        var (count, maxId) = CorpusSignature();
+        if (_corpusCache is not null && _corpusKey == (count, maxId, max))
+            return _corpusCache;
+
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = $"""
             SELECT {Columns}, tokens
@@ -171,7 +186,7 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCount
             ORDER BY id DESC
             LIMIT $max;
             """;
-        cmd.Parameters.AddWithValue("$max", Math.Max(1, max));
+        cmd.Parameters.AddWithValue("$max", max);
 
         using var reader = cmd.ExecuteReader();
         var list = new List<CorpusEntry>();
@@ -183,7 +198,21 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCount
                         ?? new Dictionary<string, int>();
             list.Add(new CorpusEntry { Meta = meta, Terms = terms });
         }
+
+        _corpusCache = list;
+        _corpusKey = (count, maxId, max);
         return list;
+    }
+
+    /// <summary>A cheap fingerprint of the table state — count plus highest id (covers inserts,
+    /// deletes, and resolves-by-id) — used to decide whether the cached corpus is still valid.</summary>
+    private (long Count, long MaxId) CorpusSignature()
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*), COALESCE(MAX(id), 0) FROM analyses;";
+        using var reader = cmd.ExecuteReader();
+        reader.Read();
+        return (reader.GetInt64(0), reader.GetInt64(1));
     }
 
     public bool SetResolution(long id, string note)
@@ -199,7 +228,9 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCount
         cmd.Parameters.AddWithValue("$note", note);
         cmd.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
         cmd.Parameters.AddWithValue("$id", id);
-        return cmd.ExecuteNonQuery() > 0;
+        var ok = cmd.ExecuteNonQuery() > 0;
+        if (ok) _corpusCache = null; // a resolve updates a row in place — invalidate the cache
+        return ok;
     }
 
     public IReadOnlyList<StoredAnalysis> GetOpenFailures(string repoId)
@@ -228,7 +259,9 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCount
         cmd.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
         cmd.Parameters.AddWithValue("$commit", resolvedCommit);
         cmd.Parameters.AddWithValue("$id", id);
-        return cmd.ExecuteNonQuery() > 0;
+        var ok = cmd.ExecuteNonQuery() > 0;
+        if (ok) _corpusCache = null; // a resolve updates a row in place — invalidate the cache
+        return ok;
     }
 
     public StatsSnapshot ComputeStats(StatsQuery query)

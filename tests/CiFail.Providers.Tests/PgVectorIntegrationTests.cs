@@ -1,7 +1,9 @@
 using CiFail.Core.Similarity;
 using CiFail.Core.Storage;
 using CiFail.Providers;
+using CiFail.Providers.Ef;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
 
 namespace CiFail.Providers.Tests;
@@ -15,6 +17,15 @@ namespace CiFail.Providers.Tests;
 public class PgVectorIntegrationTests
 {
     private const int Dim = 768; // matches PgVectorStoreProvider's default (CIFAIL_AI_EMBED_DIM)
+
+    [Theory] // R21: index-method selection — runs without Docker.
+    [InlineData("ivfflat", "ivfflat")]
+    [InlineData("IVFFlat", "ivfflat")]
+    [InlineData("hnsw", "hnsw")]
+    [InlineData("nonsense", "hnsw")]
+    [InlineData(null, "hnsw")]
+    public void NormalizeIndexMethod_accepts_known_methods_and_defaults_to_hnsw(string? input, string expected) =>
+        PgVectorDbContext.NormalizeIndexMethod(input).Should().Be(expected);
 
     [SkippableFact]
     public async Task PgVector_store_satisfies_the_contract_and_searches_by_vector()
@@ -42,6 +53,32 @@ public class PgVectorIntegrationTests
         hits.Should().NotBeEmpty();
         hits[0].Meta.Id.Should().Be(idA);          // the one-hot at index 0 is the exact match
         hits[0].Score.Should().BeGreaterThan(0.9);  // cosine similarity ~1
+    }
+
+    [SkippableFact]
+    public async Task PgVector_ivfflat_index_searches_by_vector()
+    {
+        // R21: the alternative ivfflat index method must also build and serve nearest-neighbour search.
+        Skip.IfNot(IntegrationGate.Enabled, IntegrationGate.SkipReason);
+
+        await using var container = new PostgreSqlBuilder()
+            .WithImage("pgvector/pgvector:pg16")
+            .Build();
+        await container.StartAsync();
+
+        var options = new DbContextOptionsBuilder<PgVectorDbContext>()
+            .UseNpgsql(container.GetConnectionString(), o => o.UseVector()).Options;
+        using var store = new PgVectorAnalysisStore(new PgVectorDbContext(options, Dim, "ivfflat"));
+
+        var idA = SaveWithEmbedding(store, "rule:a", OneHot(0));
+        SaveWithEmbedding(store, "rule:b", OneHot(1));
+        SaveWithEmbedding(store, "rule:c", OneHot(2));
+
+        var hits = ((ISimilaritySearch)store).FindSimilar(OneHot(0), topN: 2);
+
+        hits.Should().NotBeEmpty();
+        hits[0].Meta.Id.Should().Be(idA);
+        hits[0].Score.Should().BeGreaterThan(0.9);
     }
 
     private static long SaveWithEmbedding(IAnalysisStore store, string fingerprint, float[] embedding) =>

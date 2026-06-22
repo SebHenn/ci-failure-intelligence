@@ -156,6 +156,32 @@ public class SqliteAnalysisRepositoryTests : IDisposable
         corpus[0].Terms.Should().ContainKey("nu1101").And.ContainKey("package");
     }
 
+    [Fact]
+    public void LoadCorpus_caches_while_unchanged_and_reloads_after_writes()
+    {
+        _repo.Save(Record("nuget-nu1101", "nu1101"));
+
+        var first = _repo.LoadCorpus(10);
+        // Unchanged table → same cached instance, not a fresh query.
+        _repo.LoadCorpus(10).Should().BeSameAs(first);
+
+        // A new row invalidates the cache (signature moves).
+        var id = _repo.Save(Record("dotnet-cs0246", "cs0246"));
+        var afterInsert = _repo.LoadCorpus(10);
+        afterInsert.Should().NotBeSameAs(first);
+        afterInsert.Should().HaveCount(2);
+
+        // A different limit is a different cache key.
+        _repo.LoadCorpus(1).Should().NotBeSameAs(afterInsert);
+
+        // An in-place update (resolve) also invalidates, so a stale resolution is never returned.
+        var cached = _repo.LoadCorpus(10);
+        _repo.SetResolution(id, "fixed").Should().BeTrue();
+        var afterResolve = _repo.LoadCorpus(10);
+        afterResolve.Should().NotBeSameAs(cached);
+        afterResolve.Single(c => c.Meta.Id == id).Meta.Resolution.Should().Be("fixed");
+    }
+
     public void Dispose()
     {
         _repo.Dispose();

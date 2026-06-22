@@ -69,7 +69,7 @@ public sealed class PgVectorStoreProvider : IStoreProvider
         var cs = RelationalSupport.Require(Name, connectionString);
         var options = new DbContextOptionsBuilder<PgVectorDbContext>()
             .UseNpgsql(cs, o => o.UseVector()).Options;
-        return new PgVectorAnalysisStore(new PgVectorDbContext(options, ResolveDimensions()));
+        return new PgVectorAnalysisStore(new PgVectorDbContext(options, ResolveDimensions(), ResolveIndexMethod()));
     }
 
     private static int ResolveDimensions()
@@ -77,6 +77,10 @@ public sealed class PgVectorStoreProvider : IStoreProvider
         var v = Environment.GetEnvironmentVariable(ConfigLoader.AiEmbeddingDimsEnvVar);
         return int.TryParse(v, out var d) && d > 0 ? d : ConfigLoader.DefaultEmbeddingDimensions;
     }
+
+    // Index method (R21): hnsw (default) or ivfflat, via CIFAIL_AI_VECTOR_INDEX.
+    private static string ResolveIndexMethod() =>
+        PgVectorDbContext.NormalizeIndexMethod(Environment.GetEnvironmentVariable(ConfigLoader.AiVectorIndexEnvVar));
 }
 
 /// <summary>Microsoft SQL Server provider (EF Core + Microsoft.Data.SqlClient).</summary>
