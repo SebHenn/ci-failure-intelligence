@@ -224,6 +224,26 @@ live in a **separate assembly** so the default native binary stays SQLite-only a
   (uses the `pgvector/pgvector` image). `docker-compose.test.yml` spins up all engines (incl.
   a `pgvector` service on port 5433) for manual `--db-*` runs.
 
+### Notifications / webhooks (R13, `Core/Notifications/`)
+
+Outbound alerts fired **only server-side** (the CLI stays quiet/offline). `INotifier` is one
+channel (`Name`, `void Notify(Notification)`); a `Notification` is a `(NotificationEvent, StoredAnalysis)`
+where the event is `NewFailure` / `Recurrence` / `Resolved` (kebab-case `EventKey` used in config
+and payloads). `NotificationDispatcher` fans a notification to every channel: it skips disabled
+events (empty filter = all), dedupes per `EventKey|Fingerprint` within a window (default 5 min;
+`TimeSpan.Zero` disables), and isolates each channel in try/catch so a broken one never affects
+analysis. `NotificationDispatcher.FromConfig(NotificationsConfig)` builds it (or returns **null**
+when no channel is set) — no provider registry, just a direct builder. Channels live in
+`Notifications/Channels/`: `SlackNotifier`, `WebhookNotifier` (both POST JSON via the shared
+`NotifierHttp.PostJson`, 10s timeout), and `SmtpNotifier` (`System.Net.Mail`, password from an env
+var). Config: `NotificationsConfig` on `CiFailConfig` (`events`, `slackWebhookUrl`, `webhookUrl`,
+`dedupeSeconds`, `smtp`); `ConfigLoader` overrides the two webhook URLs from
+`CIFAIL_NOTIFY_SLACK_URL` / `CIFAIL_NOTIFY_WEBHOOK_URL` (secrets stay out of the file). Wiring:
+`ServeCommand` builds the dispatcher and passes it via `ServeOptions.Notifications`; `CiFailServer`
+dispatches on `/analyze` (new vs. recurrence decided by `IFingerprintCounter.CountByFingerprint` —
+a **side-interface** implemented by all stores, like `ISimilaritySearch`, to avoid changing the
+`IAnalysisStore` contract) and on `/resolve` (`Resolved`).
+
 ### Output (`Cli/Output/`)
 
 `ConsoleRenderer` (Spectre panels/tables) and `JsonOutput` are separate. `JsonOutput`

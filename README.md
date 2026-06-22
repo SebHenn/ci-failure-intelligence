@@ -334,6 +334,29 @@ embedding per failure and lets the database do nearest-neighbour search. Everyth
 **off and TF-IDF by default** — this is purely opt-in. The embedding size must match the column:
 set `CIFAIL_AI_EMBED_DIM` if your model isn't 768-wide.
 
+**Notifications (optional).** The shared server can alert a chat channel or a webhook when a
+failure appears, when a known one comes back, or when one is resolved — so the CLI stays quiet
+and offline while the central service does the talking. Add a `notifications:` block to the
+server's config:
+
+```yaml
+notifications:
+  events: [new-failure, recurrence, resolved]   # omit or leave empty for all three
+  slackWebhookUrl: https://hooks.slack.com/services/...   # or set CIFAIL_NOTIFY_SLACK_URL
+  webhookUrl: https://example.com/hook                    # generic JSON POST; or CIFAIL_NOTIFY_WEBHOOK_URL
+  dedupeSeconds: 300        # suppress repeats of the same (event, failure) within this window
+  smtp:                     # optional email channel
+    host: smtp.example.com
+    from: cifail@example.com
+    to: team@example.com
+    # password is read from the env var named by passwordEnv (default CIFAIL_SMTP_PASSWORD)
+```
+
+Secrets stay out of the file: the Slack/webhook URLs can come from `CIFAIL_NOTIFY_SLACK_URL` /
+`CIFAIL_NOTIFY_WEBHOOK_URL`, and the SMTP password always comes from an env var. Notifications
+are **off unless a channel is configured**, fire only server-side, and are best-effort — a broken
+channel is logged-and-swallowed and never affects analysis.
+
 ---
 
 ## Want to help? Add a pattern
@@ -385,6 +408,8 @@ Next (see the [plan](https://github.com/SebHenn/ci-failure-intelligence)):
   by default, or hosted Anthropic/OpenAI (opt-in). ✅
 - **Vector similarity at scale** (opt-in) — embeddings + the `pgvector` provider push
   nearest-neighbour search into the database; TF-IDF stays the offline default. ✅
+- **Notifications** (opt-in) — the shared server can alert Slack, a generic webhook, or
+  email when a failure appears, recurs, or is resolved. ✅
 
 ## License
 

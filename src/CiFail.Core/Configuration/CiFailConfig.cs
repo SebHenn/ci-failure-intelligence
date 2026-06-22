@@ -5,6 +5,41 @@ public sealed class CiFailConfig
 {
     public DatabaseConfig Database { get; set; } = new();
     public AiConfig Ai { get; set; } = new();
+    public NotificationsConfig Notifications { get; set; } = new();
+}
+
+/// <summary>Outbound notifications (R13), fired server-side. All channels are opt-in.</summary>
+public sealed class NotificationsConfig
+{
+    /// <summary>Which events to send (kebab-case: new-failure, recurrence, resolved). Empty = all.</summary>
+    public List<string> Events { get; set; } = new();
+
+    /// <summary>Slack incoming-webhook URL; null/empty disables the Slack channel.</summary>
+    public string? SlackWebhookUrl { get; set; }
+
+    /// <summary>Generic webhook URL (receives a JSON payload); null/empty disables it.</summary>
+    public string? WebhookUrl { get; set; }
+
+    /// <summary>Suppress repeat sends of the same (fingerprint, event) within this many seconds.</summary>
+    public int DedupeSeconds { get; set; } = 300;
+
+    /// <summary>Optional SMTP email channel; null disables it.</summary>
+    public SmtpConfig? Smtp { get; set; }
+}
+
+/// <summary>SMTP settings for the optional email notifier. The password comes from an env var.</summary>
+public sealed class SmtpConfig
+{
+    public string Host { get; set; } = "";
+    public int Port { get; set; } = 587;
+    public bool UseSsl { get; set; } = true;
+    public string? Username { get; set; }
+
+    /// <summary>Env var holding the SMTP password (not the password itself).</summary>
+    public string PasswordEnv { get; set; } = "CIFAIL_SMTP_PASSWORD";
+
+    public string From { get; set; } = "";
+    public string To { get; set; } = "";
 }
 
 /// <summary>Which optional AI analyzer to consult on low rule confidence (CLI: --ai).</summary>

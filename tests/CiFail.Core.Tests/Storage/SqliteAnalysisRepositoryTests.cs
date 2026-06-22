@@ -118,6 +118,19 @@ public class SqliteAnalysisRepositoryTests : IDisposable
     }
 
     [Fact]
+    public void CountByFingerprint_counts_only_matching_rows()
+    {
+        // Two runs share a fingerprint (a recurring failure); a third is distinct.
+        _repo.Save(Record("nuget-nu1101", "nu1101"));
+        _repo.Save(Record("nuget-nu1101", "nu1101"));
+        _repo.Save(Record("csc-compile-error", "cs0103"));
+
+        _repo.CountByFingerprint("nuget-nu1101:abc123").Should().Be(2);
+        _repo.CountByFingerprint("csc-compile-error:abc123").Should().Be(1);
+        _repo.CountByFingerprint("never-seen:000").Should().Be(0);
+    }
+
+    [Fact]
     public void LoadCorpus_round_trips_term_vectors()
     {
         _repo.Save(Record("nuget-nu1101", "nu1101", "package"));

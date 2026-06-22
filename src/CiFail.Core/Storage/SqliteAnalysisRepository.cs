@@ -7,7 +7,7 @@ namespace CiFail.Core.Storage;
 /// SQLite-backed history store. Defaults to <c>~/.cifail/history.db</c>; pass an
 /// explicit path (or <c>":memory:"</c>) for tests. The schema is created on first use.
 /// </summary>
-public sealed class SqliteAnalysisRepository : IAnalysisStore, IDisposable
+public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCounter, IDisposable
 {
     private readonly SqliteConnection _connection;
 
@@ -228,6 +228,14 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IDisposable
         cmd.Parameters.AddWithValue("$commit", resolvedCommit);
         cmd.Parameters.AddWithValue("$id", id);
         return cmd.ExecuteNonQuery() > 0;
+    }
+
+    public int CountByFingerprint(string fingerprint)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM analyses WHERE fingerprint = $fp;";
+        cmd.Parameters.AddWithValue("$fp", fingerprint);
+        return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
     }
 
     private const string Columns =

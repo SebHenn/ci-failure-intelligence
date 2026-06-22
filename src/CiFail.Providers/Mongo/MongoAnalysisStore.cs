@@ -12,7 +12,7 @@ namespace CiFail.Providers.Mongo;
 /// <c>cifail resolve &lt;id&gt;</c> works identically). Term vectors are stored natively
 /// as a sub-document rather than a JSON string.
 /// </summary>
-public sealed class MongoAnalysisStore : IAnalysisStore
+public sealed class MongoAnalysisStore : IAnalysisStore, IFingerprintCounter
 {
     private readonly IMongoClient _client;
     private readonly IMongoCollection<AnalysisDoc> _analyses;
@@ -100,6 +100,9 @@ public sealed class MongoAnalysisStore : IAnalysisStore
         var result = _analyses.UpdateOne(a => a.Id == id && a.Status == "open", update);
         return result.ModifiedCount > 0;
     }
+
+    public int CountByFingerprint(string fingerprint) =>
+        (int)_analyses.CountDocuments(a => a.Fingerprint == fingerprint);
 
     private long NextId()
     {

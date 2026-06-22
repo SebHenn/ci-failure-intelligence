@@ -11,7 +11,7 @@ namespace CiFail.Providers.Ef;
 /// is append-only and tiny, so create-if-absent is enough and keeps setup zero-touch).
 /// Not sealed so the pgvector store can extend it with in-DB similarity search (R10).
 /// </summary>
-public class EfAnalysisStore : IAnalysisStore
+public class EfAnalysisStore : IAnalysisStore, IFingerprintCounter
 {
     /// <summary>The EF context; exposed to derived stores (e.g. pgvector search).</summary>
     protected readonly AnalysisDbContext Db;
@@ -97,6 +97,9 @@ public class EfAnalysisStore : IAnalysisStore
         Db.SaveChanges();
         return true;
     }
+
+    public int CountByFingerprint(string fingerprint) =>
+        Db.Analyses.Count(a => a.Fingerprint == fingerprint);
 
     protected static StoredAnalysis Map(AnalysisEntity a) => new()
     {

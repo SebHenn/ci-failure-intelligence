@@ -1,5 +1,6 @@
 using CiFail.Core.Ai;
 using CiFail.Core.Configuration;
+using CiFail.Core.Notifications;
 
 namespace CiFail.Server;
 
@@ -31,6 +32,12 @@ public sealed class ServeOptions
     /// vector-capable (pgvector), similarity is served from the database. Null = TF-IDF as before.
     /// </summary>
     public IAiEmbedder? Embedder { get; init; }
+
+    /// <summary>
+    /// Optional outbound notifications (R13): when set, the server fires new-failure / recurrence
+    /// on <c>/analyze</c> and resolved on <c>/resolve</c>. Null = no notifications.
+    /// </summary>
+    public NotificationDispatcher? Notifications { get; init; }
 
     public string ResolvedUrl => Url ?? $"http://{Host}:{Port}";
 }

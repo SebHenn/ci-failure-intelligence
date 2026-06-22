@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using CiFail.Core.Ai;
 using CiFail.Core.Analysis;
+using CiFail.Core.Notifications;
 using CiFail.Core.Output;
 using CiFail.Core.Rules;
 using CiFail.Core.Storage;
@@ -52,7 +53,7 @@ public static class CiFailServer
 
         var app = builder.Build();
         UseBearerAuth(app, options.AuthToken);
-        MapEndpoints(app, options.Embedder);
+        MapEndpoints(app, options.Embedder, options.Notifications);
         return app;
     }
 
@@ -127,7 +128,7 @@ public static class CiFailServer
         return reader.ReadToEnd();
     }
 
-    private static void MapEndpoints(WebApplication app, IAiEmbedder? embedder)
+    private static void MapEndpoints(WebApplication app, IAiEmbedder? embedder, NotificationDispatcher? notifications)
     {
         // The bundled web dashboard (R12) — a single static page that talks to the API below.
         IResult dashboard() => Results.Content(DashboardHtml, "text/html");
@@ -156,6 +157,18 @@ public static class CiFailServer
             using var store = stores();
             var service = new AnalysisService(engine, store, git: null, ai: null, embedder: embedder);
             var analysis = service.Analyze(source, body, options);
+
+            // Notify (R13): a never-before-seen fingerprint is "new", otherwise a recurrence.
+            if (notifications is { HasNotifiers: true } && analysis.HistoryId is { } savedId
+                && store.GetById(savedId) is { } stored)
+            {
+                var prior = store is IFingerprintCounter counter
+                    ? counter.CountByFingerprint(stored.Fingerprint)
+                    : 1;
+                notifications.Dispatch(new Notification(
+                    prior > 1 ? NotificationEvent.Recurrence : NotificationEvent.NewFailure, stored));
+            }
+
             return Json(AnalysisJson.Serialize(analysis));
         });
 
@@ -213,6 +226,7 @@ public static class CiFailServer
                 return Results.NotFound();
 
             var updated = store.GetById(id)!;
+            notifications?.Dispatch(new Notification(NotificationEvent.Resolved, updated));
             return Json(JsonSerializer.Serialize(StoredAnalysisJson.ToDto(updated), AnalysisJson.Options));
         });
     }

@@ -18,6 +18,8 @@ public static class ConfigLoader
     public const string AiEmbeddingsEnvVar = "CIFAIL_AI_EMBEDDINGS";
     public const string AiEmbeddingModelEnvVar = "CIFAIL_AI_EMBED_MODEL";
     public const string AiEmbeddingDimsEnvVar = "CIFAIL_AI_EMBED_DIM";
+    public const string NotifySlackUrlEnvVar = "CIFAIL_NOTIFY_SLACK_URL";
+    public const string NotifyWebhookUrlEnvVar = "CIFAIL_NOTIFY_WEBHOOK_URL";
 
     /// <summary>Default embedding size — matches Ollama <c>nomic-embed-text</c>.</summary>
     public const int DefaultEmbeddingDimensions = 768;
@@ -66,6 +68,12 @@ public static class ConfigLoader
         if (int.TryParse(aiEmbedDims, out var dims) && dims > 0) config.Ai.EmbeddingDimensions = dims;
 
         config.Ai.Provider = config.Ai.Provider.ToLowerInvariant();
+
+        // Notifications: env overrides for the webhook URLs (secrets stay out of the file).
+        var slackUrl = Environment.GetEnvironmentVariable(NotifySlackUrlEnvVar);
+        var webhookUrl = Environment.GetEnvironmentVariable(NotifyWebhookUrlEnvVar);
+        if (!string.IsNullOrWhiteSpace(slackUrl)) config.Notifications.SlackWebhookUrl = slackUrl;
+        if (!string.IsNullOrWhiteSpace(webhookUrl)) config.Notifications.WebhookUrl = webhookUrl;
 
         return config;
     }

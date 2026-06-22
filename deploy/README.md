@@ -63,6 +63,14 @@ Implemented now (R7 + R9 + R11) and what's still open:
   embeddings (`CIFAIL_AI_EMBEDDINGS=1`); cifail embeds each failure via the configured AI
   provider (Ollama by default) and queries with an HNSW cosine index. The embedding size must
   match the column — set `CIFAIL_AI_EMBED_DIM` if it isn't 768.
+- **Notifications**: ✅ (**R13**, opt-in) the server can alert a chat channel, a generic
+  webhook, or email when a failure is new, recurs, or is resolved. Configure a
+  `notifications:` block (events, `slackWebhookUrl`, `webhookUrl`, `dedupeSeconds`, `smtp`)
+  in the config file; the webhook URLs can also come from `CIFAIL_NOTIFY_SLACK_URL` /
+  `CIFAIL_NOTIFY_WEBHOOK_URL` and the SMTP password from `CIFAIL_SMTP_PASSWORD`, so no
+  secrets live in the file. Notifications fire **only server-side**, are off until a channel
+  is set, dedupe per `(event, fingerprint)`, and are best-effort (a broken channel never
+  affects analysis).
 
 ## How the chart maps to it
 

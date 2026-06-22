@@ -2,6 +2,7 @@
 using System.ComponentModel;
 using CiFail.Core.Ai;
 using CiFail.Core.Configuration;
+using CiFail.Core.Notifications;
 using CiFail.Core.Storage;
 using CiFail.Server;
 using Spectre.Console;
@@ -47,13 +48,17 @@ public sealed class ServeCommand : Command<ServeCommand.Settings>
         // Optional vector embeddings (R10): only when opted in (ai.embeddings / CIFAIL_AI_EMBEDDINGS).
         var embedder = BuildEmbedder(config.Ai);
 
+        // Optional outbound notifications (R13): built only when a channel is configured.
+        var notifications = NotificationDispatcher.FromConfig(config.Notifications);
+
         var auth = string.IsNullOrWhiteSpace(token)
             ? "[yellow]auth: off[/]"
             : "[green]auth: bearer token[/]";
         var sim = embedder is null ? "tf-idf" : $"embeddings:{Markup.Escape(config.Ai.Provider)}";
+        var notify = notifications is { HasNotifiers: true } ? "[green]notifications: on[/]" : "notifications: off";
         AnsiConsole.MarkupLine(
             $"[green]cifail serve[/] listening on [bold]http://{settings.Host}:{settings.Port}[/] " +
-            $"(database: [bold]{Markup.Escape(database.Provider)}[/], {auth}, similarity: {sim})");
+            $"(database: [bold]{Markup.Escape(database.Provider)}[/], {auth}, similarity: {sim}, {notify})");
 
         return CiFailServer.Run(new ServeOptions
         {
@@ -62,6 +67,7 @@ public sealed class ServeCommand : Command<ServeCommand.Settings>
             Database = database,
             AuthToken = token,
             Embedder = embedder,
+            Notifications = notifications,
         });
     }
 
