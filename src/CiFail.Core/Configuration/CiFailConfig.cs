@@ -73,6 +73,29 @@ public sealed class AiConfig
     /// <c>nomic-embed-text</c> default; hosted providers that support it are asked to emit this size.
     /// </summary>
     public int EmbeddingDimensions { get; set; } = 768;
+
+    /// <summary>Guardrails around hosted-AI calls (R20). All off (unlimited) by default.</summary>
+    public AiLimitsConfig Limits { get; set; } = new();
+}
+
+/// <summary>
+/// Optional budget/rate-limits for the AI analyzer (R20), so a misfiring <c>--ai</c> or a busy
+/// <c>serve</c> can't run up cost. Every limit is opt-in; <c>0</c> means unlimited, which is the
+/// default — so this changes nothing unless an operator sets a value.
+/// </summary>
+public sealed class AiLimitsConfig
+{
+    /// <summary>Max AI calls in one process run (0 = unlimited).</summary>
+    public int MaxCallsPerRun { get; set; }
+
+    /// <summary>Max AI calls within any rolling 60-second window (0 = unlimited).</summary>
+    public int MaxCallsPerMinute { get; set; }
+
+    /// <summary>Cap on the prompt/log-excerpt length sent to the model, in chars (0 = no cap).</summary>
+    public int MaxRequestChars { get; set; }
+
+    /// <summary>True when at least one limit is active.</summary>
+    public bool Any => MaxCallsPerRun > 0 || MaxCallsPerMinute > 0 || MaxRequestChars > 0;
 }
 
 /// <summary>Which storage backend to use and how to connect to it.</summary>

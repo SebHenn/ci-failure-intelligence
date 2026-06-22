@@ -9,7 +9,8 @@ public static class AiFactory
     {
         var provider = AiRegistry.Get(config.Provider)
             ?? throw new AiProviderNotAvailableException(config.Provider, AiRegistry.AvailableNames);
-        return provider.Create(config);
+        // Apply the optional cost guardrails (R20); a no-op unless a limit is configured.
+        return RateLimitedAiAnalyzer.Wrap(provider.Create(config), config.Limits);
     }
 
     /// <summary>

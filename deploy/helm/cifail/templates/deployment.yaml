@@ -25,6 +25,16 @@ spec:
           # Runs `cifail serve` (the HTTP API, full/Docker build). See deploy/README.md.
           args:
             {{- toYaml .Values.serve.args | nindent 12 }}
+            {{- if .Values.mtls.enabled }}
+            - --client-ca
+            - {{ printf "%s/%s" .Values.mtls.mountPath .Values.mtls.caKey | quote }}
+            - --tls-cert
+            - {{ printf "%s/%s" .Values.mtls.mountPath .Values.mtls.certKey | quote }}
+            {{- if .Values.mtls.passwordSecretKey }}
+            - --tls-password
+            - "$(CIFAIL_TLS_PASSWORD)"
+            {{- end }}
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.serve.port }}
@@ -43,18 +53,49 @@ spec:
                   name: {{ include "cifail.authSecretName" . }}
                   key: {{ include "cifail.authSecretKey" . }}
             {{- end }}
+            {{- if and .Values.mtls.enabled .Values.mtls.passwordSecretKey }}
+            - name: CIFAIL_TLS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mtls.existingSecret }}
+                  key: {{ .Values.mtls.passwordSecretKey }}
+            {{- end }}
+          {{- if .Values.mtls.enabled }}
+          volumeMounts:
+            - name: tls
+              mountPath: {{ .Values.mtls.mountPath }}
+              readOnly: true
+          {{- end }}
+          # With mTLS the kubelet probes present no client cert, so HTTPS probes would fail the
+          # handshake — use a TCP check instead (it only confirms the listener is up).
           livenessProbe:
+            {{- if .Values.mtls.enabled }}
+            tcpSocket:
+              port: http
+            {{- else }}
             httpGet:
               path: /healthz
               port: http
+            {{- end }}
             initialDelaySeconds: 10
           readinessProbe:
+            {{- if .Values.mtls.enabled }}
+            tcpSocket:
+              port: http
+            {{- else }}
             httpGet:
               path: /healthz
               port: http
+            {{- end }}
             initialDelaySeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.mtls.enabled }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ required "mtls.existingSecret is required when mtls.enabled" .Values.mtls.existingSecret }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

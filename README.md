@@ -385,7 +385,19 @@ token, paste it into the field at the top once and it's remembered in your brows
 `Authorization: Bearer <token>` on every request except `/healthz` and the dashboard shell.
 Clients send it via `--server-token` or the same `CIFAIL_SERVER_TOKEN` env var. If you start
 `serve` without a token it runs open and logs a loud warning — only acceptable on a trusted
-network. (mTLS is a possible future hardening on top of the token.)
+network.
+
+**Per-client tokens (rotate/revoke individually).** Instead of one shared secret you can issue a
+token per client so any one can be revoked without disturbing the others. Provide a comma list in
+`CIFAIL_SERVER_TOKENS`, and/or a file via `serve --tokens-file <path>` (one `<token> [name]` per
+line; `#` comments allowed). Every configured token — including a single `--token` — is accepted
+and compared in constant time; revoke a client by removing its entry and restarting.
+
+**Mutual TLS (optional).** For a zero-trust setup, require a client certificate on top of (or
+instead of) the token: `serve --client-ca <ca.pem> --tls-cert <server.pfx> [--tls-password <pw>]`.
+The server then terminates HTTPS with `server.pfx` and rejects, at the TLS handshake, any client
+whose certificate doesn't chain to `ca.pem`. A client CA without a server cert is a startup error
+(mTLS needs server TLS). The Helm chart can mount both from a Secret (see `deploy/README.md`).
 
 There's a Helm chart for Kubernetes in [`deploy/`](./deploy); it sources the token from a
 Secret (`auth.existingSecret`) and injects it as `CIFAIL_SERVER_TOKEN`.

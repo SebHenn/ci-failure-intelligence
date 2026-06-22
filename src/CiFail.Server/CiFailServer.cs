@@ -1,5 +1,6 @@
-using System.Reflection;
+using System.Net;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using CiFail.Core.Ai;
@@ -11,6 +12,7 @@ using CiFail.Core.Storage;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -40,7 +42,14 @@ public static class CiFailServer
     public static WebApplication Build(ServeOptions options)
     {
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseUrls(options.ResolvedUrl);
+
+        // mTLS (R20): when a client CA is configured we must terminate TLS ourselves (mutual TLS
+        // needs a server cert + client-cert validation), so we drive Kestrel directly instead of
+        // UseUrls. Otherwise keep the simple http bind path unchanged.
+        if (options.MutualTls)
+            ConfigureMutualTls(builder, options);
+        else
+            builder.WebHost.UseUrls(options.ResolvedUrl);
 
         // Rule packs are immutable for the process lifetime — load them once.
         builder.Services.AddSingleton(new RuleEngine(RulePackLoader.LoadAll()));
@@ -52,19 +61,81 @@ public static class CiFailServer
         builder.Services.AddSingleton(storeFactory);
 
         var app = builder.Build();
-        UseBearerAuth(app, options.AuthToken);
+        UseBearerAuth(app, options.ResolvedTokens());
         MapEndpoints(app, options.Embedder, options.Notifications);
         return app;
     }
 
     /// <summary>
-    /// Gate every endpoint except <c>/healthz</c> behind a shared bearer token. With no token
-    /// configured the server stays open but logs a loud warning (dev convenience). The token is
-    /// compared in constant time so the comparison can't be used as a timing oracle.
+    /// Configure Kestrel for mutual TLS (R20): serve over HTTPS with the operator's certificate and
+    /// require a client certificate that chains to the supplied CA bundle. Validation is enforced at
+    /// the TLS layer (the handshake fails for an untrusted/absent client cert), so no request without
+    /// a trusted cert ever reaches a handler.
     /// </summary>
-    private static void UseBearerAuth(WebApplication app, string? token)
+    private static void ConfigureMutualTls(WebApplicationBuilder builder, ServeOptions options)
     {
-        if (string.IsNullOrWhiteSpace(token))
+        if (string.IsNullOrWhiteSpace(options.TlsCertPath))
+            throw new InvalidOperationException(
+                "mutual TLS requires a server certificate: set --tls-cert (and --tls-password if encrypted).");
+
+        // net8 target: the X509Certificate2(path, password) ctor is the supported loader here.
+        var serverCert = new X509Certificate2(options.TlsCertPath, options.TlsCertPassword);
+        var trustedCas = LoadCaBundle(options.ClientCaPath!);
+
+        var endpoint = ParseEndpoint(options.ResolvedUrl);
+        builder.WebHost.ConfigureKestrel(kestrel =>
+        {
+            kestrel.Listen(endpoint.Address, endpoint.Port, listen =>
+            {
+                listen.UseHttps(serverCert, https =>
+                {
+                    https.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
+                    https.ClientCertificateValidation = (cert, _, _) => ChainsToTrustedCa(cert, trustedCas);
+                });
+            });
+        });
+    }
+
+    /// <summary>Verify a presented client certificate chains to one of the trusted CA roots.</summary>
+    private static bool ChainsToTrustedCa(X509Certificate2 clientCert, X509Certificate2Collection trustedCas)
+    {
+        using var chain = new X509Chain();
+        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+        chain.ChainPolicy.CustomTrustStore.AddRange(trustedCas);
+        return chain.Build(clientCert);
+    }
+
+    private static X509Certificate2Collection LoadCaBundle(string path)
+    {
+        var collection = new X509Certificate2Collection();
+        collection.ImportFromPemFile(path);
+        if (collection.Count == 0)
+            throw new InvalidOperationException($"no certificates found in client CA bundle '{path}'.");
+        return collection;
+    }
+
+    private static (IPAddress Address, int Port) ParseEndpoint(string url)
+    {
+        var uri = new Uri(url);
+        var address = uri.Host switch
+        {
+            "0.0.0.0" or "*" or "+" => IPAddress.Any,
+            "localhost" => IPAddress.Loopback,
+            _ => IPAddress.TryParse(uri.Host, out var ip) ? ip : IPAddress.Any,
+        };
+        return (address, uri.Port);
+    }
+
+    /// <summary>
+    /// Gate every endpoint except <c>/healthz</c> behind a bearer token. Any one of the configured
+    /// tokens (R20: a single token plus per-client named tokens) authorizes a request. With no token
+    /// configured the server stays open but logs a loud warning (dev convenience). Tokens are compared
+    /// in constant time so the comparison can't be used as a timing oracle.
+    /// </summary>
+    private static void UseBearerAuth(WebApplication app, IReadOnlyList<NamedToken> tokens)
+    {
+        if (tokens.Count == 0)
         {
             app.Logger.LogWarning(
                 "cifail serve is running WITHOUT authentication — anyone who can reach this port " +
@@ -72,6 +143,8 @@ public static class CiFailServer
                 "a bearer token, and do not expose serve on an untrusted network.");
             return;
         }
+
+        app.Logger.LogInformation("cifail serve requires a bearer token ({Count} configured).", tokens.Count);
 
         app.Use(async (context, next) =>
         {
@@ -83,7 +156,7 @@ public static class CiFailServer
                 return;
             }
 
-            if (!IsAuthorized(context.Request, token))
+            if (!IsAuthorized(context.Request, tokens))
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 context.Response.Headers["WWW-Authenticate"] = "Bearer";
@@ -95,17 +168,23 @@ public static class CiFailServer
         });
     }
 
-    private static bool IsAuthorized(HttpRequest request, string token)
+    private static bool IsAuthorized(HttpRequest request, IReadOnlyList<NamedToken> tokens)
     {
         const string prefix = "Bearer ";
         var header = request.Headers.Authorization.ToString();
         if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             return false;
 
-        var provided = header[prefix.Length..].Trim();
-        return CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(provided),
-            Encoding.UTF8.GetBytes(token));
+        var provided = Encoding.UTF8.GetBytes(header[prefix.Length..].Trim());
+
+        // Check every token without early-exit so a match never leaks (timing) which one it was.
+        var authorized = false;
+        foreach (var t in tokens)
+        {
+            if (CryptographicOperations.FixedTimeEquals(provided, Encoding.UTF8.GetBytes(t.Token)))
+                authorized = true;
+        }
+        return authorized;
     }
 
     /// <summary>

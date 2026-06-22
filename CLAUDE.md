@@ -66,7 +66,14 @@ neither the `serve` command nor ASP.NET Core. The Docker runtime base is therefo
 <token>` when a token is set via `CIFAIL_SERVER_TOKEN` / `serve --token` (constant-time compare via
 `CryptographicOperations.FixedTimeEquals`); started without one, serve runs open and logs a loud
 warning. Clients send it with `--server-token` / `CIFAIL_SERVER_TOKEN` (see
-`HttpAnalysisStore.TokenEnvVar`, the single source of the env-var name). Build it locally with
+`HttpAnalysisStore.TokenEnvVar`, the single source of the env-var name). **R20 hardening:**
+multiple per-client tokens (`CIFAIL_SERVER_TOKENS` comma list + `serve --tokens-file`, parsed by
+`ServerTokens` into `NamedToken`s; `ServeOptions.ResolvedTokens()` merges them with the single
+token, and `IsAuthorized` constant-time-compares against all without early-exit) so a client can be
+revoked individually; opt-in **mTLS** (`serve --client-ca <pem> --tls-cert <pfx>` → `ConfigureMutualTls`
+drives Kestrel with `ClientCertificateMode.RequireCertificate` + a `CustomRootTrust` chain check);
+and an AI cost guardrail (`Core/Ai/RateLimitedAiAnalyzer`, a decorator `AiFactory.Create` wraps when
+`AiConfig.Limits` is set — caps calls/run, calls/minute, and prompt chars; off = unlimited). Build it locally with
 `dotnet build src/CiFail.Cli/CiFail.Cli.csproj -p:IncludeExternalDb=true`
 then `dotnet run --project src/CiFail.Cli -- serve --port 8080` (or hit the in-process host
 in `tests/CiFail.Server.Tests`, which needs no Docker).

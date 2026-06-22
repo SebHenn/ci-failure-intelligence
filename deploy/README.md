@@ -46,8 +46,12 @@ Implemented now (R7 + R9 + R11) and what's still open:
 - **Auth**: ✅ (**R9**) a shared bearer token, set via `CIFAIL_SERVER_TOKEN` or
   `serve --token`, is required on every route except `/healthz` (constant-time compared).
   Started without a token, serve runs open and logs a loud warning. Clients
-  (`--server`) send it via `--server-token` / `CIFAIL_SERVER_TOKEN`. mTLS is a possible
-  future hardening on top of the token.
+  (`--server`) send it via `--server-token` / `CIFAIL_SERVER_TOKEN`.
+  **R20** adds two production options: **per-client named tokens** for individual
+  rotation/revocation (`CIFAIL_SERVER_TOKENS` comma list and/or `serve --tokens-file`,
+  each constant-time compared) and opt-in **mutual TLS** (`serve --client-ca <pem>
+  --tls-cert <pfx>` — the server terminates HTTPS and rejects, at the handshake, any client
+  cert that doesn't chain to the CA). See "Mutual TLS" below for the chart wiring.
 - **Git correlation (R3)**: ✅ (**R11**) resolved as planned — **reconciliation stays on the
   client** (it has the working tree). The server exposes open failures
   (`GET /repos/{repoId}/open`) and accepts auto-resolutions (`POST /resolve/{id}?source=auto&
@@ -91,5 +95,26 @@ helm install cifail ./deploy/helm/cifail \
 Auth is on by default (`auth.enabled=true`); provide the token via `auth.existingSecret`
 (recommended) or `auth.token` (dev only, chart-created Secret). Set `auth.enabled=false` to
 run open on a trusted network.
+
+### Mutual TLS (R20)
+
+To require client certificates, put the CA bundle and the server PFX in a Secret and enable
+`mtls`:
+
+```console
+kubectl create secret generic cifail-tls \
+  --from-file=ca.pem=ca.pem \
+  --from-file=server.pfx=server.pfx
+
+helm install cifail ./deploy/helm/cifail \
+  --set mtls.enabled=true \
+  --set mtls.existingSecret=cifail-tls
+```
+
+The chart mounts the Secret at `mtls.mountPath` (default `/etc/cifail/tls`) and appends
+`--client-ca`/`--tls-cert`. If the PFX is encrypted, add its password to the same Secret and set
+`mtls.passwordSecretKey` (injected as `CIFAIL_TLS_PASSWORD`). Because the kubelet probes can't
+present a client cert, the liveness/readiness probes switch to a TCP check while mTLS is on. mTLS
+and the bearer token are independent — enable either or both.
 
 Use `helm template ./deploy/helm/cifail` to review the rendered manifests before installing.

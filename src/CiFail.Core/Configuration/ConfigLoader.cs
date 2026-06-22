@@ -18,6 +18,8 @@ public static class ConfigLoader
     public const string AiEmbeddingsEnvVar = "CIFAIL_AI_EMBEDDINGS";
     public const string AiEmbeddingModelEnvVar = "CIFAIL_AI_EMBED_MODEL";
     public const string AiEmbeddingDimsEnvVar = "CIFAIL_AI_EMBED_DIM";
+    public const string AiMaxCallsEnvVar = "CIFAIL_AI_MAX_CALLS";
+    public const string AiMaxCallsPerMinuteEnvVar = "CIFAIL_AI_MAX_CALLS_PER_MIN";
     public const string NotifySlackUrlEnvVar = "CIFAIL_NOTIFY_SLACK_URL";
     public const string NotifyWebhookUrlEnvVar = "CIFAIL_NOTIFY_WEBHOOK_URL";
 
@@ -66,6 +68,12 @@ public static class ConfigLoader
 
         var aiEmbedDims = Environment.GetEnvironmentVariable(AiEmbeddingDimsEnvVar);
         if (int.TryParse(aiEmbedDims, out var dims) && dims > 0) config.Ai.EmbeddingDimensions = dims;
+
+        // AI cost guardrails (R20): env overrides for the call budgets.
+        if (int.TryParse(Environment.GetEnvironmentVariable(AiMaxCallsEnvVar), out var maxCalls) && maxCalls >= 0)
+            config.Ai.Limits.MaxCallsPerRun = maxCalls;
+        if (int.TryParse(Environment.GetEnvironmentVariable(AiMaxCallsPerMinuteEnvVar), out var maxPerMin) && maxPerMin >= 0)
+            config.Ai.Limits.MaxCallsPerMinute = maxPerMin;
 
         config.Ai.Provider = config.Ai.Provider.ToLowerInvariant();
 

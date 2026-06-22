@@ -28,6 +28,21 @@ auth:
   # Option B (dev only): set the token here and let the chart create a Secret.
   token: ""
 
+# Mutual TLS (R20, opt-in). When enabled, the server terminates HTTPS and requires every client
+# to present a certificate that chains to the CA. Provide a Secret holding the CA bundle and the
+# server PFX; the chart mounts it and passes --client-ca / --tls-cert. Because the kubelet probes
+# present no client cert, the liveness/readiness probes switch to a TCP check while mTLS is on.
+mtls:
+  enabled: false
+  # Secret with the CA bundle + server certificate keyed below. The server PFX password, if any,
+  # is read from the env var named in `passwordEnvFromSecretKey` (optional).
+  existingSecret: ""
+  caKey: ca.pem
+  certKey: server.pfx
+  # Optional: key in the same Secret holding the PFX password (injected as CIFAIL_TLS_PASSWORD).
+  passwordSecretKey: ""
+  mountPath: /etc/cifail/tls
+
 # External database the service persists to. cifail reads CIFAIL_DB_PROVIDER /
 # CIFAIL_DB_CONNECTION (same as the CLI).
 database:
