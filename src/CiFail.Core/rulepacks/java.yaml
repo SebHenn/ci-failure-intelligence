@@ -32,9 +32,9 @@
   match: "\\[INFO\\] BUILD FAILURE|\\[ERROR\\] Failed to execute goal (?<goal>[\\w.\\-:]+)"
   confidence: 0.5
   fix: |
-    The Maven build failed{goal}. The real cause is in the [ERROR] lines just above
-    this summary — usually a failing plugin goal, a compile error, or a test
-    failure. Re-run with `mvn -e` for stack traces or `-X` for full debug output.
+    The Maven build failed. The real cause is in the [ERROR] lines just above this
+    summary — usually a failing plugin goal, a compile error, or a test failure.
+    Re-run with `mvn -e` for stack traces or `-X` for full debug output.
 
 - id: gradle-build-failed
   ecosystem: java
@@ -55,8 +55,8 @@
   match: "(?:org\\.opentest4j\\.AssertionFailedError|java\\.lang\\.AssertionError)(?:: (?<message>.+))?"
   confidence: 0.65
   fix: |
-    A JUnit test failed an assertion{message}. Compare the expected vs actual values
-    in the lines that follow. Reproduce a single test with
+    A JUnit test failed an assertion. Compare the expected vs actual values in the
+    message above, then reproduce a single test with
     `mvn test -Dtest=<ClassName>#<methodName>` or `./gradlew test --tests <Class>`.
   docs: https://junit.org/junit5/docs/current/user-guide/
 

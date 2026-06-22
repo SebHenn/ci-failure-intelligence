@@ -19,9 +19,9 @@
   match: "error\\[E0432\\]: unresolved import `(?<import>[^`]+)`|error\\[E0433\\]: failed to resolve: (?<message>.+)"
   confidence: 0.82
   fix: |
-    Rust couldn't resolve an import ('{import}{message}'). Add the crate to
-    Cargo.toml ([dependencies]) and run `cargo build`, check the module path/`use`
-    statement, and confirm the feature gating the item is enabled.
+    Rust couldn't resolve an import or path (see the error line above). Add the
+    missing crate to Cargo.toml ([dependencies]) and run `cargo build`, check the
+    `use` path, and confirm any feature gating the item is enabled.
   docs: https://doc.rust-lang.org/cargo/guide/dependencies.html
 
 - id: cargo-could-not-compile
@@ -42,7 +42,7 @@
   match: "thread '(?<thread>[^']+)' panicked at (?<location>[^\\n]+)|test result: FAILED\\. \\d+ passed; (?<failed>\\d+) failed"
   confidence: 0.65
   fix: |
-    A Rust test failed{thread}. Read the panic message/location above ({location})
-    for the assertion that fired. Reproduce with
-    `cargo test <test_name> -- --nocapture` and set RUST_BACKTRACE=1 for a backtrace.
+    A Rust test failed. Read the panic message and location above for the assertion
+    that fired. Reproduce with `cargo test <test_name> -- --nocapture` and set
+    RUST_BACKTRACE=1 for a backtrace.
   docs: https://doc.rust-lang.org/book/ch11-01-writing-tests.html

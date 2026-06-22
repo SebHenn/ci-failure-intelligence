@@ -42,7 +42,7 @@
   match: "rake aborted!\\s*\\n?(?<message>[^\\n]+)?"
   confidence: 0.55
   fix: |
-    A Rake task aborted{message}. The underlying exception and the failing task are
-    on the lines just below "rake aborted!". Re-run with `rake <task> --trace` to get
-    the full backtrace.
+    A Rake task aborted. The underlying exception and the failing task are on the
+    lines just below "rake aborted!". Re-run with `rake <task> --trace` to get the
+    full backtrace.
   docs: https://ruby.github.io/rake/
