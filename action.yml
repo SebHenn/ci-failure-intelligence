@@ -25,6 +25,10 @@ inputs:
     description: "Propagate cifail's exit code (fail the step). Off by default — the action is informational and runs after a build already failed."
     required: false
     default: 'false'
+  comment:
+    description: 'Post/update the analysis as a pull-request comment (idempotent). Needs a token in GITHUB_TOKEN with pull-requests: write.'
+    required: false
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -36,6 +40,7 @@ runs:
         INPUT_IMAGE: ${{ inputs.image }}
         INPUT_SUMMARY: ${{ inputs.summary }}
         INPUT_FAIL: ${{ inputs.fail }}
+        INPUT_COMMENT: ${{ inputs.comment }}
       run: |
         set -uo pipefail
 
@@ -65,6 +70,30 @@ runs:
             echo "$out"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+        # Post/update an idempotent PR comment (marked with an HTML comment so we update in place).
+        if [ "$INPUT_COMMENT" = "true" ]; then
+          pr="$(jq -r '.pull_request.number // .issue.number // empty' "$GITHUB_EVENT_PATH" 2>/dev/null)"
+          if [ -z "${GITHUB_TOKEN:-}" ]; then
+            echo "cifail: comment=true but GITHUB_TOKEN is not set — skipping PR comment." >&2
+          elif [ -z "$pr" ]; then
+            echo "cifail: comment=true but no pull request in this event — skipping PR comment." >&2
+          else
+            marker="<!-- cifail -->"
+            body="$(printf '%s\n## cifail analysis\n\n```\n%s\n```\n' "$marker" "$out")"
+            repo="$GITHUB_REPOSITORY"
+            # Find our existing comment (by marker) and update it; otherwise create one.
+            id="$(gh api "repos/$repo/issues/$pr/comments" --paginate \
+              --jq "map(select(.body | startswith(\"$marker\"))) | .[0].id // empty" 2>/dev/null)"
+            if [ -n "$id" ]; then
+              gh api -X PATCH "repos/$repo/issues/comments/$id" -f body="$body" >/dev/null \
+                && echo "cifail: updated PR comment $id."
+            else
+              gh api -X POST "repos/$repo/issues/$pr/comments" -f body="$body" >/dev/null \
+                && echo "cifail: posted PR comment."
+            fi
+          fi
         fi
 
         # cifail exit codes: 0 matched, 1 analyzed but no rule matched, 2 input error.

@@ -1,0 +1,102 @@
+# cifail — GitLab CI/CD Component.
+#
+# Explains build/test failures (what broke, whether it happened before, how to fix it) and,
+# optionally, posts the analysis as a merge-request note. Include it with:
+#
+#   include:
+#     - component: $CI_SERVER_FQDN/SebHenn/ci-failure-intelligence/cifail@main
+#         inputs:
+#           log: build.log
+#           comment: true        # post the analysis on the MR (needs CIFAIL_GITLAB_TOKEN)
+#
+# Your build job should write its output to the log path, e.g.:
+#   build:
+#     script:
+#       - your-build-command 2>&1 | tee build.log
+#
+# The analyze job runs only when an earlier job failed (when: on_failure) and never fails the
+# pipeline itself (allow_failure: true) — it's there to explain, not to gate (flip `fail` to gate).
+
+spec:
+  inputs:
+    stage:
+      default: test
+      description: Pipeline stage to run cifail in.
+    log:
+      default: build.log
+      description: Path to the log file to analyze (relative to the project dir).
+    image:
+      default: ghcr.io/sebhenn/cifail:latest
+      description: cifail Docker image to run.
+    args:
+      default: ""
+      description: Extra arguments passed to `cifail analyze` (e.g. "--type node").
+    fail:
+      type: boolean
+      default: false
+      description: Propagate cifail's exit code so the job (and pipeline) fails on it.
+    comment:
+      type: boolean
+      default: false
+      description: Post/update the analysis as a merge-request note (needs CIFAIL_GITLAB_TOKEN).
+    comment_image:
+      default: alpine:3.20
+      description: Image for the MR-comment job (must have sh; curl + jq are installed at runtime).
+---
+
+"cifail-analyze":
+  stage: $[[ inputs.stage ]]
+  image: $[[ inputs.image ]]
+  when: on_failure
+  allow_failure: true
+  variables:
+    # For shared team history, set CIFAIL_DB_PROVIDER / CIFAIL_DB_CONNECTION as CI/CD variables
+    # and cifail will use them automatically.
+    CIFAIL_LOG: $[[ inputs.log ]]
+  script:
+    - set -o pipefail
+    - cifail analyze "$CIFAIL_LOG" $[[ inputs.args ]] | tee cifail-output.txt; code=${PIPESTATUS[0]}
+    - if [ "$[[ inputs.fail ]]" = "true" ]; then exit "$code"; fi
+  artifacts:
+    when: always
+    paths:
+      - cifail-output.txt
+    expire_in: 1 day
+
+"cifail-mr-comment":
+  stage: $[[ inputs.stage ]]
+  image: $[[ inputs.comment_image ]]
+  needs:
+    - job: "cifail-analyze"
+      artifacts: true
+  allow_failure: true
+  # Only on merge-request pipelines, and only when commenting is enabled.
+  rules:
+    - if: '$CI_MERGE_REQUEST_IID && "$[[ inputs.comment ]]" == "true"'
+      when: on_failure
+  script:
+    - |
+      if [ -z "${CIFAIL_GITLAB_TOKEN:-}" ]; then
+        echo "CIFAIL_GITLAB_TOKEN is not set — skipping the MR comment."
+        exit 0
+      fi
+      command -v curl >/dev/null 2>&1 || apk add --no-cache curl >/dev/null
+      command -v jq >/dev/null 2>&1 || apk add --no-cache jq >/dev/null
+
+      API="$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID/notes"
+      MARKER="<!-- cifail -->"
+      BODY="$(printf '%s\n\n## cifail analysis\n\n```\n%s\n```\n' "$MARKER" "$(cat cifail-output.txt)")"
+
+      # Idempotent: update our existing note if present, otherwise create one.
+      NOTE_ID="$(curl -sf --header "PRIVATE-TOKEN: $CIFAIL_GITLAB_TOKEN" "$API?per_page=100" \
+        | jq -r --arg m "$MARKER" 'map(select(.body | startswith($m))) | .[0].id // empty')"
+
+      if [ -n "$NOTE_ID" ]; then
+        curl -sf --request PUT --header "PRIVATE-TOKEN: $CIFAIL_GITLAB_TOKEN" \
+          --data-urlencode "body=$BODY" "$API/$NOTE_ID" >/dev/null
+        echo "Updated cifail MR note $NOTE_ID."
+      else
+        curl -sf --request POST --header "PRIVATE-TOKEN: $CIFAIL_GITLAB_TOKEN" \
+          --data-urlencode "body=$BODY" "$API" >/dev/null
+        echo "Posted cifail MR note."
+      fi

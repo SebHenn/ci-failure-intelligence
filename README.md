@@ -201,23 +201,58 @@ the job's **step summary**. No install needed; it runs the Docker image for you.
 ```
 
 Inputs: `log` (file to analyze), `args` (extra flags, e.g. `--type node`), `image` (pin a
-version instead of `:latest`), `summary` (write to the step summary, default `true`), and
-`fail` (propagate cifail's exit code; off by default since it runs after a failed build).
+version instead of `:latest`), `summary` (write to the step summary, default `true`),
+`fail` (propagate cifail's exit code; off by default since it runs after a failed build),
+and `comment` (post the analysis as a pull-request comment, default `false`).
 For shared history, set `CIFAIL_DB_PROVIDER` / `CIFAIL_DB_CONNECTION` in the job env.
+
+To comment on the PR, give the step a token with `pull-requests: write` and set
+`comment: true` — the comment is **idempotent** (updated in place on re-runs, not duplicated):
+
+```yaml
+- name: Explain failures
+  if: failure()
+  uses: SebHenn/ci-failure-intelligence@v1
+  with:
+    log: build.log
+    comment: true
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
 
 ### GitLab CI
 
-Include the template and point it at your log; it runs only `on_failure` and never fails
-the pipeline itself:
+Include the **CI/CD component** and point it at your log. It adds a `cifail-analyze` job that
+runs only `on_failure` and never fails the pipeline itself, plus an optional `cifail-mr-comment`
+job that posts the analysis on the merge request:
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/SebHenn/ci-failure-intelligence/main/ci-templates/gitlab.yml'
+  - component: $CI_SERVER_FQDN/SebHenn/ci-failure-intelligence/cifail@main
+    inputs:
+      log: build.log
+      comment: true        # post the analysis on the MR (needs CIFAIL_GITLAB_TOKEN)
 
 build:
   stage: build
   script:
     - your-build-command 2>&1 | tee build.log
+```
+
+Inputs: `stage` (default `test`), `log`, `image`, `args`, `fail` (gate the pipeline; default
+off), `comment` (post an idempotent MR note; default off), and `comment_image`. The MR comment
+needs a `CIFAIL_GITLAB_TOKEN` CI/CD variable (a project/group token with `api` scope); it's
+updated in place on re-runs. For shared history, set `CIFAIL_DB_PROVIDER` /
+`CIFAIL_DB_CONNECTION` as CI/CD variables.
+
+<details>
+<summary>Older GitLab template (back-compat)</summary>
+
+The pre-component hidden-job template still works if you can't use components:
+
+```yaml
+include:
+  - remote: 'https://raw.githubusercontent.com/SebHenn/ci-failure-intelligence/main/ci-templates/gitlab.yml'
 
 explain-failures:
   extends: .cifail
@@ -225,6 +260,8 @@ explain-failures:
   variables:
     CIFAIL_LOG: build.log
 ```
+
+</details>
 
 ### Anywhere else (plain pipe)
 
