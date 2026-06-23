@@ -104,6 +104,36 @@ public sealed class ServeEndpointTests : IClassFixture<ServeFixture>
     }
 
     [Fact]
+    public async Task Clusters_endpoint_groups_repeated_failures()
+    {
+        // Two analyses of the same log should land in one cluster labelled by the matched rule.
+        var analysis = await Analyze(MatchingLog);
+        await Analyze(MatchingLog);
+
+        var response = await _client.GetAsync("clusters?all=1&top=50");
+        response.EnsureSuccessStatusCode();
+        var result = JsonSerializer.Deserialize<ClustersJson.ClusterResultDto>(
+            await response.Content.ReadAsStringAsync(), Json)!;
+
+        result.TotalAnalyzed.Should().BeGreaterThan(0);
+        result.Clusters.Should().Contain(c =>
+            c.Label == analysis.RootCause!.RuleId && c.MemberIds.Contains(analysis.HistoryId!.Value));
+    }
+
+    [Fact]
+    public async Task HttpStore_ComputeClusters_round_trips_from_server()
+    {
+        // `cifail clusters --server` path: the http store delegates to GET /clusters.
+        var analysis = await Analyze(MatchingLog);
+        await Analyze(MatchingLog);
+
+        using var store = new HttpAnalysisStore(_client.BaseAddress!.ToString());
+        var result = store.ComputeClusters(new ClusterQuery { Threshold = 0.5, Top = 50, IncludeSingletons = true });
+
+        result.Clusters.Should().Contain(c => c.MemberIds.Contains(analysis.HistoryId!.Value));
+    }
+
+    [Fact]
     public void HttpAnalyzeClient_remote_analyze_matches_local()
     {
         // R18: `cifail analyze --server` posts to /analyze and reconstructs the domain result.

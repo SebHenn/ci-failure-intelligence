@@ -168,6 +168,15 @@ cifail stats --top 5 --json  # machine-readable, top 5 recurring failures
 cifail stats --server http://your-host:8080   # against a shared serve instance
 ```
 
+Got a lot of history? `cifail clusters` groups near-duplicate failures together, so you
+see a handful of distinct root causes instead of a long flat list:
+
+```bash
+cifail clusters                    # the biggest groups of similar failures
+cifail clusters --threshold 0.6    # tighter grouping (higher = more similar required)
+cifail clusters --all --json       # include one-offs, machine-readable
+```
+
 ### It remembers your fixes — often without being told
 
 When you run cifail inside a git repository, it tags each failure with the commit you were
@@ -567,8 +576,9 @@ shared server, and CI integration all work now.
   AI), validated locally (must compile, actually match, not be overbroad) before you save it. ✅
 - **SARIF + Markdown report output** — `analyze --report sarif|markdown` renders findings into
   formats CI speaks: SARIF for GitHub Code Scanning, Markdown for a step summary or PR comment. ✅
-- **Failure clustering**, **per-test flakiness**, and **more notification channels**
-  (Discord/Teams/GitHub). 🚧
+- **Failure clustering** — `cifail clusters` groups near-duplicate failures from history so you see
+  distinct root causes instead of a flat list. ✅
+- **Per-test flakiness** and **more notification channels** (Discord/Teams/GitHub). 🚧
 
 ## License
 

@@ -20,7 +20,7 @@ namespace CiFail.Core.Storage;
 /// (<see cref="Save"/>, <see cref="LoadCorpus"/>) are not served remotely — a server analyzes
 /// and stores logs itself via <c>POST /analyze</c>.
 /// </summary>
-public sealed class HttpAnalysisStore : IAnalysisStore, IAnalysisStats
+public sealed class HttpAnalysisStore : IAnalysisStore, IAnalysisStats, IClusterer
 {
     private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -104,6 +104,27 @@ public sealed class HttpAnalysisStore : IAnalysisStore, IAnalysisStats
         return dto is null
             ? StatsComputer.Compute(Array.Empty<StoredAnalysis>(), query)
             : StatsJson.FromDto(dto);
+    }
+
+    public ClusterResult ComputeClusters(ClusterQuery query)
+    {
+        // Clusters are computed server-side (GET /clusters); rebuild from the shared JSON contract,
+        // so `cifail clusters --server` matches a local run exactly.
+        var qs = new List<string>
+        {
+            $"threshold={query.Threshold.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+            $"top={query.Top}",
+        };
+        if (query.IncludeSingletons) qs.Add("all=1");
+        if (query.Since is { } since)
+            qs.Add($"since={Uri.EscapeDataString(since.ToUniversalTime().ToString("O"))}");
+        if (!string.IsNullOrWhiteSpace(query.RepoId))
+            qs.Add($"repo={Uri.EscapeDataString(query.RepoId)}");
+
+        var dto = GetJson<ClustersJson.ClusterResultDto>($"clusters?{string.Join("&", qs)}");
+        return dto is null
+            ? new ClusterResult { Clusters = Array.Empty<FailureCluster>(), TotalAnalyzed = 0 }
+            : ClustersJson.FromDto(dto);
     }
 
     public long Save(AnalysisRecord record) => throw new NotSupportedException(

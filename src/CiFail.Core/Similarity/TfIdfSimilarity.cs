@@ -46,6 +46,35 @@ public static class TfIdfSimilarity
         return Cosine(Weight(a, idf), Weight(b, idf));
     }
 
+    /// <summary>
+    /// Smoothed IDF over a whole document set — the corpus-wide weighting used by batch consumers
+    /// like clustering (R25), where every document is weighted with one shared IDF rather than a
+    /// per-query one. Down-weights terms common to many failures so distinctive terms dominate.
+    /// </summary>
+    public static Dictionary<string, double> Idf(IReadOnlyList<IReadOnlyDictionary<string, int>> documents)
+    {
+        int n = documents.Count;
+        var df = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var doc in documents)
+            foreach (var term in doc.Keys)
+                df[term] = df.GetValueOrDefault(term) + 1;
+
+        var idf = new Dictionary<string, double>(df.Count, StringComparer.Ordinal);
+        foreach (var (term, freq) in df)
+            idf[term] = Math.Log((1.0 + n) / (1.0 + freq)) + 1.0; // smoothed idf
+        return idf;
+    }
+
+    /// <summary>Weight a term-frequency bag into a sparse IDF-weighted vector.</summary>
+    public static Dictionary<string, double> WeightVector(
+        IReadOnlyDictionary<string, int> terms,
+        IReadOnlyDictionary<string, double> idf) => Weight(terms, idf);
+
+    /// <summary>Cosine similarity of two pre-weighted sparse vectors (see <see cref="WeightVector"/>).</summary>
+    public static double CosineVectors(
+        IReadOnlyDictionary<string, double> a,
+        IReadOnlyDictionary<string, double> b) => Cosine(a, b);
+
     private static Dictionary<string, double> ComputeIdf(
         IReadOnlyDictionary<string, int> query,
         IEnumerable<IReadOnlyDictionary<string, int>> documents)

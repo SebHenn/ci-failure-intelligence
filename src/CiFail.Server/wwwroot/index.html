@@ -224,6 +224,16 @@ async function loadStats() {
     const li = (f) => `<li><code>${esc(f.RuleId)}</code><span>${f.Count}×${f.Flaky ? " ⚠" : ""}</span></li>`;
     const top = (s.TopFailures || []).map(li).join("") || `<li class="muted">none</li>`;
     const flaky = (s.Flaky || []).map(li).join("") || `<li class="muted">none 🎉</li>`;
+
+    // Failure clusters (R25) — best-effort; an older server without /clusters just omits the card.
+    let clusterCard = "";
+    try {
+      const c = await (await api("clusters?top=5")).json();
+      const cli = (cl) => `<li><code>${esc(cl.Label)}</code><span>${cl.Count}×</span></li>`;
+      const items = (c.Clusters || []).map(cli).join("") || `<li class="muted">no recurring groups</li>`;
+      clusterCard = `<div class="card wide"><div class="l">clusters (grouped root causes)</div><ul>${items}</ul></div>`;
+    } catch { clusterCard = ""; }
+
     $("trends").innerHTML =
       card(s.Total, "failures") +
       card(s.Open, "open") +
@@ -232,7 +242,8 @@ async function loadStats() {
       card(fmtPct(s.RecurrenceRate), "recurrence") +
       card(fmtDur(s.MeanTimeToResolutionSeconds), "mean resolve") +
       `<div class="card wide"><div class="l">top recurring</div><ul>${top}</ul></div>` +
-      `<div class="card wide"><div class="l">flaky (resolved → recurred)</div><ul>${flaky}</ul></div>`;
+      `<div class="card wide"><div class="l">flaky (resolved → recurred)</div><ul>${flaky}</ul></div>` +
+      clusterCard;
   } catch { $("trends").innerHTML = ""; }
 }
 

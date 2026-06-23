@@ -28,6 +28,11 @@ app.Configure(config =>
         .WithExample("stats")
         .WithExample("stats", "--since", "7d", "--top", "5");
 
+    config.AddCommand<ClustersCommand>("clusters")
+        .WithDescription("Group near-duplicate failures from history so you see distinct root causes.")
+        .WithExample("clusters")
+        .WithExample("clusters", "--threshold", "0.6", "--since", "30d");
+
     config.AddCommand<ResolveCommand>("resolve")
         .WithDescription("Save how you fixed a failure, so cifail can remind you next time.")
         .WithExample("resolve", "42", "--note", "\"Fixed the package name typo\"");

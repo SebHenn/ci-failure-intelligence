@@ -194,6 +194,23 @@ durations as seconds). The server exposes `GET /stats?since=&repo=&top=` and the
 renders a trends strip from it. Add new aggregations in `StatsComputer` (+ `StatsSnapshot`/`StatsJson`),
 not per-store.
 
+### Failure clustering (R25, `Core/Analysis/FailureClusterer.cs` + `Storage/IClusterer`)
+
+`cifail clusters` groups near-duplicate failures so you see distinct root causes, not a flat list.
+`FailureClusterer.Compute(corpus, ClusterQuery)` is a **pure** function (mirrors `StatsComputer`):
+single-link agglomeration via union-find over **TF-IDF cosine** on the already-scrubbed
+`CorpusEntry.Terms`. It blocks comparisons with an inverted index (`BuildBlocks` — only failures
+sharing a term with `2 ≤ df ≤ ⌈0.8·n⌉` are compared; ubiquitous/unique terms carry no pairing
+signal) to stay near-linear up to `ScanLimit` (2000). New TF-IDF helpers `Idf`/`WeightVector`/
+`CosineVectors` give it one corpus-wide IDF (the pairwise `Cosine` uses a 2-doc IDF, wrong for
+batch clustering). `ClusterQuery` = `{Threshold=0.5, Top=10 (0=all), Since?, RepoId?,
+IncludeSingletons, ScanLimit}`; a `FailureCluster` = `{Label (dominant matched RuleId, else
+"unmatched"), Count, MemberIds (newest first), Ecosystems, LastSeen}`. `IClusterer` is a
+**side-interface** (like `IAnalysisStats`): `HttpAnalysisStore` implements it via `GET /clusters`;
+SQLite/EF/Mongo don't, so `ClusterService.Compute(store, query)` falls back to `LoadCorpus(ScanLimit)`
+(R21-cached) + `FailureClusterer`. JSON: `Output/ClustersJson.cs` (PascalCase). Server exposes
+`GET /clusters?threshold=&since=&repo=&top=&all=`; the dashboard renders a clusters card.
+
 ### Rule authoring tooling (R15, `Core/Rules/RulePackValidator.cs` + `Cli/Commands/Rules*.cs`)
 
 `cifail rules` has `list`, plus `test <regex>` (try a regex against a log, show captures),

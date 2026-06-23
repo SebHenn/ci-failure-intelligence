@@ -283,6 +283,32 @@ public static class CiFailServer
             return Json(JsonSerializer.Serialize(StatsJson.ToDto(stats), AnalysisJson.Options));
         });
 
+        // Failure clusters over history (R25). Filters: ?threshold=0.5&since=<ISO-8601>&repo=<id>&top=N&all=1.
+        // Uses the store's IClusterer when available, else an in-app fallback — identical either way
+        // (see ClusterService / FailureClusterer).
+        app.MapGet("/clusters", (HttpRequest request, Func<IAnalysisStore> stores) =>
+        {
+            DateTimeOffset? since = null;
+            if (DateTimeOffset.TryParse(request.Query["since"].FirstOrDefault(),
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
+                since = parsed;
+
+            var query = new ClusterQuery
+            {
+                Threshold = double.TryParse(request.Query["threshold"].FirstOrDefault(),
+                    System.Globalization.CultureInfo.InvariantCulture, out var th) && th is >= 0 and <= 1 ? th : 0.5,
+                Since = since,
+                RepoId = request.Query["repo"].FirstOrDefault() is { Length: > 0 } r ? r : null,
+                Top = int.TryParse(request.Query["top"].FirstOrDefault(), out var t) && t >= 0 ? t : 10,
+                IncludeSingletons = request.Query["all"].FirstOrDefault() is "1" or "true",
+            };
+
+            using var store = stores();
+            var clusters = ClusterService.Compute(store, query);
+            return Json(JsonSerializer.Serialize(ClustersJson.ToDto(clusters), AnalysisJson.Options));
+        });
+
         // A single record, or 404.
         app.MapGet("/history/{id:long}", (long id, Func<IAnalysisStore> stores) =>
         {
