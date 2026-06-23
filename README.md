@@ -230,8 +230,9 @@ the job's **step summary**. No install needed; it runs the Docker image for you.
 Inputs: `log` (file to analyze), `args` (extra flags, e.g. `--type node`), `image` (pin a
 version instead of `:latest`), `summary` (write to the step summary, default `true`),
 `fail` (propagate cifail's exit code; off by default since it runs after a failed build),
-and `comment` (post the analysis as a pull-request comment, default `false`).
-For shared history, set `CIFAIL_DB_PROVIDER` / `CIFAIL_DB_CONNECTION` in the job env.
+`comment` (post the analysis as a pull-request comment, default `false`), and `sarif`
+(also write a SARIF report to that path). For shared history, set `CIFAIL_DB_PROVIDER` /
+`CIFAIL_DB_CONNECTION` in the job env.
 
 To comment on the PR, give the step a token with `pull-requests: write` and set
 `comment: true` — the comment is **idempotent** (updated in place on re-runs, not duplicated):
@@ -246,6 +247,29 @@ To comment on the PR, give the step a token with `pull-requests: write` and set
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+#### Code Scanning (SARIF)
+
+Set `sarif` to a path and upload it — cifail's findings then show up in the repo's
+**Security → Code scanning** tab, tracked across runs by failure fingerprint:
+
+```yaml
+- name: Explain failures
+  if: failure()
+  uses: SebHenn/ci-failure-intelligence@v1
+  with:
+    log: build.log
+    sarif: cifail.sarif
+
+- name: Upload SARIF
+  if: always()           # upload even though the build failed
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: cifail.sarif
+```
+
+Or run the CLI directly: `cifail analyze --report sarif --report-out cifail.sarif build.log`
+(use `--report markdown` for a step-summary/PR-comment-friendly document instead).
 
 ### GitLab CI
 
@@ -541,8 +565,10 @@ shared server, and CI integration all work now.
   infra (Docker/Terraform) rule packs — twelve ecosystems in all. ✅
 - **AI-assisted rule authoring** — `cifail suggest-rule` drafts a rule for an unmatched log (local
   AI), validated locally (must compile, actually match, not be overbroad) before you save it. ✅
-- **SARIF + Markdown report output**, **failure clustering**, **per-test flakiness**, and **more
-  notification channels** (Discord/Teams/GitHub). 🚧
+- **SARIF + Markdown report output** — `analyze --report sarif|markdown` renders findings into
+  formats CI speaks: SARIF for GitHub Code Scanning, Markdown for a step summary or PR comment. ✅
+- **Failure clustering**, **per-test flakiness**, and **more notification channels**
+  (Discord/Teams/GitHub). 🚧
 
 ## License
 

@@ -29,6 +29,10 @@ inputs:
     description: 'Post/update the analysis as a pull-request comment (idempotent). Needs a token in GITHUB_TOKEN with pull-requests: write.'
     required: false
     default: 'false'
+  sarif:
+    description: 'Also write a SARIF 2.1.0 report to this path (relative to the workspace), e.g. "cifail.sarif". Upload it with github/codeql-action/upload-sarif to show findings in Code Scanning.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -41,6 +45,7 @@ runs:
         INPUT_SUMMARY: ${{ inputs.summary }}
         INPUT_FAIL: ${{ inputs.fail }}
         INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_SARIF: ${{ inputs.sarif }}
       run: |
         set -uo pipefail
 
@@ -56,6 +61,8 @@ runs:
         # word-split extra args intentionally
         # shellcheck disable=SC2206
         [ -n "$INPUT_ARGS" ] && cifail_args+=($INPUT_ARGS)
+        # Write a SARIF report alongside the normal output (still shown on stdout/summary).
+        [ -n "$INPUT_SARIF" ] && cifail_args+=(--report sarif --report-out "$INPUT_SARIF")
 
         out="$(docker run "${run_args[@]}" "$INPUT_IMAGE" "${cifail_args[@]}" 2>&1)"
         code=$?

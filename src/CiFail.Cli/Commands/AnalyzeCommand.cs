@@ -7,6 +7,7 @@ using CiFail.Core.Configuration;
 using CiFail.Core.Git;
 using CiFail.Core.Ingest.Reports;
 using CiFail.Core.Models;
+using CiFail.Core.Output;
 using CiFail.Core.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -46,6 +47,14 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         [CommandOption("--annotations")]
         [Description("Emit GitHub Actions ::error:: annotations per failing test (when running under Actions).")]
         public bool Annotations { get; init; }
+
+        [CommandOption("--report <FORMAT>")]
+        [Description("Also produce a report: sarif (GitHub Code Scanning) or markdown (PR/step summary).")]
+        public string? Report { get; init; }
+
+        [CommandOption("--report-out <FILE>")]
+        [Description("Write the --report to this file (default: stdout, which suppresses the normal view).")]
+        public string? ReportOut { get; init; }
 
         [CommandOption("--ai")]
         [Description("Consult an AI model (default: local Ollama) when rule confidence is low.")]
@@ -103,6 +112,14 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         {
             AnsiConsole.MarkupLine($"[red]error:[/] unknown --format '{Markup.Escape(settings.Format!)}' " +
                 "(use auto, log, junit, or trx).");
+            return ExitInputError;
+        }
+
+        // R24: --report adds a SARIF/Markdown rendering. Validate it up front (fail fast).
+        if (settings.Report is not null && ParseReportFormat(settings.Report) is null)
+        {
+            AnsiConsole.MarkupLine($"[red]error:[/] unknown --report '{Markup.Escape(settings.Report)}' " +
+                "(use sarif or markdown).");
             return ExitInputError;
         }
 
@@ -170,10 +187,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             allMatched &= analysis.HasMatch;
         }
 
-        if (settings.Json)
-            EmitJson(results);
-        else
-            EmitConsole(results);
+        EmitResults(settings, results);
 
         // GitHub annotations (R17): surface each failing test inline on the PR.
         if (settings.Annotations)
@@ -305,16 +319,52 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             return ExitInputError;
         }
 
-        if (settings.Json)
-            EmitJson(results);
-        else
-            EmitConsole(results);
+        EmitResults(settings, results);
 
         if (settings.Annotations)
             EmitAnnotations(units, results);
 
         return results.All(r => r.HasMatch) ? ExitMatched : ExitNoMatch;
     }
+
+    /// <summary>
+    /// Render results: the normal console/--json view, plus an optional SARIF/Markdown report (R24).
+    /// When --report goes to stdout (no --report-out) it takes over stdout, so the normal view is
+    /// suppressed; with --report-out the report is written to the file and the normal view still shows.
+    /// </summary>
+    private static void EmitResults(Settings settings, IReadOnlyList<Analysis> results)
+    {
+        var reportToStdout = settings.Report is not null && string.IsNullOrWhiteSpace(settings.ReportOut);
+
+        if (!reportToStdout)
+        {
+            if (settings.Json) EmitJson(results);
+            else EmitConsole(results);
+        }
+
+        if (settings.Report is null) return;
+
+        var dtos = results.Select(AnalysisJson.ToDto).ToList();
+        var content = ParseReportFormat(settings.Report) switch
+        {
+            ReportKind.Sarif => SarifOutput.Build(dtos),
+            _ => MarkdownOutput.Build(dtos),
+        };
+
+        if (string.IsNullOrWhiteSpace(settings.ReportOut))
+            Console.Out.Write(content);
+        else
+            File.WriteAllText(settings.ReportOut, content);
+    }
+
+    private enum ReportKind { Sarif, Markdown }
+
+    private static ReportKind? ParseReportFormat(string value) => value.Trim().ToLowerInvariant() switch
+    {
+        "sarif" => ReportKind.Sarif,
+        "markdown" or "md" => ReportKind.Markdown,
+        _ => null,
+    };
 
     private static List<(string, string)> ReadInputs(IReadOnlyList<string> paths)
     {

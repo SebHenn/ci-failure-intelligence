@@ -324,6 +324,21 @@ copy-paste `cifail resolve <id>` tip). Keep that tone when changing output. The
 `Analysis.HistoryId` (set by `AnalysisService` from the store's `Save`, null when not
 persisted).
 
+**Report output (R24, `Core/Output/`):** `analyze --report sarif|markdown` (+ optional
+`--report-out <file>`) renders the results into a CI-native format. `SarifOutput.Build` and
+`MarkdownOutput.Build` both take `IReadOnlyList<AnalysisJson.AnalysisDto>` (the stable `--json`
+DTO — no domain coupling), with confidence→label shared via `ReportFormatting` so the two never
+disagree. SARIF is 2.1.0: one `run`, `tool.driver.rules[]` deduped by `RuleId`, one `results[]`
+per unit (`ruleIndex` resolves, `level` from confidence buckets, `partialFingerprints
+["cifailFingerprint/v1"]` = the run fingerprint so Code Scanning tracks a failure across runs);
+unmatched units → a synthetic `cifail-unmatched` note. A report-expanded test source
+(`file::TestName`) contributes the **file** part as the artifact uri (relativized to cwd; stdin →
+`"stdin"`). The renderers live in **Core** (not `Cli/Output/`) since the server may reuse them.
+`AnalyzeCommand.EmitResults` wires it for both the local and `--server` paths: with `--report-out`
+the file is written **and** the normal console/`--json` view still shows; without it the report
+takes over stdout and suppresses the normal view. The GitHub Action exposes it via a `sarif:`
+input (→ `--report sarif --report-out`), paired with `github/codeql-action/upload-sarif`.
+
 ## Conventions / gotchas
 
 - Spectre.Console.Cli 0.55: `Command<T>.Execute` and `.Validate` overrides are
