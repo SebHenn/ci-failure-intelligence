@@ -194,6 +194,17 @@ durations as seconds). The server exposes `GET /stats?since=&repo=&top=` and the
 renders a trends strip from it. Add new aggregations in `StatsComputer` (+ `StatsSnapshot`/`StatsJson`),
 not per-store.
 
+**Per-test flakiness (R26):** `cifail stats --tests` switches to a per-test view. `TestFlakeComputer.Compute`
+is a **pure** function (mirrors `StatsComputer`) over the rows R17 persists per failing test
+(`source = "<path>::<FullName>"`): it keeps rows whose source contains `::`, parses the `FullName`
+(split on the **first** `::` — the path has none, a C++ test name might, matching `SarifOutput`),
+groups by it, and reports failure count, distinct-day spread, last-seen, open count, and the same
+recurred-after-resolved **flaky** flag. `TestStatsService.Compute(store, query)` just scans
+`GetRecent(scanLimit)` + the computer — uniform across every store (incl. `--server`, whose http
+store implements `GetRecent`), so no new store interface. JSON: `Output/TestStatsJson.cs`. **Honest
+limitation, stated in the output:** cifail records failures, not passes — so this is recurring/flaky,
+not a true fails/total pass-rate.
+
 ### Failure clustering (R25, `Core/Analysis/FailureClusterer.cs` + `Storage/IClusterer`)
 
 `cifail clusters` groups near-duplicate failures so you see distinct root causes, not a flat list.

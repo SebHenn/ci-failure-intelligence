@@ -71,3 +71,60 @@ public interface IAnalysisStats
 {
     StatsSnapshot ComputeStats(StatsQuery query);
 }
+
+/// <summary>Filters/limits for a per-test flakiness query (R26).</summary>
+public sealed record TestStatsQuery
+{
+    /// <summary>Only consider analyses at or after this instant (null = all time).</summary>
+    public DateTimeOffset? Since { get; init; }
+
+    /// <summary>Only consider analyses for this repository (null = all repos).</summary>
+    public string? RepoId { get; init; }
+
+    /// <summary>How many tests to return (noisiest first).</summary>
+    public int Top { get; init; } = 20;
+
+    /// <summary>Max history rows a fallback scans.</summary>
+    public int ScanLimit { get; init; } = 5000;
+}
+
+/// <summary>Per-test aggregation over history (R26). Counts <em>failures</em>, not runs.</summary>
+public sealed record TestStat
+{
+    /// <summary>The test's full name (e.g. <c>Namespace.Class.Method</c>), parsed from the source.</summary>
+    public required string FullName { get; init; }
+
+    /// <summary>How many times this test was recorded failing.</summary>
+    public required int FailureCount { get; init; }
+
+    /// <summary>The number of distinct calendar days the test failed on (a spread signal).</summary>
+    public required int DistinctDays { get; init; }
+
+    /// <summary>How many of its failures are still open (unresolved).</summary>
+    public required int OpenCount { get; init; }
+
+    /// <summary>The most recent failure.</summary>
+    public required DateTimeOffset LastSeen { get; init; }
+
+    /// <summary>True when this test failed again after one of its failures had been resolved.</summary>
+    public required bool Flaky { get; init; }
+}
+
+/// <summary>
+/// The result of a flakiness query. NB: cifail records failures, not passes, so these are
+/// "recurring &amp; flaky tests" — not a true fails/total pass-rate.
+/// </summary>
+public sealed record TestStatsSnapshot
+{
+    /// <summary>Total test-failure rows considered (after the query filters).</summary>
+    public required int TotalTestFailures { get; init; }
+
+    /// <summary>How many distinct tests appear.</summary>
+    public required int DistinctTests { get; init; }
+
+    /// <summary>The noisiest tests, most failures first.</summary>
+    public required IReadOnlyList<TestStat> Tests { get; init; }
+
+    /// <summary>How many distinct tests are flaky (resolved, then failed again).</summary>
+    public required int FlakyCount { get; init; }
+}

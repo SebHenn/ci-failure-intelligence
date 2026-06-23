@@ -177,6 +177,15 @@ cifail clusters --threshold 0.6    # tighter grouping (higher = more similar req
 cifail clusters --all --json       # include one-offs, machine-readable
 ```
 
+If you feed cifail JUnit/TRX reports (see [`analyze --format`](#handy-options-for-analyze)),
+`cifail stats --tests` ranks the noisiest and flakiest individual tests. (cifail records
+failures, not passes, so this is "recurring & flaky", not a true pass-rate.)
+
+```bash
+cifail stats --tests             # flakiest / noisiest tests
+cifail stats --tests --json      # machine-readable
+```
+
 ### It remembers your fixes — often without being told
 
 When you run cifail inside a git repository, it tags each failure with the commit you were
@@ -578,7 +587,9 @@ shared server, and CI integration all work now.
   formats CI speaks: SARIF for GitHub Code Scanning, Markdown for a step summary or PR comment. ✅
 - **Failure clustering** — `cifail clusters` groups near-duplicate failures from history so you see
   distinct root causes instead of a flat list. ✅
-- **Per-test flakiness** and **more notification channels** (Discord/Teams/GitHub). 🚧
+- **Per-test flakiness** — `cifail stats --tests` ranks the noisiest and flakiest tests from your
+  JUnit/TRX history (failures, not a pass-rate — stated plainly). ✅
+- **More notification channels** (Discord/Teams/GitHub). 🚧
 
 ## License
 

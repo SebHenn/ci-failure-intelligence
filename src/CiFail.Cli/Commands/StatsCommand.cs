@@ -32,6 +32,10 @@ public sealed partial class StatsCommand : Command<StatsCommand.Settings>
         [DefaultValue(10)]
         public int Top { get; init; } = 10;
 
+        [CommandOption("--tests")]
+        [Description("Show per-test flakiness instead: the noisiest and flakiest tests from history.")]
+        public bool Tests { get; init; }
+
         [CommandOption("--json")]
         [Description("Emit machine-readable JSON instead of a human report.")]
         public bool Json { get; init; }
@@ -53,10 +57,15 @@ public sealed partial class StatsCommand : Command<StatsCommand.Settings>
         using var store = StoreSupport.TryCreate(settings);
         if (store is null) return 2;
 
+        var repo = string.IsNullOrWhiteSpace(settings.Repo) ? null : settings.Repo;
+
+        if (settings.Tests)
+            return RunTests(store, settings, since, repo);
+
         var query = new StatsQuery
         {
             Since = since,
-            RepoId = string.IsNullOrWhiteSpace(settings.Repo) ? null : settings.Repo,
+            RepoId = repo,
             Top = settings.Top,
         };
 
@@ -70,6 +79,56 @@ public sealed partial class StatsCommand : Command<StatsCommand.Settings>
 
         Render(stats, query);
         return 0;
+    }
+
+    private static int RunTests(IAnalysisStore store, Settings settings, DateTimeOffset? since, string? repo)
+    {
+        var query = new TestStatsQuery { Since = since, RepoId = repo, Top = settings.Top };
+        var snapshot = TestStatsService.Compute(store, query);
+
+        if (settings.Json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(TestStatsJson.ToDto(snapshot), AnalysisJson.Options));
+            return 0;
+        }
+
+        RenderTests(snapshot);
+        return 0;
+    }
+
+    private static void RenderTests(TestStatsSnapshot s)
+    {
+        if (s.TotalTestFailures == 0)
+        {
+            AnsiConsole.MarkupLine("[grey]No test failures in history yet. Analyze a JUnit/TRX report " +
+                "([bold]cifail analyze --format junit results.xml[/]) to track per-test flakiness.[/]");
+            return;
+        }
+
+        AnsiConsole.MarkupLine($"[grey]{s.DistinctTests} tests · {s.TotalTestFailures} failures · " +
+            $"{s.FlakyCount} flaky.[/] [grey](cifail tracks failures, not passes — this is recurring/flaky, not a pass-rate.)[/]");
+
+        var table = new Table().Border(TableBorder.Rounded).Title("flakiest / noisiest tests");
+        table.AddColumn(new TableColumn("fails").RightAligned());
+        table.AddColumn(new TableColumn("days").RightAligned());
+        table.AddColumn("test");
+        table.AddColumn("last seen");
+        table.AddColumn("state");
+        foreach (var t in s.Tests)
+            table.AddRow(
+                t.FailureCount.ToString(),
+                t.DistinctDays.ToString(),
+                Markup.Escape(t.FullName),
+                Markup.Escape(t.LastSeen.LocalDateTime.ToString("yyyy-MM-dd")),
+                TestStateCell(t));
+        AnsiConsole.Write(table);
+    }
+
+    private static string TestStateCell(TestStat t)
+    {
+        if (t.Flaky) return "[orange1]flaky[/]";
+        if (t.OpenCount == 0) return "[green]resolved[/]";
+        return t.OpenCount == t.FailureCount ? "[yellow]open[/]" : $"[yellow]{t.OpenCount} open[/]";
     }
 
     private static void Render(StatsSnapshot s, StatsQuery query)
