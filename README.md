@@ -52,8 +52,8 @@ Saved as #1. Once you've fixed it, record how so future-you remembers:
 - [Where your data is kept](#where-your-data-is-kept)
 - [Use a shared database (optional)](#use-a-shared-database-optional)
 - [Run a shared server (optional)](#run-a-shared-server-optional)
-- [Want to help? Add a pattern](#want-to-help-add-a-pattern) · [Build from source](#build-from-source)
-- [Project status & roadmap](#project-status--roadmap)
+- [Contributing](#contributing)
+- [Project status](#project-status)
 - [License](#license)
 
 ---
@@ -463,86 +463,43 @@ channel is logged-and-swallowed and never affects analysis.
 
 ---
 
-## Want to help? Add a pattern
+## Contributing
 
-The easiest way to contribute is to teach cifail a new failure. Patterns are written in
-plain YAML files (no C# needed) — see the existing ones in
-[`src/CiFail.Core/rulepacks`](./src/CiFail.Core/rulepacks). [`CONTRIBUTING.md`](./CONTRIBUTING.md)
-walks through adding a rule end-to-end, and these commands help while authoring:
+cifail is built to be extended, and the most valuable contribution is teaching it a new
+failure pattern — that's plain YAML, no C# required. The
+[**CONTRIBUTING guide**](./CONTRIBUTING.md) walks through adding a rule, building from
+source, and the project's design principles.
 
-```bash
-cifail rules test "<regex>" --file build.log   # try a regex, see its captures
-cifail rules explain <id>                       # show one rule's full definition
-cifail rules validate src/CiFail.Core/rulepacks # lint packs (CI runs this too)
-```
-
-### Build from source
-
-cifail is written in C# (.NET 8). If you want to hack on it you'll need the
-[.NET SDK](https://dotnet.microsoft.com/download) (8 or newer):
-
-```console
-git clone https://github.com/SebHenn/ci-failure-intelligence.git
-cd ci-failure-intelligence
-dotnet test                                           # run the tests
-dotnet run --project src/CiFail.Cli -- analyze samples/nuget-nu1101.log
-bash scripts/publish.sh linux-x64                     # build a standalone binary
-```
-
-*(While running from source, `dotnet run --project src/CiFail.Cli -- ` stands in for the
-installed `cifail` command.)* See [CLAUDE.md](./CLAUDE.md) for architecture notes.
+Spotted a failure cifail *should* recognize but doesn't? Open an issue with the log (or a
+redacted snippet) and we'll add a pattern for it.
 
 ---
 
-## Project status & roadmap
+## Project status
 
-🚀 Usable today, with a deep feature set. Offline analysis, memory, a dozen ecosystems, a
-shared server, and CI integration all work now.
+🚀 **Usable today.** Offline analysis across a dozen ecosystems, history that remembers your
+fixes, optional AI, a shared team server, and CI integration all work now.
 
-**Core (v1):**
-- **Explain failures offline** (.NET, Node, Python, generic patterns), human or `--json`. ✅
-- **Remember** past failures and your fixes, and surface similar ones. ✅
+What's in the box:
 
-**Scale & integration (v2–v3):**
-- **One-command install** as a native binary on any OS — no .NET needed. ✅
-- **Pick your database** — keep the built-in SQLite, or point cifail at a shared
-  PostgreSQL / MySQL / SQL Server / MongoDB. ✅
-- **Resolutions that record themselves** — cifail links a failure to the commit that
-  fixed it, so you don't have to run `resolve` by hand. ✅
-- **Docker image** (full build, all databases) published to GHCR. ✅
-- **GitHub Action & GitLab template** so a pipeline can explain its own failures. ✅
-- **Shared team service** — `cifail serve` HTTP API (in the full/Docker build) + a Helm
-  chart in [`deploy/`](./deploy), protected by a bearer token, with a built-in web
-  dashboard at the server root. ✅
-- **Optional AI** suggestions when the rules are unsure (`--ai`) — local [Ollama](https://ollama.com)
-  by default, or hosted Anthropic/OpenAI (opt-in). ✅
-- **Vector similarity at scale** (opt-in) — embeddings + the `pgvector` provider push
-  nearest-neighbour search into the database; TF-IDF stays the offline default. ✅
-- **Notifications** (opt-in) — the shared server can alert Slack, a generic webhook, or
-  email when a failure appears, recurs, or is resolved. ✅
+- **Offline failure analysis** for .NET, Node, Python, Java, Go, Rust, Ruby, PHP, C/C++,
+  Swift, Android, and infra (Docker/Terraform), plus generic CI errors — human-readable or `--json`.
+- **Memory** — past failures and your fixes, with similar-failure recall and git-linked
+  auto-resolution.
+- **One-command install** as a native binary on macOS / Linux / Windows — no .NET needed.
+- **Insights** — `cifail stats` and a web dashboard: recurrence, flaky failures,
+  mean-time-to-resolution, and a by-ecosystem breakdown.
+- **Structured test reports** — `analyze --format junit|trx`, with GitHub Actions annotations.
+- **CI integration** — a GitHub Action and a GitLab component that explain failures and can
+  comment on the PR / MR.
+- **Optional AI** — local [Ollama](https://ollama.com) by default (or hosted Anthropic/OpenAI)
+  when the rules are unsure, plus AI-assisted rule drafting with `cifail suggest-rule`.
+- **Team-ready (optional)** — shared PostgreSQL / MySQL / SQL Server / MongoDB, a `cifail serve`
+  HTTP API secured by bearer token or mTLS with a built-in dashboard, vector similarity via
+  pgvector, and Slack / webhook / email notifications.
 
-**Coverage, insights & depth (v4):**
-- **Eight ecosystems** — added Java, Go, Rust, and Ruby patterns alongside .NET/Node/Python,
-  plus more language-agnostic ones (timeouts, disk space, DNS/TLS, rate limits, Docker). ✅
-- **Rule authoring tooling** — `cifail rules test | validate | explain`, a CI lint step, and
-  a [CONTRIBUTING](./CONTRIBUTING.md) guide so patterns are easy to add. ✅
-- **Insights** — `cifail stats` (and the dashboard trends strip): recurrence, flaky failures,
-  mean-time-to-resolution, by-ecosystem breakdown. ✅
-- **Structured test reports** — `analyze --format junit|trx` expands each failing test into its
-  own analysis; `--annotations` emits GitHub Actions annotations. ✅
-- **Analyze against the server** — `analyze --server <url>` runs the full pipeline remotely. ✅
-- **Merge-request / pull-request comments** — a GitLab CI/CD component and the GitHub Action can
-  post the analysis on the MR/PR, updated in place. ✅
-- **Hardened serve** — per-client bearer tokens (rotate/revoke individually), opt-in mutual TLS,
-  and AI cost guardrails. ✅
-
-**In progress (v5):**
-- **More ecosystems** — PHP/Composer, C/C++ (gcc/clang/CMake), Swift/Xcode, Android/Gradle, and
-  infra (Docker/Terraform) rule packs — twelve ecosystems in all. ✅
-- **AI-assisted rule authoring** — `cifail suggest-rule` drafts a rule for an unmatched log (local
-  AI), validated locally (must compile, actually match, not be overbroad) before you save it. ✅
-- **SARIF + Markdown report output**, **failure clustering**, **per-test flakiness**, and **more
-  notification channels** (Discord/Teams/GitHub). 🚧
+**Coming next:** SARIF + Markdown report output, failure clustering, per-test flakiness, and
+more notification channels (Discord / Teams / GitHub).
 
 ## License
 

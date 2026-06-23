@@ -18,6 +18,31 @@ contribution is **teaching cifail a new failure pattern** — and that's pure da
   upgrade it.
 - The project targets **net8.0** (it builds fine with the .NET 9 SDK).
 
+## Build from source
+
+cifail is written in C# (.NET 8). You'll need the
+[.NET SDK](https://dotnet.microsoft.com/download) (8 or newer):
+
+```console
+git clone https://github.com/SebHenn/ci-failure-intelligence.git
+cd ci-failure-intelligence
+dotnet build                                          # build the solution
+dotnet test                                           # run the tests
+dotnet run --project src/CiFail.Cli -- analyze samples/nuget-nu1101.log
+bash scripts/publish.sh linux-x64                     # build a standalone binary
+```
+
+While running from source, `dotnet run --project src/CiFail.Cli --` stands in for the
+installed `cifail` command. These commands help while authoring a rule:
+
+```bash
+cifail rules test "<regex>" --file build.log    # try a regex, see its captures
+cifail rules explain <id>                        # show one rule's full definition
+cifail rules validate src/CiFail.Core/rulepacks  # lint packs (CI runs this too)
+```
+
+See [CLAUDE.md](./CLAUDE.md) for the full command reference and architecture notes.
+
 ## Add a failure pattern (the common case)
 
 A rule is one entry in a YAML pack under
