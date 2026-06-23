@@ -59,7 +59,8 @@ public sealed class NotificationDispatcher
 
     /// <summary>
     /// Build a dispatcher from config: one channel per configured target (Slack, generic webhook,
-    /// SMTP). Returns null when nothing is configured, so the server can skip notifications entirely.
+    /// Discord, Teams, SMTP, GitHub issue). Returns null when nothing is configured, so the server
+    /// can skip notifications entirely.
     /// </summary>
     public static NotificationDispatcher? FromConfig(NotificationsConfig config)
     {
@@ -68,8 +69,14 @@ public sealed class NotificationDispatcher
             notifiers.Add(new SlackNotifier(config.SlackWebhookUrl));
         if (!string.IsNullOrWhiteSpace(config.WebhookUrl))
             notifiers.Add(new WebhookNotifier(config.WebhookUrl));
+        if (!string.IsNullOrWhiteSpace(config.DiscordWebhookUrl))
+            notifiers.Add(new DiscordNotifier(config.DiscordWebhookUrl));
+        if (!string.IsNullOrWhiteSpace(config.TeamsWebhookUrl))
+            notifiers.Add(new TeamsNotifier(config.TeamsWebhookUrl));
         if (config.Smtp is { } smtp && !string.IsNullOrWhiteSpace(smtp.Host))
             notifiers.Add(new SmtpNotifier(smtp));
+        if (GitHubIssueNotifier.FromConfig(config.GitHub) is { } gh)
+            notifiers.Add(gh);
 
         if (notifiers.Count == 0) return null;
 

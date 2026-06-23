@@ -20,11 +20,39 @@ public sealed class NotificationsConfig
     /// <summary>Generic webhook URL (receives a JSON payload); null/empty disables it.</summary>
     public string? WebhookUrl { get; set; }
 
+    /// <summary>Discord incoming-webhook URL; null/empty disables the Discord channel.</summary>
+    public string? DiscordWebhookUrl { get; set; }
+
+    /// <summary>Microsoft Teams incoming-webhook URL; null/empty disables the Teams channel.</summary>
+    public string? TeamsWebhookUrl { get; set; }
+
     /// <summary>Suppress repeat sends of the same (fingerprint, event) within this many seconds.</summary>
     public int DedupeSeconds { get; set; } = 300;
 
     /// <summary>Optional SMTP email channel; null disables it.</summary>
     public SmtpConfig? Smtp { get; set; }
+
+    /// <summary>Optional GitHub-issue channel; null (or no repo/token) disables it.</summary>
+    public GitHubNotifierConfig? GitHub { get; set; }
+}
+
+/// <summary>
+/// Settings for the optional GitHub-issue notifier. The token comes from an env var (default
+/// <c>GITHUB_TOKEN</c>) so it stays out of the config file.
+/// </summary>
+public sealed class GitHubNotifierConfig
+{
+    /// <summary>Target repository as <c>owner/name</c>.</summary>
+    public string Repo { get; set; } = "";
+
+    /// <summary>Env var holding the API token (not the token itself).</summary>
+    public string TokenEnv { get; set; } = "GITHUB_TOKEN";
+
+    /// <summary>Labels applied to created issues (also scoped when searching for the tracking issue).</summary>
+    public List<string> Labels { get; set; } = new() { "cifail" };
+
+    /// <summary>API base URL override for GitHub Enterprise; null = github.com.</summary>
+    public string? ApiBaseUrl { get; set; }
 }
 
 /// <summary>SMTP settings for the optional email notifier. The password comes from an env var.</summary>

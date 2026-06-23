@@ -23,6 +23,8 @@ public static class ConfigLoader
     public const string AiMaxCallsPerMinuteEnvVar = "CIFAIL_AI_MAX_CALLS_PER_MIN";
     public const string NotifySlackUrlEnvVar = "CIFAIL_NOTIFY_SLACK_URL";
     public const string NotifyWebhookUrlEnvVar = "CIFAIL_NOTIFY_WEBHOOK_URL";
+    public const string NotifyDiscordUrlEnvVar = "CIFAIL_NOTIFY_DISCORD_URL";
+    public const string NotifyTeamsUrlEnvVar = "CIFAIL_NOTIFY_TEAMS_URL";
 
     /// <summary>Default embedding size — matches Ollama <c>nomic-embed-text</c>.</summary>
     public const int DefaultEmbeddingDimensions = 768;
@@ -81,8 +83,12 @@ public static class ConfigLoader
         // Notifications: env overrides for the webhook URLs (secrets stay out of the file).
         var slackUrl = Environment.GetEnvironmentVariable(NotifySlackUrlEnvVar);
         var webhookUrl = Environment.GetEnvironmentVariable(NotifyWebhookUrlEnvVar);
+        var discordUrl = Environment.GetEnvironmentVariable(NotifyDiscordUrlEnvVar);
+        var teamsUrl = Environment.GetEnvironmentVariable(NotifyTeamsUrlEnvVar);
         if (!string.IsNullOrWhiteSpace(slackUrl)) config.Notifications.SlackWebhookUrl = slackUrl;
         if (!string.IsNullOrWhiteSpace(webhookUrl)) config.Notifications.WebhookUrl = webhookUrl;
+        if (!string.IsNullOrWhiteSpace(discordUrl)) config.Notifications.DiscordWebhookUrl = discordUrl;
+        if (!string.IsNullOrWhiteSpace(teamsUrl)) config.Notifications.TeamsWebhookUrl = teamsUrl;
 
         return config;
     }

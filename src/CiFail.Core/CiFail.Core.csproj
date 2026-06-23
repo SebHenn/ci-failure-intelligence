@@ -12,6 +12,11 @@
     <PackageReference Include="YamlDotNet" Version="18.0.0" />
   </ItemGroup>
 
+  <!-- Let the unit tests reach internal test seams (e.g. the channels' injectable poster). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="CiFail.Core.Tests" />
+  </ItemGroup>
+
   <!-- Embed default rule packs so the tool works with zero external files -->
   <ItemGroup>
     <EmbeddedResource Include="rulepacks\**\*.yaml" />

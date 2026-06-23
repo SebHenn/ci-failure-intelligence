@@ -490,18 +490,26 @@ notifications:
   events: [new-failure, recurrence, resolved]   # omit or leave empty for all three
   slackWebhookUrl: https://hooks.slack.com/services/...   # or set CIFAIL_NOTIFY_SLACK_URL
   webhookUrl: https://example.com/hook                    # generic JSON POST; or CIFAIL_NOTIFY_WEBHOOK_URL
+  discordWebhookUrl: https://discord.com/api/webhooks/... # or set CIFAIL_NOTIFY_DISCORD_URL
+  teamsWebhookUrl: https://outlook.office.com/webhook/...  # or set CIFAIL_NOTIFY_TEAMS_URL
   dedupeSeconds: 300        # suppress repeats of the same (event, failure) within this window
   smtp:                     # optional email channel
     host: smtp.example.com
     from: cifail@example.com
     to: team@example.com
     # password is read from the env var named by passwordEnv (default CIFAIL_SMTP_PASSWORD)
+  github:                   # optional: open/comment a GitHub issue per distinct failure
+    repo: owner/name
+    tokenEnv: GITHUB_TOKEN  # token is read from this env var, never the file
+    labels: [cifail]
 ```
 
-Secrets stay out of the file: the Slack/webhook URLs can come from `CIFAIL_NOTIFY_SLACK_URL` /
-`CIFAIL_NOTIFY_WEBHOOK_URL`, and the SMTP password always comes from an env var. Notifications
-are **off unless a channel is configured**, fire only server-side, and are best-effort — a broken
-channel is logged-and-swallowed and never affects analysis.
+Secrets stay out of the file: the Slack/webhook/Discord/Teams URLs can come from the matching
+`CIFAIL_NOTIFY_*_URL` env vars, and the SMTP password and GitHub token always come from env vars.
+The **GitHub-issue** channel is idempotent — it opens one issue per distinct failure (tagged with a
+hidden fingerprint marker) and comments on it when the failure recurs, rather than opening duplicates.
+Notifications are **off unless a channel is configured**, fire only server-side, and are best-effort —
+a broken channel is logged-and-swallowed and never affects analysis.
 
 ---
 
@@ -578,7 +586,7 @@ shared server, and CI integration all work now.
 - **Hardened serve** — per-client bearer tokens (rotate/revoke individually), opt-in mutual TLS,
   and AI cost guardrails. ✅
 
-**In progress (v5):**
+**Reach & intelligence (v5):**
 - **More ecosystems** — PHP/Composer, C/C++ (gcc/clang/CMake), Swift/Xcode, Android/Gradle, and
   infra (Docker/Terraform) rule packs — twelve ecosystems in all. ✅
 - **AI-assisted rule authoring** — `cifail suggest-rule` drafts a rule for an unmatched log (local
@@ -589,7 +597,8 @@ shared server, and CI integration all work now.
   distinct root causes instead of a flat list. ✅
 - **Per-test flakiness** — `cifail stats --tests` ranks the noisiest and flakiest tests from your
   JUnit/TRX history (failures, not a pass-rate — stated plainly). ✅
-- **More notification channels** (Discord/Teams/GitHub). 🚧
+- **More notification channels** — Discord, Microsoft Teams, and idempotent GitHub issues
+  alongside the existing Slack/webhook/email. ✅
 
 ## License
 

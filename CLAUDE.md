@@ -330,12 +330,21 @@ analysis. `NotificationDispatcher.FromConfig(NotificationsConfig)` builds it (or
 when no channel is set) — no provider registry, just a direct builder. Channels live in
 `Notifications/Channels/`: `SlackNotifier`, `WebhookNotifier` (both POST JSON via the shared
 `NotifierHttp.PostJson`, 10s timeout), and `SmtpNotifier` (`System.Net.Mail`, password from an env
-var). Config: `NotificationsConfig` on `CiFailConfig` (`events`, `slackWebhookUrl`, `webhookUrl`,
-`dedupeSeconds`, `smtp`); `ConfigLoader` overrides the two webhook URLs from
-`CIFAIL_NOTIFY_SLACK_URL` / `CIFAIL_NOTIFY_WEBHOOK_URL` (secrets stay out of the file). Wiring:
-`ServeCommand` builds the dispatcher and passes it via `ServeOptions.Notifications`; `CiFailServer`
-dispatches on `/analyze` (new vs. recurrence decided by `IFingerprintCounter.CountByFingerprint` —
-a **side-interface** implemented by all stores, like `ISimilaritySearch`, to avoid changing the
+var). **R27** adds `DiscordNotifier` (`{content, embeds[]}`) and `TeamsNotifier` (legacy MessageCard,
+themed per event) — both take an injectable poster (`internal` ctor, exposed to tests via
+`InternalsVisibleTo`) defaulting to `NotifierHttp.PostJson` so payload shape is unit-tested without a
+network call — plus `GitHubIssueNotifier`, which opens one issue per distinct failure and **comments
+instead of duplicating** on recurrence, idempotent via a hidden `<!-- cifail:<fingerprint> -->`
+marker (the R19 MR/PR-comment scheme). Its REST calls sit behind `IGitHubIssueClient`
+(`FindOpenIssue`/`CreateIssue`/`CommentOnIssue`); prod impl `HttpGitHubIssueClient` (raw HttpClient,
+token from an env var, scans the cifail-labelled open issues for the marker), a fake drives the tests.
+Config: `NotificationsConfig` on `CiFailConfig` (`events`, `slackWebhookUrl`, `webhookUrl`,
+`discordWebhookUrl`, `teamsWebhookUrl`, `dedupeSeconds`, `smtp`, `gitHub {repo, tokenEnv, labels,
+apiBaseUrl}`); `ConfigLoader` overrides the webhook URLs from `CIFAIL_NOTIFY_SLACK_URL` /
+`CIFAIL_NOTIFY_WEBHOOK_URL` / `CIFAIL_NOTIFY_DISCORD_URL` / `CIFAIL_NOTIFY_TEAMS_URL` (secrets stay out
+of the file). Wiring: `ServeCommand` builds the dispatcher and passes it via `ServeOptions.Notifications`;
+`CiFailServer` dispatches on `/analyze` (new vs. recurrence decided by `IFingerprintCounter.CountByFingerprint`
+— a **side-interface** implemented by all stores, like `ISimilaritySearch`, to avoid changing the
 `IAnalysisStore` contract) and on `/resolve` (`Resolved`).
 
 ### Output (`Cli/Output/`)
