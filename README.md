@@ -1,5 +1,11 @@
 # cifail — understand why your build failed
 
+[![CI](https://github.com/SebHenn/ci-failure-intelligence/actions/workflows/ci.yml/badge.svg)](https://github.com/SebHenn/ci-failure-intelligence/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4.svg)](https://dotnet.microsoft.com/download)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](#install)
+[![Offline-first](https://img.shields.io/badge/offline-first-success.svg)](#what-problem-does-this-solve)
+
 Builds and tests fail with walls of confusing log output. **cifail** reads that output
 and tells you, in plain English:
 
@@ -29,6 +35,26 @@ Saved as #1. Once you've fixed it, record how so future-you remembers:
 
 > `2>&1` just means "send error messages to the same place as normal output", so cifail
 > sees the whole log. The `|` ("pipe") feeds that output into cifail.
+
+---
+
+## Contents
+
+- [What problem does this solve?](#what-problem-does-this-solve)
+- [Install](#install)
+- [Use it](#use-it)
+- [The three commands you'll actually use](#the-three-commands-youll-actually-use)
+  - [See the trends: `cifail stats`](#see-the-trends-cifail-stats)
+  - [It remembers your fixes — often without being told](#it-remembers-your-fixes--often-without-being-told)
+  - [Handy options for `analyze`](#handy-options-for-analyze)
+- [Use cifail in CI](#use-cifail-in-ci) — [GitHub Actions](#github-actions-the-ready-made-action) · [GitLab CI](#gitlab-ci)
+- [What do the words mean?](#what-do-the-words-mean)
+- [Where your data is kept](#where-your-data-is-kept)
+- [Use a shared database (optional)](#use-a-shared-database-optional)
+- [Run a shared server (optional)](#run-a-shared-server-optional)
+- [Want to help? Add a pattern](#want-to-help-add-a-pattern) · [Build from source](#build-from-source)
+- [Project status & roadmap](#project-status--roadmap)
+- [License](#license)
 
 ---
 
@@ -159,8 +185,8 @@ we fix this last time?" history fills itself in. In `cifail history` these show 
 
 - `--json` — print the result as JSON instead of a panel. Useful inside CI pipelines or
   other scripts.
-- `--type dotnet|node|python|java|go|rust|ruby|generic` — tell cifail what kind of log
-  this is, if it guesses wrong.
+- `--type dotnet|node|python|java|go|rust|ruby|php|cpp|swift|android|infra|generic` — tell
+  cifail what kind of log this is, if it guesses wrong.
 - `--format auto|log|junit|trx` — feed cifail a **structured test report** instead of a raw
   log. `auto` (the default) sniffs JUnit XML and .NET TRX by their extension/root element;
   each *failing test* is analyzed on its own, so similarity and history work per test. A
@@ -281,9 +307,9 @@ If you've installed the binary (or are in a `cifail` container), just pipe into 
 cifail tries to keep things plain, but a few terms show up:
 
 - **ecosystem** — the kind of project the log came from: `dotnet`, `node`, `python`,
-  `java`, `go`, `rust`, `ruby`, or `generic` (anything else, plus cross-cutting failures
-  like timeouts, disk-full, DNS/TLS, rate limits, and Docker build errors). cifail guesses
-  this automatically.
+  `java`, `go`, `rust`, `ruby`, `php`, `cpp`, `swift`, `android`, `infra` (Docker/Terraform),
+  or `generic` (anything else, plus cross-cutting failures like timeouts, disk-full, DNS/TLS,
+  and rate limits). cifail guesses this automatically.
 - **confidence** — how sure cifail is about the cause: **high**, **medium**, or **low**.
   Low confidence means "this is my best guess — double-check it".
 - **rule / pattern** — a single known failure cifail can recognize (for example, "NuGet
