@@ -29,11 +29,20 @@ public sealed class ServeAuthTests : IClassFixture<AuthServeFixture>
     }
 
     [Fact]
-    public async Task Dashboard_shell_is_open_without_a_token()
+    public async Task Login_page_is_open_without_a_token()
     {
-        // The shell carries no data — it must load so the user can enter a token in-page.
-        var response = await _client.GetAsync("");
+        // The sign-in page must load pre-auth so the user can submit a token (R28).
+        var response = await _client.GetAsync("login");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Dashboard_requires_auth_when_a_token_is_set()
+    {
+        // The dashboard now renders data server-side, so it's protected — a tokenless API-style
+        // request (no text/html Accept, no cookie) gets 401 just like any other protected route.
+        var response = await _client.GetAsync("");
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]

@@ -1,0 +1,19 @@
+@*
+    The dashboard document shell (R28). Blazor static SSR renders this on every request — no
+    interactivity, no SignalR circuit, matching the server's stateless model. The theme is inlined
+    from Dash.Css so there's no wwwroot / static-web-assets pipeline to ship, and there is no
+    blazor.web.js: navigation and forms are plain HTML (full server re-render), keeping it
+    dependency-free and robust under single-file packaging.
+*@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>cifail dashboard</title>
+    <style>@((MarkupString)Dash.Css)</style>
+</head>
+<body>
+    <Routes />
+</body>
+</html>

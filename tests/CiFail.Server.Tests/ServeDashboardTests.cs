@@ -3,8 +3,8 @@ using FluentAssertions;
 
 namespace CiFail.Server.Tests;
 
-/// <summary>The bundled web dashboard (R12): served at / from an embedded resource, and public
-/// (no token) so users can load it and enter their token in-page.</summary>
+/// <summary>The C#-rendered dashboard (R28, Blazor static SSR): served at / and /index.html.
+/// In open mode (no token) it renders directly, like the old embedded page did.</summary>
 public sealed class ServeDashboardTests : IClassFixture<ServeFixture>
 {
     private readonly HttpClient _client;
@@ -29,5 +29,13 @@ public sealed class ServeDashboardTests : IClassFixture<ServeFixture>
         var response = await _client.GetAsync("index.html");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         (await response.Content.ReadAsStringAsync()).Should().Contain("<!DOCTYPE html>");
+    }
+
+    [Fact]
+    public async Task Login_page_is_served()
+    {
+        var response = await _client.GetAsync("login");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("access token");
     }
 }

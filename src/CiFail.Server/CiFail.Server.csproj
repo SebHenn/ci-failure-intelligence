@@ -1,18 +1,22 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>CiFail.Server</RootNamespace>
+    <!-- This is a library the CLI hosts (CiFailServer.Run), not a standalone web app, so it
+         has no static-web-assets pipeline of its own; the dashboard renders from C# (Blazor
+         static SSR) with its CSS inlined in App.razor — no node build, no wwwroot to serve. -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
   </PropertyGroup>
 
   <!--
-    A class library that hosts ASP.NET Core (Kestrel + minimal API). Using the plain
-    SDK plus this FrameworkReference (rather than Sdk.Web) keeps it a *library* the CLI
-    can call into via CiFailServer.Run, instead of a second executable with its own Main.
-    Ships only in the full / Docker build (gated by CIFAIL_SERVER), so the slim binaries
-    never pull in ASP.NET Core.
+    A Razor class library that hosts ASP.NET Core (Kestrel + minimal API + Blazor static SSR).
+    Microsoft.NET.Sdk.Razor compiles the .razor dashboard components into this assembly; the
+    FrameworkReference (rather than Sdk.Web) keeps it a *library* the CLI can call into via
+    CiFailServer.Run instead of a second executable with its own Main. Ships only in the full /
+    Docker build (gated by CIFAIL_SERVER), so the slim binaries never pull in ASP.NET Core.
   -->
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -20,12 +24,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CiFail.Core\CiFail.Core.csproj" />
-  </ItemGroup>
-
-  <!-- The bundled web dashboard (R12). Embedded so it ships inside the assembly and works
-       regardless of the host's content root / single-file packaging — no node build step. -->
-  <ItemGroup>
-    <EmbeddedResource Include="wwwroot\index.html" />
   </ItemGroup>
 
 </Project>

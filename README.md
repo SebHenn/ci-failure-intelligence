@@ -445,16 +445,18 @@ results back to the shared server, so a central service needs no checkout of its
 **Web dashboard.** Open the server's root (`http://your-host:8080/`) in a browser for a small
 built-in dashboard: a trends strip at the top (totals, recurrence rate, mean time to resolve,
 top recurring and flaky failures), then browse recent failures, filter by ecosystem/status/repo,
-read the details
-and resolution status (`✓` manual, `✓ auto`), and mark a failure resolved. It's a single
-bundled page (no separate install) that calls the same JSON API; if the server requires a
-token, paste it into the field at the top once and it's remembered in your browser.
+read the details and resolution status (`✓` manual, `✓ auto`), and mark a failure resolved.
+It's rendered server-side (no separate install, nothing to build). When the server requires a
+token, browsers sign in once at `/login` — the token is checked and an HttpOnly session cookie
+(`cifail_auth`, SameSite=Strict, Secure over https) protects the dashboard from then on; the
+token never lives in page JavaScript or browser storage.
 
 **Authentication.** Set `CIFAIL_SERVER_TOKEN` (or `serve --token`) and the server requires
-`Authorization: Bearer <token>` on every request except `/healthz` and the dashboard shell.
-Clients send it via `--server-token` or the same `CIFAIL_SERVER_TOKEN` env var. If you start
-`serve` without a token it runs open and logs a loud warning — only acceptable on a trusted
-network.
+`Authorization: Bearer <token>` on every request except `/healthz` and the sign-in page.
+Browsers get redirected to `/login` instead of a bare 401; API clients send the token via
+`--server-token` or the same `CIFAIL_SERVER_TOKEN` env var. If you start `serve` without a
+token it runs open (dashboard included) and logs a loud warning — only acceptable on a
+trusted network.
 
 **Per-client tokens (rotate/revoke individually).** Instead of one shared secret you can issue a
 token per client so any one can be revoked without disturbing the others. Provide a comma list in

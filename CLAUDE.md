@@ -105,11 +105,20 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
   `--server <url>`); **R18** adds `Core/Storage/HttpAnalyzeClient.cs` which POSTs to the server's
   `/analyze` so `cifail analyze --server` runs the full pipeline server-side (the CLI builds units
   client-side, supporting `--format`, and renders the reconstructed result identically to a local run).
-  R12 adds a bundled web dashboard: `src/CiFail.Server/wwwroot/index.html` is an
-  **EmbeddedResource** (one zero-build page, no node stage), read once and served at `/` +
-  `/index.html`; those paths plus `/healthz` are in `PublicPaths` (exempt from the R9 token —
-  the shell collects the token in-page and sends it on its own API calls). JSON is **PascalCase**
-  (`AnalysisJson.Options`), so the dashboard JS keys off `r.Id`/`r.Status`/etc.
+  **R28** replaces the R12 static shell with a server-rendered dashboard: the project uses
+  `Microsoft.NET.Sdk.Razor` (still a class library — FrameworkReference, hosted by the CLI) with
+  `Dashboard/{App,Routes,Index,Login,Trends}.razor` + `Dash.cs` rendered via **Blazor static SSR**
+  (`AddRazorComponents()`/`MapRazorComponents<App>()`; all CSS inlined in `App.razor`,
+  `StaticWebAssetsEnabled=false`, no static assets). Auth is dual: `IsAuthorized` accepts
+  `Authorization: Bearer` **or** the `cifail_auth` cookie (both constant-time via `MatchesAnyToken`);
+  `WantsHtml` (GET + `Accept: text/html`) redirects unauthenticated browsers to `/login` while API
+  clients get 401 + `WWW-Authenticate: Bearer`. `PublicPaths = {/healthz, /login, /ui/login}`.
+  Plain-HTML form posts land on `MapPost("/ui/login")` (validates the token, sets an
+  HttpOnly/SameSite=Strict cookie) and `MapPost("/ui/resolve")` — both `.DisableAntiforgery()`
+  (they're not Blazor forms; `UseAntiforgery()` only validates Blazor-opt-in posts). The `/ui/`
+  prefix exists so the POSTs never collide with the `/login` Razor page route, and `/ui/login`
+  must stay in `PublicPaths` (a signing-in browser has no cookie yet). JSON stays **PascalCase**
+  (`AnalysisJson.Options`).
 - **`tests/CiFail.Core.Tests`** — xUnit + FluentAssertions; fixtures in `fixtures/*.log`.
 - **`tests/CiFail.Providers.Tests`** — shared store contract + Docker-gated DB tests.
 - **`tests/CiFail.Server.Tests`** — boots a real serve instance on a random port (no Docker).

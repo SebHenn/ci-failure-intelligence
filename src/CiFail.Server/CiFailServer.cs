@@ -9,6 +9,7 @@ using CiFail.Core.Notifications;
 using CiFail.Core.Output;
 using CiFail.Core.Rules;
 using CiFail.Core.Storage;
+using CiFail.Server.Dashboard;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -54,6 +55,9 @@ public static class CiFailServer
         // Rule packs are immutable for the process lifetime — load them once.
         builder.Services.AddSingleton(new RuleEngine(RulePackLoader.LoadAll()));
 
+        // The C#-rendered dashboard (R28) is Blazor static SSR — register the component services.
+        builder.Services.AddRazorComponents();
+
         // A fresh store is opened per request: EF DbContexts and the SQLite repo are not
         // thread-safe, and the server is otherwise stateless. The git reconciler is never
         // wired here — a central server has no working tree (see R11 for the client-driven path).
@@ -62,7 +66,11 @@ public static class CiFailServer
 
         var app = builder.Build();
         UseBearerAuth(app, options.ResolvedTokens());
-        MapEndpoints(app, options.Embedder, options.Notifications);
+        // Required by MapRazorComponents; it only validates endpoints that opt in (Blazor form
+        // posts), so the plain minimal-API form posts below (/login, /ui/resolve) are untouched.
+        app.UseAntiforgery();
+        MapEndpoints(app, options.ResolvedTokens(), options.Embedder, options.Notifications);
+        app.MapRazorComponents<App>();
         return app;
     }
 
@@ -148,8 +156,8 @@ public static class CiFailServer
 
         app.Use(async (context, next) =>
         {
-            // The probe and the dashboard shell stay open (kubelet has no token; the shell
-            // collects one from the user, then calls the protected API with it).
+            // The probe and the sign-in flow stay open (kubelet has no token; a signing-in
+            // browser has no cookie yet — /ui/login validates the submitted token itself).
             if (PublicPaths.Contains(context.Request.Path.Value ?? string.Empty))
             {
                 await next(context);
@@ -158,6 +166,14 @@ public static class CiFailServer
 
             if (!IsAuthorized(context.Request, tokens))
             {
+                // A browser navigating to a protected page gets bounced to the sign-in page;
+                // a programmatic/API client gets a plain 401 with the Bearer challenge.
+                if (WantsHtml(context.Request))
+                {
+                    context.Response.Redirect("/login");
+                    return;
+                }
+
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 context.Response.Headers["WWW-Authenticate"] = "Bearer";
                 await context.Response.WriteAsync("unauthorized");
@@ -168,54 +184,101 @@ public static class CiFailServer
         });
     }
 
+    /// <summary>The browser dashboard's session cookie, set by <c>POST /login</c> after a token check.</summary>
+    private const string AuthCookieName = "cifail_auth";
+
+    private static bool WantsHtml(HttpRequest request) =>
+        HttpMethods.IsGet(request.Method) &&
+        request.Headers.Accept.ToString().Contains("text/html", StringComparison.OrdinalIgnoreCase);
+
     private static bool IsAuthorized(HttpRequest request, IReadOnlyList<NamedToken> tokens)
     {
+        // API clients present a bearer token; the browser dashboard presents the auth cookie that
+        // POST /login set after validating that same token. Either authorizes the request.
         const string prefix = "Bearer ";
         var header = request.Headers.Authorization.ToString();
-        if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            return false;
+        if (header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            && MatchesAnyToken(header[prefix.Length..].Trim(), tokens))
+            return true;
 
-        var provided = Encoding.UTF8.GetBytes(header[prefix.Length..].Trim());
+        return request.Cookies.TryGetValue(AuthCookieName, out var cookie)
+            && MatchesAnyToken(cookie ?? string.Empty, tokens);
+    }
+
+    /// <summary>Constant-time compare a presented secret against every configured token.</summary>
+    private static bool MatchesAnyToken(string provided, IReadOnlyList<NamedToken> tokens)
+    {
+        var bytes = Encoding.UTF8.GetBytes(provided);
 
         // Check every token without early-exit so a match never leaks (timing) which one it was.
         var authorized = false;
         foreach (var t in tokens)
         {
-            if (CryptographicOperations.FixedTimeEquals(provided, Encoding.UTF8.GetBytes(t.Token)))
+            if (CryptographicOperations.FixedTimeEquals(bytes, Encoding.UTF8.GetBytes(t.Token)))
                 authorized = true;
         }
         return authorized;
     }
 
     /// <summary>
-    /// Public paths served without a token: the liveness probe and the dashboard shell (R12).
-    /// The shell is just static HTML — all data it shows comes from the authenticated API, which
-    /// it calls with the token the user enters in-page.
+    /// Public paths served without a token: the liveness probe and the sign-in flow (R28). Unlike
+    /// the old R12 shell, the dashboard itself now renders data server-side, so it requires the
+    /// auth cookie that signing in issues — only the sign-in page and its POST target stay open
+    /// (the POST validates the submitted token itself; a signing-in browser has no cookie yet).
     /// </summary>
     private static readonly HashSet<string> PublicPaths =
-        new(StringComparer.OrdinalIgnoreCase) { "/healthz", "/", "/index.html" };
+        new(StringComparer.OrdinalIgnoreCase) { "/healthz", "/login", "/ui/login" };
 
-    /// <summary>The bundled dashboard HTML, read once from the embedded resource.</summary>
-    private static readonly string DashboardHtml = LoadDashboardHtml();
-
-    private static string LoadDashboardHtml()
+    private static void MapEndpoints(
+        WebApplication app,
+        IReadOnlyList<NamedToken> tokens,
+        IAiEmbedder? embedder,
+        NotificationDispatcher? notifications)
     {
-        var asm = typeof(CiFailServer).Assembly;
-        using var stream = asm.GetManifestResourceStream("CiFail.Server.wwwroot.index.html")
-            ?? throw new InvalidOperationException("embedded dashboard resource not found");
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
-    }
-
-    private static void MapEndpoints(WebApplication app, IAiEmbedder? embedder, NotificationDispatcher? notifications)
-    {
-        // The bundled web dashboard (R12) — a single static page that talks to the API below.
-        IResult dashboard() => Results.Content(DashboardHtml, "text/html");
-        app.MapGet("/", dashboard);
-        app.MapGet("/index.html", dashboard);
-
         // Liveness/readiness — unauthenticated, used by the Helm probes.
         app.MapGet("/healthz", () => Results.Text("ok"));
+
+        // Sign-in (R28). Validates the entered token against the configured set and, on success,
+        // sets an HttpOnly cookie the auth middleware accepts. When the server runs open (no
+        // tokens), there's nothing to check — just bounce back to the dashboard. The POST lives
+        // under /ui/ (not /login) so it never collides with the /login Razor page's route.
+        app.MapPost("/ui/login", async (HttpRequest request) =>
+        {
+            var form = await request.ReadFormAsync();
+            var token = form["token"].ToString();
+
+            if (tokens.Count == 0 || MatchesAnyToken(token, tokens))
+            {
+                if (tokens.Count > 0)
+                    request.HttpContext.Response.Cookies.Append(AuthCookieName, token, new CookieOptions
+                    {
+                        HttpOnly = true,
+                        SameSite = SameSiteMode.Strict,
+                        Secure = request.IsHttps,
+                        Path = "/",
+                    });
+                return Results.Redirect("/");
+            }
+
+            return Results.Redirect("/login?error=1");
+        }).DisableAntiforgery(); // a plain HTML form post, not a Blazor form — opt out of token validation
+
+        // Dashboard resolve action (R28): a plain form post from the detail pane. Mirrors the JSON
+        // /resolve handler (manual resolution + a Resolved notification), then returns to the page.
+        app.MapPost("/ui/resolve", async (HttpRequest request, Func<IAnalysisStore> stores) =>
+        {
+            var form = await request.ReadFormAsync();
+            if (!long.TryParse(form["id"], out var id) || string.IsNullOrWhiteSpace(form["note"]))
+                return Results.BadRequest("id and note are required");
+
+            using var store = stores();
+            if (store.SetResolution(id, form["note"].ToString()) && store.GetById(id) is { } updated)
+                notifications?.Dispatch(new Notification(NotificationEvent.Resolved, updated));
+
+            // Only ever redirect to a local path (the hidden field is page-supplied, but guard anyway).
+            var returnTo = form["return"].ToString();
+            return Results.Redirect(returnTo.StartsWith('/') ? returnTo : "/");
+        }).DisableAntiforgery(); // plain HTML form post from the detail pane
 
         // Analyze a raw log body. ?type= forces the ecosystem, ?source= names it in history,
         // ?noHistory=1 skips persistence.

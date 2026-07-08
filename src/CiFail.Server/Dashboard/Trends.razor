@@ -1,0 +1,68 @@
+@*
+    The stats/insights strip (R16/R25), rendered from Core services in-process. Mirrors the old
+    JS `loadStats()` card layout — Total/Open/Resolved/Unmatched, recurrence, mean-resolve, the
+    top-recurring + flaky lists, and the failure clusters card when any exist.
+*@
+@if (Stats is { } s)
+{
+    <div class="trends">
+        <div class="card"><div class="n">@s.Total</div><div class="l">failures</div></div>
+        <div class="card"><div class="n">@s.Open</div><div class="l">open</div></div>
+        <div class="card"><div class="n">@s.Resolved</div><div class="l">resolved</div></div>
+        <div class="card"><div class="n @(s.Unmatched > 0 ? "warn" : "")">@s.Unmatched</div><div class="l">unmatched</div></div>
+        <div class="card"><div class="n">@Dash.Pct(s.RecurrenceRate)</div><div class="l">recurrence</div></div>
+        <div class="card"><div class="n">@Dash.Dur(s.MeanTimeToResolution)</div><div class="l">mean resolve</div></div>
+
+        <div class="card wide">
+            <div class="l">top recurring</div>
+            <ul>
+                @if (s.TopFailures.Count == 0)
+                {
+                    <li class="muted">none</li>
+                }
+                else
+                {
+                    @foreach (var f in s.TopFailures)
+                    {
+                        <li><code>@f.RuleId</code><span>@f.Count×@(f.Flaky ? " ⚠" : "")</span></li>
+                    }
+                }
+            </ul>
+        </div>
+
+        <div class="card wide">
+            <div class="l">flaky (resolved → recurred)</div>
+            <ul>
+                @if (s.Flaky.Count == 0)
+                {
+                    <li class="muted">none 🎉</li>
+                }
+                else
+                {
+                    @foreach (var f in s.Flaky)
+                    {
+                        <li><code>@f.RuleId</code><span>@f.Count×</span></li>
+                    }
+                }
+            </ul>
+        </div>
+
+        @if (Clusters.Count > 0)
+        {
+            <div class="card wide">
+                <div class="l">clusters (grouped root causes)</div>
+                <ul>
+                    @foreach (var c in Clusters)
+                    {
+                        <li><code>@c.Label</code><span>@c.Count×</span></li>
+                    }
+                </ul>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public StatsSnapshot? Stats { get; set; }
+    [Parameter] public IReadOnlyList<FailureCluster> Clusters { get; set; } = Array.Empty<FailureCluster>();
+}

@@ -1,0 +1,26 @@
+@page "/login"
+
+@*
+    The public sign-in page (R28). Because static SSR renders real data server-side, the dashboard
+    routes are authorized — unlike the old shell, which was public and collected the token in JS.
+    Posting the token to POST /ui/login validates it against the configured server tokens and sets an
+    HttpOnly cookie; the page itself stays public so an unauthenticated user can reach it.
+*@
+
+<div class="login">
+    <h1><span>cifail</span> dashboard</h1>
+    @if (Failed)
+    {
+        <div class="banner">That token was not accepted.</div>
+    }
+    <form method="post" action="/ui/login" class="loginbox">
+        <input type="password" name="token" placeholder="access token" autofocus required />
+        <button class="primary" type="submit">Sign in</button>
+    </form>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")] public string? Error { get; set; }
+
+    private bool Failed => Error == "1";
+}

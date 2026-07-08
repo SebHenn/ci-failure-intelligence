@@ -27,12 +27,13 @@ Mongo exactly like the CLI) and the same `--json` DTO as the wire format. Run it
 `cifail serve --port 8080` (full / Docker build only). Clients can also point the
 `history`/`resolve` commands at it with `cifail history --server http://host:8080`.
 
-All routes except `/healthz` require `Authorization: Bearer <token>` when the server is
+All routes except `/healthz` and the sign-in flow (`/login`, `POST /ui/login`) require
+`Authorization: Bearer <token>` — or the dashboard's auth cookie — when the server is
 started with a token (see **Auth** below).
 
 | Method & path        | Body / query                          | Returns                              |
 |----------------------|---------------------------------------|--------------------------------------|
-| `GET /`              | —                                     | the bundled web dashboard (R12, open)|
+| `GET /`              | —                                     | the web dashboard (R28, cookie-auth) |
 | `GET /healthz`       | —                                     | `200 ok` (liveness/readiness, open)  |
 | `POST /analyze`      | raw log text; `?type=&source=&noHistory=` | the analysis JSON (the `--json` DTO) |
 | `GET /history`       | `?limit=N`                            | recent analyses                      |
@@ -58,9 +59,10 @@ Implemented now (R7 + R9 + R11) and what's still open:
   commit=<sha>`, which never overwrites a manual one); the unchanged `ResolutionReconciler`
   runs against the remote `http` store. Use `cifail reconcile --server <url>` (and the
   `cifail init` git hooks work the same way).
-- **Web dashboard**: ✅ (**R12**) a single bundled page at `/` (embedded in the server
-  assembly, no separate deploy) — browse/filter failures and resolve them. The shell is public
-  so it can load and collect a token; all its data calls hit the authenticated API.
+- **Web dashboard**: ✅ (**R28**) rendered server-side at `/` (Blazor static SSR, embedded in
+  the server assembly, no separate deploy) — browse/filter failures and resolve them. Browsers
+  sign in once at `/login`; an HttpOnly `cifail_auth` cookie (SameSite=Strict, Secure over
+  https) then authorizes the dashboard, while API clients keep using the Bearer token.
 - **Similarity at scale**: ✅ (**R10**, opt-in) the default is still in-app TF-IDF, but a
   vector-capable store can do nearest-neighbour search in the database. Use the `pgvector`
   provider (`CIFAIL_DB_PROVIDER=pgvector`, PostgreSQL + the `vector` extension) and enable

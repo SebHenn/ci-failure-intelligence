@@ -1,0 +1,161 @@
+@page "/"
+@page "/index.html"
+@inject Func<IAnalysisStore> Stores
+
+@*
+    The dashboard page (R28), rendered server-side from the same store + services the JSON API uses
+    (no self-HTTP). All state is in the query string (?eco=&status=&repo=&sel=), so each request
+    renders fresh and the page stays stateless. Filtering is a GET form; opening a failure is a
+    link; resolving is a plain POST to /ui/resolve — no client JS.
+*@
+
+<header>
+    <h1><span>cifail</span> dashboard</h1>
+    <form method="get" action="/" class="filters">
+        <select name="eco">
+            <option value="">all ecosystems</option>
+            @foreach (var e in _ecosystems)
+            {
+                <option value="@e" selected="@(e == Eco)">@e</option>
+            }
+        </select>
+        <select name="status">
+            <option value="">all statuses</option>
+            <option value="open" selected="@(Status == "open")">open</option>
+            <option value="resolved" selected="@(Status == "resolved")">resolved</option>
+        </select>
+        <input name="repo" placeholder="filter repo id…" value="@Repo" size="14" />
+        <button class="primary" type="submit">Filter</button>
+    </form>
+    <span class="grow"></span>
+</header>
+
+<Trends Stats="_stats" Clusters="_clusters" />
+
+<div class="layout">
+    <div class="list">
+        <table>
+            <thead>
+                <tr><th>#</th><th>when</th><th>ecosystem</th><th>rule</th><th>status</th><th>source</th><th>excerpt</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _rows)
+                {
+                    <tr class="@(Sel == r.Id ? "sel" : null)">
+                        <td class="muted"><a href="@DetailHref(r.Id)">#@r.Id</a></td>
+                        <td class="muted">@Dash.When(r.AnalyzedAt)</td>
+                        <td>@r.Ecosystem</td>
+                        <td><code>@r.RuleId</code></td>
+                        <td>@((MarkupString)Dash.StatusTag(r.Status, r.ResolutionSource))</td>
+                        <td class="muted">@r.Source</td>
+                        <td class="wrap">@r.Excerpt</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (_rows.Count == 0)
+        {
+            <div class="empty">No failures match.</div>
+        }
+    </div>
+
+    <div class="detail">
+        @if (_detail is { } d)
+        {
+            <h2>#@d.Id · <code>@d.RuleId</code> @((MarkupString)Dash.StatusTag(d.Status, d.ResolutionSource))</h2>
+            <div class="muted">@Dash.When(d.AnalyzedAt) · @d.Source</div>
+            <div class="kv">
+                <div>ecosystem</div><div>@d.Ecosystem</div>
+                <div>matched</div><div>@(d.Matched ? "yes" : "no")</div>
+                <div>fingerprint</div><div><code>@d.Fingerprint</code></div>
+                @if (!string.IsNullOrEmpty(d.GitCommit))
+                {
+                    <div>commit</div><div><code>@d.GitCommit</code>@(d.GitDirty ? " (dirty)" : "")</div>
+                }
+                @if (!string.IsNullOrEmpty(d.GitBranch))
+                {
+                    <div>branch</div><div>@d.GitBranch</div>
+                }
+                @if (!string.IsNullOrEmpty(d.RepoId))
+                {
+                    <div>repo</div><div><code>@d.RepoId</code></div>
+                }
+                @if (!string.IsNullOrEmpty(d.ResolutionSource))
+                {
+                    <div>resolved by</div>
+                    <div>@d.ResolutionSource@if (!string.IsNullOrEmpty(d.ResolvedCommit)) { <text> · <code>@d.ResolvedCommit</code></text> }</div>
+                }
+                @if (d.ResolvedAt is { } ra)
+                {
+                    <div>resolved at</div><div>@Dash.When(ra)</div>
+                }
+            </div>
+            <div class="muted">excerpt</div>
+            <pre>@d.Excerpt</pre>
+            @if (!string.IsNullOrEmpty(d.Resolution))
+            {
+                <div class="muted">resolution</div>
+                <pre>@d.Resolution</pre>
+            }
+            @if (d.Status == "open")
+            {
+                <form method="post" action="/ui/resolve" class="resolve">
+                    <input type="hidden" name="id" value="@d.Id" />
+                    <input type="hidden" name="return" value="@DetailHref(d.Id)" />
+                    <input name="note" placeholder="How was it fixed?" required />
+                    <button class="primary" type="submit">Mark resolved</button>
+                </form>
+            }
+        }
+        else
+        {
+            <div class="ph">Select a failure to see details.</div>
+        }
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public string? Eco { get; set; }
+    [SupplyParameterFromQuery] public string? Status { get; set; }
+    [SupplyParameterFromQuery] public string? Repo { get; set; }
+    [SupplyParameterFromQuery(Name = "sel")] public long? Sel { get; set; }
+
+    private IReadOnlyList<StoredAnalysisJson.StoredAnalysisDto> _rows = Array.Empty<StoredAnalysisJson.StoredAnalysisDto>();
+    private IReadOnlyList<string> _ecosystems = Array.Empty<string>();
+    private StatsSnapshot? _stats;
+    private IReadOnlyList<FailureCluster> _clusters = Array.Empty<FailureCluster>();
+    private StoredAnalysisJson.StoredAnalysisDto? _detail;
+
+    protected override void OnParametersSet()
+    {
+        using var store = Stores();
+
+        var all = store.GetRecent(200).Select(StoredAnalysisJson.ToDto).ToList();
+        _ecosystems = all.Select(r => r.Ecosystem).Where(e => !string.IsNullOrEmpty(e))
+            .Distinct().OrderBy(e => e, StringComparer.Ordinal).ToList();
+        _rows = all.Where(Match).ToList();
+
+        _stats = StatsService.Compute(store, new StatsQuery { Top = 5 });
+        try { _clusters = ClusterService.Compute(store, new ClusterQuery { Top = 5 }).Clusters; }
+        catch { _clusters = Array.Empty<FailureCluster>(); }
+
+        _detail = Sel is long id && store.GetById(id) is { } rec
+            ? StoredAnalysisJson.ToDto(rec)
+            : null;
+    }
+
+    private bool Match(StoredAnalysisJson.StoredAnalysisDto r) =>
+        (string.IsNullOrEmpty(Eco) || r.Ecosystem == Eco) &&
+        (string.IsNullOrEmpty(Status) || r.Status == Status) &&
+        (string.IsNullOrEmpty(Repo) || (r.RepoId ?? "").Contains(Repo, StringComparison.OrdinalIgnoreCase));
+
+    private string DetailHref(long id)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(Eco)) parts.Add("eco=" + Uri.EscapeDataString(Eco));
+        if (!string.IsNullOrEmpty(Status)) parts.Add("status=" + Uri.EscapeDataString(Status));
+        if (!string.IsNullOrEmpty(Repo)) parts.Add("repo=" + Uri.EscapeDataString(Repo));
+        parts.Add("sel=" + id);
+        return "/?" + string.Join("&", parts);
+    }
+}

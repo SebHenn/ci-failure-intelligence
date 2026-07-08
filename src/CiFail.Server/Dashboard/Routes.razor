@@ -1,0 +1,11 @@
+@*
+    Router for the static-SSR dashboard. Pages live in this same assembly (Index, Login).
+*@
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" />
+    </Found>
+    <NotFound>
+        <div class="empty">Not found.</div>
+    </NotFound>
+</Router>
