@@ -244,6 +244,11 @@ public static class CiFailServer
         // under /ui/ (not /login) so it never collides with the /login Razor page's route.
         app.MapPost("/ui/login", async (HttpRequest request) =>
         {
+            // ReadFormAsync throws on a non-form body, which would surface as a bare 500 — and this
+            // route is public, so anyone can reach it. Answer a malformed post honestly instead.
+            if (!request.HasFormContentType)
+                return Results.BadRequest("expected a form post");
+
             var form = await request.ReadFormAsync();
             var token = form["token"].ToString();
 
@@ -267,6 +272,9 @@ public static class CiFailServer
         // /resolve handler (manual resolution + a Resolved notification), then returns to the page.
         app.MapPost("/ui/resolve", async (HttpRequest request, Func<IAnalysisStore> stores) =>
         {
+            if (!request.HasFormContentType)
+                return Results.BadRequest("expected a form post");
+
             var form = await request.ReadFormAsync();
             if (!long.TryParse(form["id"], out var id) || string.IsNullOrWhiteSpace(form["note"]))
                 return Results.BadRequest("id and note are required");

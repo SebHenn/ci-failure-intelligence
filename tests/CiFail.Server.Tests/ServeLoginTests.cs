@@ -60,4 +60,31 @@ public sealed class ServeLoginTests : IClassFixture<AuthServeFixture>
         login.StatusCode.Should().Be(HttpStatusCode.Redirect);
         login.Headers.Location!.ToString().Should().Contain("/login?error=1");
     }
+
+    private static StringContent NotAForm() =>
+        new("{\"token\":\"x\"}", System.Text.Encoding.UTF8, "application/json");
+
+    // /ui/login is public, so a malformed post from anyone must not become a bare 500.
+    [Fact]
+    public async Task A_non_form_post_to_login_is_a_bad_request_not_a_server_error()
+    {
+        using var browser = NewBrowser();
+
+        var response = await browser.PostAsync("ui/login", NotAForm());
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task A_non_form_post_to_resolve_is_a_bad_request_not_a_server_error()
+    {
+        using var browser = NewBrowser();
+        // /ui/resolve is behind auth, so sign in first — otherwise this only proves the 401.
+        await browser.PostAsync("ui/login", new FormUrlEncodedContent(
+            new Dictionary<string, string> { ["token"] = AuthServeFixture.Token }));
+
+        var response = await browser.PostAsync("ui/resolve", NotAForm());
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 }
