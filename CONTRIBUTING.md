@@ -18,6 +18,26 @@ contribution is **teaching cifail a new failure pattern** — and that's pure da
   upgrade it.
 - The project targets **net8.0** (it builds fine with the .NET 9 SDK).
 
+## Build from source
+
+cifail is written in C# (.NET 8). You'll need the
+[.NET SDK](https://dotnet.microsoft.com/download) (8 or newer):
+
+```console
+git clone https://github.com/SebHenn/ci-failure-intelligence.git
+cd ci-failure-intelligence
+dotnet build                                          # build the solution
+dotnet test                                           # run the tests
+dotnet run --project src/CiFail.Cli -- analyze samples/nuget-nu1101.log
+bash scripts/publish.sh linux-x64                     # build a standalone binary
+```
+
+While running from source, `dotnet run --project src/CiFail.Cli --` stands in for the
+installed `cifail` command. The `cifail rules` commands that help while authoring a rule are
+covered in [Test it as you write](#2-test-it-as-you-write) below.
+
+See [CLAUDE.md](./CLAUDE.md) for the full command reference and architecture notes.
+
 ## Add a failure pattern (the common case)
 
 A rule is one entry in a YAML pack under
@@ -34,7 +54,7 @@ adding a rule to an existing file is enough — no project changes.
 
 ```yaml
 - id: my-tool-widget-error          # stable, unique, kebab-case
-  ecosystem: generic                # dotnet|node|python|java|go|rust|ruby|generic
+  ecosystem: generic                # dotnet|node|python|java|go|rust|ruby|php|cpp|infra|swift|android|generic
   category: dependency              # loose grouping: dependency|compile|build|test|environment|network|auth|ci
   title: Widget registry rejected the request
   match: "WIDGET-(?<code>\\d+): (?<message>.+)"   # regex; named groups become {placeholders}
