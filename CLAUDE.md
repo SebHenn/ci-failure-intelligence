@@ -138,8 +138,17 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
    timestamps. Also exposes `Scrub()`, which collapses volatile tokens (paths,
    numbers, GUIDs) — used for fingerprints and similarity so cosmetic differences
    don't matter.
-2. `Ingest/EcosystemDetector.Detect` — marker-count heuristic (dotnet/node/python/java/go/rust/ruby/php/cpp/infra/swift/android),
-   falls back to `generic`; overridable via `--type`.
+2. `Ingest/EcosystemDetector.Detect` — weighted-marker heuristic over the 12 ecosystems in
+   `SupportedNamesText`; falls back to `generic`; overridable via `--type` (which now
+   **rejects** an unknown value instead of silently auto-detecting). **Scoring counts markers,
+   not occurrences**: each marker adds its weight at most once, because summing total match
+   counts meant thirty `[ERROR] ` lines from a chatty logger outscored the markers that
+   actually identified the log. Markers are `Strong` (3, effectively unique — `npm ERR!`,
+   `Cargo.toml`) or `Weak` (1, suggestive but shared — `[ERROR] `, `gcc`, `gradlew`);
+   `MinimumScore` = 2 so one weak marker never claims an ecosystem. Ties break by the explicit
+   `Precedence` array (most specific first — Android before Java because every Android log is
+   also a Gradle/Java log; Infra and Cpp last because everyone builds Docker images and native
+   extensions). `Rank(log)` exposes the scores, which is what makes the tie-breaking testable.
 3. `Rules/RuleEngine.Match` — runs applicable rules, returns matches ranked by
    confidence. Rules whose `ecosystem` is `generic` always apply; ecosystem-specific
    rules only apply when detected (or when ecosystem is undetected). Named regex
@@ -267,7 +276,29 @@ Packs are **embedded resources** (see `EmbeddedResource` glob in `CiFail.Core.cs
 loaded by `RulePackLoader` from the assembly; users can add `~/.cifail/rules/*.yaml`,
 and a user rule with a duplicate `id` overrides the embedded one. A malformed regex is
 skipped, never fatal. To add coverage for a new failure, add a rule + a fixture +
-a test case in `RulePackBreadthTests` — usually no C# changes needed.
+a row in `RulePackBreadthTests` — usually no C# changes needed.
+
+**Every rule needs a fixture and a `docs:` URL, and both are enforced.**
+`RulePackBreadthTests.Every_shipped_rule_has_a_fixture` fails the build for a rule with no
+fixture (two thirds of the pack was in that state — an untested regex is an untested claim),
+and `RulePackValidator` warns on a missing/non-http `docs:`. Each breadth row asserts the
+expected rule **wins** the ranking, not merely that it matched: matching while losing to a
+vaguer rule is indistinguishable from not working.
+
+**Write fixtures from real tool output, not from the regex.** Three shipped rules could never
+have matched anything real — `generic-command-not-found` had the shell's word order reversed,
+`ruby-nomethod-error` used `.` across a newline (the engine compiles with `Multiline`, not
+`Singleline`), and `composer-platform-requirement` had no room for composer's actual
+"requires PHP extension ext-intl" wording. All three passed review; only a realistic fixture
+caught them.
+
+**Overlap is a design decision, not an accident.** A broad rule that restates a specific one
+is noise in "other things cifail noticed" — `go-build-failed` excludes the errors the specific
+Go rules explain via a negative lookahead, and `generic-docker-build` deliberately does *not*
+cover what `infra.yaml` explains properly. A broad rule that *summarizes* (maven-build-failure,
+terraform-error, xcode-build-failed) is useful and stays. When two rules can fire on one line,
+the specific one must have the higher confidence — an equal confidence makes the winner
+arbitrary (this was live between `go-undefined` and `go-version-mismatch`).
 
 ### Storage (`Core/Storage/`)
 

@@ -1,0 +1,6 @@
+$ xcodebuild -scheme Shop build
+CompileSwift normal arm64 /src/Shop/Cart.swift
+/src/Shop/Cart.swift:41:20: error: cannot convert value of type 'Double' to expected argument type 'Int'
+        return applyTax(price)
+                        ^~~~~
+** BUILD FAILED **

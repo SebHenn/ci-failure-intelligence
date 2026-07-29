@@ -1,0 +1,7 @@
+$ terraform init
+Initializing provider plugins...
+- Finding acme/widget versions matching "~> 2.0"...
+│ Error: Failed to query available provider packages
+│
+│ Could not retrieve the list of available versions for provider acme/widget: provider registry
+│ registry.terraform.io does not have a provider named registry.terraform.io/acme/widget

@@ -1,0 +1,5 @@
+$ pytest -q
+Traceback (most recent call last):
+  File "/src/app/main.py", line 4, in <module>
+    from app.schemas import CartItem
+ImportError: cannot import name 'CartItem' from 'app.schemas' (/src/app/schemas.py)

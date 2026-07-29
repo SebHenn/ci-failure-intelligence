@@ -10,6 +10,7 @@
     {file}:{line} references '{symbol}', which the compiler can't find. Check for a
     typo, a missing import, or an unexported name from another package. Run
     `go build ./...` locally to reproduce.
+  docs: https://go.dev/ref/spec#Declarations_and_scope
 
 - id: go-cannot-find-package
   ecosystem: go
@@ -39,12 +40,17 @@
   ecosystem: go
   category: build
   title: Go build failed
-  match: "(?<file>[^\\s:]+\\.go):(?<line>\\d+):\\d+: (?<message>.+)"
+  # The negative lookahead keeps this off the errors the specific Go rules already explain
+  # (undefined symbol, type mismatch, unresolved package). Without it this matched every Go
+  # compile error, so both rules fired on every such log and the "other things cifail noticed"
+  # list was pure restatement. Extend the lookahead when you add another go compile rule.
+  match: "(?<file>[^\\s:]+\\.go):(?<line>\\d+):\\d+: (?!undefined: |cannot use |no required module provides )(?<message>.+)"
   confidence: 0.55
   fix: |
     Go failed to compile {file}:{line}: {message}
     Fix the reported line and re-run `go build ./...`. This is a generic compile
     error; a more specific rule (e.g. undefined symbol) wins when it applies.
+  docs: https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies
 
 - id: go-test-failed
   ecosystem: go
@@ -68,6 +74,7 @@
     A value's type doesn't match what {file}:{line} expects ({type}). Convert it
     explicitly, fix the variable's declared type, or check you're passing the right
     argument. `go build ./...` shows the full context.
+  docs: https://go.dev/ref/spec#Conversions
 
 - id: go-import-cycle
   ecosystem: go
@@ -86,8 +93,13 @@
   category: environment
   title: Go toolchain version too old
   match: "note: module requires Go (?<version>[\\d.]+)|go: go\\.mod requires go >= (?<version2>[\\d.]+)"
-  confidence: 0.8
+  # Below the specific compile rules (0.78-0.85) on purpose. Go prints "note: module requires
+  # Go 1.21" as a hint alongside ordinary compile errors, so on its own it is corroboration,
+  # not the cause. It still wins when the toolchain really is too old, because then nothing
+  # else matches. At the previous 0.8 it tied with go-undefined and the winner was arbitrary.
+  confidence: 0.7
   fix: |
     The module needs a newer Go than the runner has. Bump the Go version in CI (e.g.
     actions/setup-go's `go-version`) to satisfy the `go` directive in go.mod, or lower
     that directive if you must support the older toolchain.
+  docs: https://go.dev/doc/toolchain

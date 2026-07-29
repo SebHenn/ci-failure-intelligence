@@ -1,0 +1,6 @@
+$ composer install
+Your requirements could not be resolved to an installable set of packages.
+
+  Problem 1
+    - Root composer.json requires PHP extension ext-intl * but it is missing from your system.
+      Install or enable PHP's intl extension.

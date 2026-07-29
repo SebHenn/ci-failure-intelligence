@@ -1,0 +1,6 @@
+$ make
+g++ -c -o build/cart.o src/cart.cpp
+src/cart.cpp:4:10: fatal error: nlohmann/json.hpp: No such file or directory
+    4 | #include <nlohmann/json.hpp>
+      |          ^~~~~~~~~~~~~~~~~~~
+compilation terminated.

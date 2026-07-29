@@ -1,0 +1,12 @@
+$ vendor/bin/phpunit
+PHPUnit 10.5.9 by Sebastian Bergmann and contributors.
+
+.............F                                                   42 / 42 (100%)
+
+There was 1 failure:
+
+1) App\Tests\CartTest::testTotalIncludesTax
+Failed asserting that 1000 matches expected 1250.
+
+FAILURES!
+Tests: 42, Assertions: 84, Failures: 1.

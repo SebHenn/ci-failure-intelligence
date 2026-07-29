@@ -1,0 +1,4 @@
+$ go build ./...
+package github.com/acme/shop/internal/cart
+	imports github.com/acme/shop/internal/pricing
+	imports github.com/acme/shop/internal/cart: import cycle not allowed

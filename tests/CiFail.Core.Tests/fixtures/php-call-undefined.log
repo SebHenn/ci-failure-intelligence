@@ -1,0 +1,4 @@
+$ vendor/bin/php artisan migrate
+PHP Fatal error:  Uncaught Error: Call to undefined function str_contians() in /src/app/Cart.php:41
+Stack trace:
+#0 /src/app/Cart.php(12): App\Cart->total()

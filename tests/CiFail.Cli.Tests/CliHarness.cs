@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using CiFail.Cli;
 using CiFail.Cli.Output;
@@ -74,9 +75,16 @@ public sealed class CliHarness : IDisposable
         var originalOut = Console.Out;
         var originalError = Console.Error;
         var originalAnsi = AnsiConsole.Console;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
 
         try
         {
+            // Spectre.Console.Cli localizes USAGE/OPTIONS/EXAMPLES from satellite assemblies, so
+            // help assertions would pass in CI and fail on a developer machine with a non-English
+            // locale. Pinning the UI culture asserts the help users actually get: the shipped
+            // binary sets SatelliteResourceLanguages=en, so it is English-only by construction.
+            CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+
             // Commands write JSON/SARIF straight to Console.Out, and annotations to
             // Console.Error, so the raw streams must be captured as well as the Spectre ones.
             Console.SetOut(stdout);
@@ -96,6 +104,7 @@ public sealed class CliHarness : IDisposable
             AnsiConsole.Console = originalAnsi;
             Console.SetOut(originalOut);
             Console.SetError(originalError);
+            CultureInfo.CurrentUICulture = originalUiCulture;
         }
     }
 

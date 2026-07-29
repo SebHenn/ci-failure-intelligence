@@ -1,0 +1,3 @@
+$ go build ./...
+main.go:8:2: no required module provides package github.com/acme/telemetry/v2; to add it:
+	go get github.com/acme/telemetry/v2

@@ -1,0 +1,2 @@
+Run ./scripts/deploy.sh
+/home/runner/work/_temp/abc.sh: line 2: ./scripts/deploy.sh: Permission denied

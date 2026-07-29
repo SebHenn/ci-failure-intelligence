@@ -1,0 +1,6 @@
+$ dotnet build
+  Determining projects to restore...
+/src/Api/Services/CartService.cs(41,20): error CS1061: 'Cart' does not contain a definition for 'Totl' and no accessible extension method 'Totl' accepting a first argument of type 'Cart' could be found [/src/Api/Api.csproj]
+Build FAILED.
+    0 Warning(s)
+    1 Error(s)

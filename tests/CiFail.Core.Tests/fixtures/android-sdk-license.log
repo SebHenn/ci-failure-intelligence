@@ -1,0 +1,6 @@
+> Configure project :app
+Checking the license for package Android SDK Build-Tools 34 in /usr/lib/android-sdk/licenses
+Failed to install the following Android SDK packages as some licences have not been accepted.
+   build-tools;34.0.0 Android SDK Build-Tools 34
+You have not accepted the license agreements of the following SDK components.
+Execution failed for task ':app:preBuild'.

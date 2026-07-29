@@ -10,6 +10,7 @@
     Python can't import '{module}'. Install it (pip install {module}) and pin it in
     requirements.txt / pyproject.toml. If it's a local package, check it's importable
     (correct package name, __init__.py, and that the venv is activated).
+  docs: https://docs.python.org/3/tutorial/modules.html#the-module-search-path
 
 - id: py-import-error
   ecosystem: python
@@ -21,6 +22,7 @@
     An import failed: {message}
     Often a version mismatch (a name moved/was removed) or a circular import. Check
     the installed version of the offending package against what your code expects.
+  docs: https://docs.python.org/3/library/exceptions.html#ImportError
 
 - id: pip-resolution-impossible
   ecosystem: python
@@ -43,6 +45,7 @@
     No installable version matched the requirement. Check the package name, the
     version specifier, and the Python version (a wheel may not exist for this
     interpreter/platform on CI).
+  docs: https://pip.pypa.io/en/stable/topics/dependency-resolution/
 
 - id: py-syntax-error
   ecosystem: python
@@ -54,6 +57,7 @@
     The interpreter hit a syntax error: {message}
     Fix the indicated line. If it's unexpected, confirm the file's Python version
     matches CI (e.g. f-strings / match statements need newer Python).
+  docs: https://docs.python.org/3/tutorial/errors.html#syntax-errors
 
 - id: pytest-failed
   ecosystem: python
@@ -64,3 +68,4 @@
   fix: |
     pytest reported failures ({summary}). Look for the FAILED lines and the assert
     diffs above. Reproduce one with `pytest path::test_name -x`.
+  docs: https://docs.pytest.org/en/stable/how-to/usage.html

@@ -1,0 +1,2 @@
++ jq -r '.version' package.json
+sh: 1: jq: not found

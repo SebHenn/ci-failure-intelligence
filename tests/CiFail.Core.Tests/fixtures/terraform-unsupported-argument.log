@@ -1,0 +1,7 @@
+$ terraform validate
+│ Error: Unsupported argument
+│
+│   on main.tf line 18, in resource "aws_s3_bucket" "artifacts":
+│   18:   acl = "private"
+│
+│ An argument named "acl" is not expected here.

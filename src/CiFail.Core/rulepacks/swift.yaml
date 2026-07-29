@@ -11,6 +11,7 @@
     (`swift package resolve` or File > Packages > Resolve in Xcode) and confirm it's a
     dependency of this target. For CocoaPods/Carthage, open the .xcworkspace (not the
     .xcodeproj) and check the framework search paths.
+  docs: https://developer.apple.com/documentation/xcode/configuring-a-new-target-in-your-project
 
 - id: swift-compile-error
   ecosystem: swift
@@ -22,6 +23,7 @@
     The Swift compiler rejected {file}:{line}: {message}
     Fix the reported line and rebuild. A more specific rule (missing module, code
     signing) wins when it applies.
+  docs: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/
 
 - id: xcode-code-signing
   ecosystem: swift
@@ -46,6 +48,7 @@
     xcodebuild reported failure. The real cause is the first `error:` line above this
     summary (compile, linker, or signing). Reproduce with the same `xcodebuild`
     invocation locally and add `-quiet` to cut noise, or open the project in Xcode.
+  docs: https://developer.apple.com/documentation/xcode/building-and-running-an-app
 
 - id: swift-linker-symbols
   ecosystem: swift
@@ -58,3 +61,4 @@
     target membership is missing: add the framework under "Link Binary With
     Libraries", check the source file belongs to the target, and that any C/ObjC
     bridging is set up.
+  docs: https://developer.apple.com/documentation/xcode/linking-and-loading-symbols

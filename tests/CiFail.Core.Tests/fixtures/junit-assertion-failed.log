@@ -1,0 +1,4 @@
+[ERROR] Tests run: 42, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] com.acme.shop.CartTest.totalIncludesTax  Time elapsed: 0.03 s  <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <1250> but was: <1000>
+	at com.acme.shop.CartTest.totalIncludesTax(CartTest.java:31)

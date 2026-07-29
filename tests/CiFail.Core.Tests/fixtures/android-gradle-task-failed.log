@@ -1,0 +1,5 @@
+> Task :app:mergeDebugAssets FAILED
+FAILURE: Build failed with an exception.
+* What went wrong:
+Execution failed for task ':app:mergeDebugAssets'.
+> com.android.builder.merge.DuplicateRelativeFileException: 2 files found with path 'assets/config.json'

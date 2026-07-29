@@ -1,0 +1,8 @@
+$ pytest
+==================================== FAILURES ====================================
+______________________________ test_total_with_tax ______________________________
+    def test_total_with_tax():
+>       assert total(items) == 1250
+E       assert 1000 == 1250
+tests/test_cart.py:31: AssertionError
+============================ 1 failed, 41 passed in 2.14s ============================

@@ -1,0 +1,8 @@
+$ ./gradlew build
+> Task :compileJava
+Daemon will be stopped at the end of the build
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Gradle build daemon disappeared unexpectedly (it may have been killed or may have crashed)

@@ -1,0 +1,4 @@
+$ xcodebuild -scheme Shop -destination 'platform=iOS Simulator,name=iPhone 15' test
+Testing started
+2026-07-29 10:14:02.881 xcodebuild[4711:99] Test session exited
+** TEST FAILED **

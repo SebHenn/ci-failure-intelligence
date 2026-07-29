@@ -39,6 +39,7 @@
     Read the framed error block for the resource and file:line it points to. Run
     `terraform validate` and `terraform plan` locally to reproduce; a more specific
     rule (state lock, provider) wins when it applies.
+  docs: https://developer.hashicorp.com/terraform/cli/commands/plan
 
 - id: docker-copy-not-found
   ecosystem: infra
@@ -63,6 +64,7 @@
     BuildKit couldn't parse the Dockerfile. Check the reported line for a typo in an
     instruction, a missing line continuation (`\\`), or a heredoc/quote that isn't
     closed. Lint it with `docker build --check` or hadolint.
+  docs: https://docs.docker.com/reference/dockerfile/
 
 - id: terraform-unsupported-argument
   ecosystem: infra

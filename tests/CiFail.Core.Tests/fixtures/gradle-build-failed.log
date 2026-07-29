@@ -1,0 +1,14 @@
+$ ./gradlew build
+> Task :compileJava FAILED
+/src/src/main/java/com/acme/shop/Cart.java:41: error: cannot find symbol
+    return applyTax(total);
+           ^
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileJava'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+Run with --stacktrace option to get the stack trace.

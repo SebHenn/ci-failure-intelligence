@@ -6,12 +6,21 @@
   ecosystem: generic
   category: environment
   title: Command not found
-  match: "(?:command not found|: not found): (?<command>[^\\n]+)|(?<command2>[\\w./-]+): command not found"
+  # Three shell wordings, and they disagree on word order:
+  #   bash: "./x.sh: line 12: shellcheck: command not found"
+  #   dash: "sh: 1: jq: not found"          <- needs the sh prefix, or it matches any
+  #                                            "...: not found" (e.g. BuildKit cache-key errors)
+  #   zsh:  "zsh: command not found: jq"
+  # The rule previously had only the reversed form plus the bash one, so dash output — what
+  # `sh -c` in a container actually prints — went unrecognized.
+  match: "(?<command>[\\w.+/-]+): command not found|^\\S*sh: \\d+: (?<command>[^:\\s]+): not found$|command not found: (?<command>\\S+)"
   confidence: 0.7
   fix: |
-    A required command isn't installed or isn't on PATH in the CI environment.
-    Install it in a setup step, or use the full path. Verify the tool is available
-    on the runner image you're using.
+    '{command}' isn't installed or isn't on PATH in the CI environment.
+    Install it in a setup step, or call it by its full path. Check it's actually
+    present on the runner image you're using — a tool you have locally is not
+    automatically there.
+  docs: https://docs.github.com/actions/using-github-hosted-runners/about-github-hosted-runners
 
 - id: github-actions-error
   ecosystem: generic
@@ -23,6 +32,7 @@
     A GitHub Actions step reported an error: {message}
     This is the surfaced failure; the underlying cause is usually in the command
     output just above. Re-run with debug logging (ACTIONS_STEP_DEBUG=true) for more.
+  docs: https://docs.github.com/actions/monitoring-and-troubleshooting-workflows/enabling-debug-logging
 
 - id: generic-permission-denied
   ecosystem: generic
@@ -34,6 +44,7 @@
     The process was denied access. Common causes on CI: a script without the
     executable bit (chmod +x), writing outside the workspace, or a port/file owned
     by another user. Check file permissions and target paths.
+  docs: https://docs.github.com/actions/writing-workflows/choosing-what-your-workflow-does/adding-scripts-to-your-workflow
 
 - id: generic-oom
   ecosystem: generic
@@ -45,6 +56,7 @@
     A process was killed, most likely for exceeding available memory (exit 137 /
     OOMKilled). Reduce memory use, raise the runner/container memory limit, or for
     Node bump --max-old-space-size.
+  docs: https://docs.github.com/actions/using-github-hosted-runners/about-github-hosted-runners#supported-runners-and-hardware-resources
 
 - id: generic-nonzero-exit
   ecosystem: generic
@@ -56,6 +68,7 @@
     A step exited with code {code}. This is a generic failure signal — the real
     cause is in that command's own output above. Re-run that command locally to
     reproduce and capture the specific error.
+  docs: https://docs.github.com/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#setting-an-error-message
 
 - id: generic-timeout
   ecosystem: generic
@@ -68,6 +81,7 @@
     (often a hung test, a network wait, or an infinite retry) and add a tighter
     per-command timeout, or raise the job's timeout-minutes if the work is genuinely
     that long. A hang usually points at a missing input or a deadlock.
+  docs: https://docs.github.com/actions/writing-workflows/workflow-syntax-for-github-actions#jobsjob_idtimeout-minutes
 
 - id: generic-disk-space
   ecosystem: generic
@@ -80,6 +94,7 @@
     images/layers, delete caches/artifacts you don't need, clean build output), or
     use a larger runner. Hosted runners are small — large Docker builds and node_modules
     are the usual culprits.
+  docs: https://docs.github.com/actions/using-github-hosted-runners/about-github-hosted-runners#supported-runners-and-hardware-resources
 
 - id: generic-network-dns
   ecosystem: generic
@@ -92,6 +107,7 @@
     step. If it persists, check the host/URL is correct and reachable from the
     runner, that no firewall/proxy is blocking it, and that any required VPN or
     service container is up before this step runs.
+  docs: https://docs.github.com/actions/using-github-hosted-runners/about-github-hosted-runners/about-github-hosted-runners#cloud-hosts-used-by-github-hosted-runners
 
 - id: generic-tls-cert
   ecosystem: generic
@@ -104,6 +120,7 @@
     CA chain on the runner (corporate/private mirrors often need a custom root CA),
     fix an expired/misconfigured server cert, or check the clock is correct. Disabling
     verification is a last resort and a security risk.
+  docs: https://curl.se/docs/sslcerts.html
 
 - id: generic-rate-limit
   ecosystem: generic
@@ -115,18 +132,24 @@
     A service rejected requests for rate limiting (429). Authenticate so you get a
     higher quota (e.g. a token for registry/API pulls), add caching to cut request
     volume, or back off and retry. For Docker Hub pulls, log in or mirror the image.
+  docs: https://docs.docker.com/docker-hub/usage/
 
 - id: generic-docker-build
   ecosystem: generic
   category: build
   title: Docker build failed
-  match: "(?:failed to solve|ERROR: failed to solve|COPY failed|ADD failed|manifest unknown|failed to compute cache key|dockerfile parse error|returned a non-zero code)"
+  # Deliberately does NOT cover COPY/ADD failures, cache-key misses or Dockerfile parse errors:
+  # infra.yaml's docker-copy-not-found and dockerfile-parse-error explain those properly, and
+  # this rule used to restate them verbatim on every Docker log. BuildKit always prints
+  # "failed to solve" for those anyway, so nothing stops being recognized.
+  match: "(?:failed to solve|manifest unknown|returned a non-zero code)"
   confidence: 0.6
   fix: |
     A Docker image build failed. Read the failing build step (BuildKit prints the
     Dockerfile line). Common causes: a COPY/ADD source path that doesn't exist in the
     build context, a base image tag that's gone (manifest unknown), or a RUN command
     that exited non-zero. Reproduce with `docker build .` locally.
+  docs: https://docs.docker.com/build/building/best-practices/
 
 - id: generic-registry-auth
   ecosystem: generic
@@ -139,6 +162,7 @@
     CI (a registry login step or a token secret), confirm the token has the right
     scope (read:packages / pull), and that the image/package name and visibility are
     correct. Expired or unset secrets are the usual cause.
+  docs: https://docs.github.com/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry
 
 - id: generic-segfault
   ecosystem: generic
@@ -151,6 +175,7 @@
     pointer in compiled code, a mismatched native dependency/ABI, or a stack overflow
     from deep recursion. Re-run with sanitizers/a debugger locally, or pin the native
     library version that last worked.
+  docs: https://man7.org/linux/man-pages/man7/signal.7.html
 
 - id: generic-git-auth
   ecosystem: generic
@@ -163,3 +188,4 @@
     token with repo read scope) instead of a password; for SSH, add the deploy key to
     the runner and the repo. Check the remote URL and that the secret hasn't expired —
     private submodules need credentials too.
+  docs: https://docs.github.com/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens

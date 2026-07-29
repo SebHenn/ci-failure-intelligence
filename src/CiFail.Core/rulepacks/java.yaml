@@ -12,6 +12,7 @@
     The Java compiler rejected {file} at line {line}: {message}
     Fix the offending source line and rebuild. Run `mvn compile` (or
     `./gradlew compileJava`) locally to iterate quickly.
+  docs: https://docs.oracle.com/en/java/javase/21/docs/specs/man/javac.html
 
 - id: maven-dependency-not-found
   ecosystem: java
@@ -35,6 +36,7 @@
     The Maven build failed. The real cause is in the [ERROR] lines just above this
     summary — usually a failing plugin goal, a compile error, or a test failure.
     Re-run with `mvn -e` for stack traces or `-X` for full debug output.
+  docs: https://maven.apache.org/guides/mini/guide-configuring-maven.html
 
 - id: gradle-build-failed
   ecosystem: java
@@ -77,7 +79,9 @@
   category: environment
   title: Gradle daemon disappeared
   match: "Gradle build daemon disappeared unexpectedly|The message received from the daemon indicates that the daemon has disappeared"
-  confidence: 0.7
+  # Above generic-oom (0.7) on purpose: Gradle's own message says "it may have been killed",
+  # which generic-oom also matches, and this rule names the actual cause and the actual fix.
+  confidence: 0.8
   fix: |
     The Gradle daemon was killed mid-build — almost always the OS OOM-killer on a
     memory-starved runner. Lower org.gradle.jvmargs (-Xmx), give the runner more

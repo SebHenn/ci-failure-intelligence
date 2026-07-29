@@ -1,0 +1,10 @@
+$ bundle exec rspec
+Failures:
+
+  1) Cart#total includes tax
+     Failure/Error: expect(cart.total).to eq(1250)
+       expected: 1250
+            got: 1000
+     # ./spec/cart_spec.rb:31:in `block (3 levels) in <top (required)>'
+
+42 examples, 1 failure

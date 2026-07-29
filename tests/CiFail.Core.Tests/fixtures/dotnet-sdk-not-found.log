@@ -1,0 +1,6 @@
+$ dotnet build
+A compatible .NET SDK was not found.
+Requested SDK version: 9.0.100
+global.json file: /src/global.json
+Installed SDKs:
+  8.0.404 [/usr/share/dotnet/sdk]

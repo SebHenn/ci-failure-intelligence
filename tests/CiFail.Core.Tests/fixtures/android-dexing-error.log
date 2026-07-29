@@ -1,0 +1,3 @@
+> Task :app:mergeDexDebug FAILED
+com.android.builder.dexing.DexArchiveMergerException: Error while merging dex archives:
+Cannot fit requested classes in a single dex file (# methods: 71234 > 65536)

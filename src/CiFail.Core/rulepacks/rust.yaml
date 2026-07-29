@@ -34,6 +34,7 @@
     Cargo aborted while compiling crate '{crate}'. The real cause is the error[E####]
     line(s) above this summary. Fix those, then re-run `cargo build`. Use
     `cargo build -v` for the exact rustc invocation.
+  docs: https://doc.rust-lang.org/error_codes/error-index.html
 
 - id: rust-test-panic
   ecosystem: rust
@@ -69,6 +70,7 @@
     The crate needs a newer (or nightly) Rust than the runner has. Update the toolchain
     in CI (rustup, or the dtolnay/rust-toolchain action) to the required version, pin it
     with a rust-toolchain.toml, or lower the crate's rust-version if you can.
+  docs: https://rust-lang.github.io/rustup/concepts/toolchains.html
 
 - id: cargo-lock-out-of-date
   ecosystem: rust
@@ -80,3 +82,4 @@
     CI built with `--locked`/`--frozen` but Cargo.lock doesn't match Cargo.toml. Run
     `cargo update` (or `cargo build` without --locked) locally and commit the updated
     Cargo.lock so the lockfile and manifest agree.
+  docs: https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html

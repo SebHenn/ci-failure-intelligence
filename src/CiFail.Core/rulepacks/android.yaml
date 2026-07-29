@@ -38,6 +38,7 @@
     A library's AndroidManifest declares something incompatible with yours (often
     minSdk, an attribute, or a duplicate). Add a `tools:replace`/`tools:remove` rule or
     align the setting; the merged-manifest report shows each contributor.
+  docs: https://developer.android.com/build/manage-manifests#merge-manifests
 
 - id: android-sdk-license
   ecosystem: android
@@ -50,6 +51,7 @@
     `yes | sdkmanager --licenses` (or the android-actions/setup-android action), install
     the required platform/build-tools, and set ANDROID_SDK_ROOT / local.properties
     `sdk.dir`.
+  docs: https://developer.android.com/tools/sdkmanager#accept-licenses
 
 - id: android-gradle-task-failed
   ecosystem: android
@@ -62,6 +64,7 @@
     went wrong" header. Re-run with `--stacktrace` (or `--info`) for detail and
     reproduce locally; a more specific rule (resources, duplicate class, manifest) wins
     when it applies.
+  docs: https://docs.gradle.org/current/userguide/troubleshooting.html
 
 - id: android-dexing-error
   ecosystem: android

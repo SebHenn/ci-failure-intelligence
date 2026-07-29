@@ -1,0 +1,4 @@
+[INFO] Running com.acme.shop.ImportIT
+java.lang.OutOfMemoryError: Java heap space
+	at java.base/java.util.Arrays.copyOf(Arrays.java:3537)
+	at com.acme.shop.Importer.readAll(Importer.java:88)

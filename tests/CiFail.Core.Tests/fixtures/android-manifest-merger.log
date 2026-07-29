@@ -1,0 +1,4 @@
+> Task :app:processDebugMainManifest FAILED
+/src/app/src/main/AndroidManifest.xml:22:9-45 Error:
+	Attribute application@allowBackup value=(false) is also present at [com.acme:analytics:2.1.0]
+Manifest merger failed : Attribute application@allowBackup value=(false) from AndroidManifest.xml:22:9-45 is also present

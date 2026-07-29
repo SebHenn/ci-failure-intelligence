@@ -1,0 +1,5 @@
+Determining projects to restore...
+  Failed to restore /src/Api/Api.csproj (in 1.24 sec).
+/src/Api/Api.csproj : error NU1102: Unable to find package Serilog.Sinks.Seq with version (>= 9.9.9)
+/src/Api/Api.csproj : error NU1102:   - Found 42 version(s) in nuget.org [ Nearest version: 8.0.0 ]
+Build FAILED.

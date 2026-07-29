@@ -1,0 +1,4 @@
+$ npm run buld
+npm ERR! Missing script: "buld"
+npm ERR! To see a list of scripts, run:
+npm ERR!   npm run

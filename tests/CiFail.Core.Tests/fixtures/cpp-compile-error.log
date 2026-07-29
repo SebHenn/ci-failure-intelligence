@@ -1,0 +1,4 @@
+$ cmake --build build
+src/cart.cpp:41:22: error: 'apply_tax' was not declared in this scope
+   41 |   return apply_tax(total);
+      |          ^~~~~~~~~

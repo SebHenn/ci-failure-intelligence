@@ -1,0 +1,5 @@
+$ make
+g++ -o build/shop build/cart.o build/main.o -lfmt
+/usr/bin/ld: cannot find -lfmt: No such file or directory
+collect2: error: ld returned 1 exit status
+make: *** [Makefile:18: build/shop] Error 1

@@ -1,0 +1,4 @@
+$ go build ./...
+internal/server/handler.go:42:17: too many arguments in call to render.Write
+	have (http.ResponseWriter, int, string)
+	want (http.ResponseWriter, int)

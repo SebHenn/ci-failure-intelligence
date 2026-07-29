@@ -1,0 +1,5 @@
+$ cargo build --release
+    Updating crates.io index
+error: failed to select a version for `serde_json`.
+    ... required by package `shop v0.4.0 (/src)`
+versions that meet the requirements `^9.9` are: (none)

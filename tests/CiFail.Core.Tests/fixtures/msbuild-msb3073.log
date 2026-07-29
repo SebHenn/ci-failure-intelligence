@@ -1,0 +1,6 @@
+  Api -> /src/Api/bin/Release/net8.0/Api.dll
+  Running post-build script...
+/src/Api/Api.csproj(48,5): error MSB3073: The command "./scripts/bundle.sh" exited with code 2.
+Build FAILED.
+    0 Warning(s)
+    1 Error(s)

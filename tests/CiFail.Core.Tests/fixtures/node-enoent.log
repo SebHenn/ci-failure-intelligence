@@ -1,0 +1,8 @@
+$ npm run build
+> shop@1.4.0 build
+> node scripts/build.mjs
+
+node:internal/fs/utils:349
+Error: ENOENT: no such file or directory, open '/src/config/production.json'
+    at Object.readFileSync (node:fs:2352:20)
+    at loadConfig (/src/node_modules/@acme/config/index.js:14:18)

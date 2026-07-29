@@ -1,0 +1,2 @@
+$ bundle exec ruby -c app/models/cart.rb
+app/models/cart.rb:22: syntax error, unexpected end-of-input, expecting `end'

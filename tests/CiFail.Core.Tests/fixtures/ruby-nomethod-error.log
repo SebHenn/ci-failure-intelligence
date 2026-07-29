@@ -1,0 +1,5 @@
+$ bundle exec rspec
+Failure/Error: cart.totl
+NoMethodError:
+  undefined method `totl' for #<Cart:0x00007f9a>
+# ./spec/cart_spec.rb:12:in `block (2 levels) in <top (required)>'

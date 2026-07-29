@@ -22,6 +22,7 @@
     Ruby couldn't load '{file}'. If it's a gem, add it to the Gemfile and run it via
     `bundle exec` so the bundled gems are on the load path. If it's a local file,
     check the require path (relative vs absolute) and casing.
+  docs: https://docs.ruby-lang.org/en/master/Kernel.html#method-i-require
 
 - id: rspec-failure
   ecosystem: ruby
@@ -57,17 +58,22 @@
     Ruby couldn't parse {file}:{line}: {message}
     Fix the syntax at that line — a missing `end`, unbalanced bracket, or stray comma
     are common. `ruby -c <file>` checks syntax without running the file.
+  docs: https://docs.ruby-lang.org/en/master/syntax_rdoc.html
 
 - id: ruby-nomethod-error
   ecosystem: ruby
   category: runtime
   title: NoMethodError / NameError
-  match: "(?:NoMethodError|NameError)\\b.*?(?:undefined (?:method|local variable or method) [`'](?<name>[^'`]+)|uninitialized constant (?<constant>[\\w:]+))"
+  # [\s\S] rather than . — Ruby prints the exception class and the description on separate
+  # lines, and the engine compiles without Singleline, so `.` stopped at the newline and this
+  # never matched real output. Bounded so it can't run away across an entire log.
+  match: "(?:NoMethodError|NameError)\\b[\\s\\S]{0,200}?(?:undefined (?:method|local variable or method) [`'](?<name>[^'`]+)|uninitialized constant (?<constant>[\\w:]+))"
   confidence: 0.7
   fix: |
     Ruby called a method or referenced a name that doesn't exist on the receiver
     (often a nil, a typo, or a missing require/autoload). Read the backtrace for the
     file:line, and check the object is the type you expect at that point.
+  docs: https://docs.ruby-lang.org/en/master/NoMethodError.html
 
 - id: bundler-version-conflict
   ecosystem: ruby

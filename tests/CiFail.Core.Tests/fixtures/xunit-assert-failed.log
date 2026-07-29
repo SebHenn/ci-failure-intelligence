@@ -1,0 +1,10 @@
+$ dotnet test
+  Determining projects to restore...
+  Api.Tests -> /src/Api.Tests/bin/Debug/net8.0/Api.Tests.dll
+[xUnit.net 00:00:01.42]     Api.Tests.CartTests.Total_includes_tax [FAIL]
+  Failed Api.Tests.CartTests.Total_includes_tax [8 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 12.50
+Actual:   10.00
+Failed!  - Failed: 1, Passed: 41, Skipped: 0, Total: 42

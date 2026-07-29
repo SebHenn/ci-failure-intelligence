@@ -1,0 +1,6 @@
+   Compiling shop v0.4.0 (/src)
+error[E0432]: unresolved import `crate::pricing::apply_tax`
+  --> src/cart.rs:3:5
+   |
+ 3 | use crate::pricing::apply_tax;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ no `apply_tax` in `pricing`

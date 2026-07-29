@@ -1,0 +1,4 @@
+$ bundle exec rake db:migrate
+rake aborted!
+ActiveRecord::PendingMigrationError: Migrations are pending
+/src/config/environment.rb:5:in `require_relative'

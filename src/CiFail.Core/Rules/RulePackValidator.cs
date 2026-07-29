@@ -157,6 +157,15 @@ public static class RulePackValidator
 
         if (string.IsNullOrWhiteSpace(rule.Fix))
             Warn("rule has no 'fix' guidance");
+
+        // A rule tells you what broke and how to fix it; 'docs' is where you go when the fix
+        // text isn't enough. Every shipped rule has one, and this keeps new ones from skipping
+        // it — 53 of 91 had none before, including the entire generic pack.
+        if (string.IsNullOrWhiteSpace(rule.Docs))
+            Warn("rule has no 'docs' link (point at the tool's own reference page for this error)");
+        else if (!Uri.TryCreate(rule.Docs, UriKind.Absolute, out var docs) ||
+                 (docs.Scheme != Uri.UriSchemeHttp && docs.Scheme != Uri.UriSchemeHttps))
+            Warn($"'docs' should be an absolute http(s) URL; got '{rule.Docs}'");
     }
 
     private static IEnumerable<RulePackDocument> ReadDirectory(string dir, RulePackTier tier)

@@ -1,0 +1,6 @@
+$ terraform apply -auto-approve
+│ Error: creating S3 Bucket (acme-artifacts): BucketAlreadyOwnedByYou
+│
+│   with aws_s3_bucket.artifacts,
+│   on main.tf line 12, in resource "aws_s3_bucket" "artifacts":
+│   12: resource "aws_s3_bucket" "artifacts" {

@@ -1,0 +1,6 @@
+$ xcodebuild -scheme Shop build
+Ld /src/build/Shop.app/Shop normal arm64
+Undefined symbols for architecture arm64:
+  "_$s4Shop9applyTaxySdSdF", referenced from:
+      _$s4Shop4CartV5totalSdvg in Cart.o
+ld: symbol(s) not found for architecture arm64

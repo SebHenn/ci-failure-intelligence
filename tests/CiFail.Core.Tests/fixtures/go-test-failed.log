@@ -1,0 +1,5 @@
+$ go test ./...
+--- FAIL: TestCartTotal (0.00s)
+    cart_test.go:31: expected 1250, got 1000
+FAIL	github.com/acme/shop/internal/cart	0.012s
+ok  	github.com/acme/shop/internal/user	0.004s

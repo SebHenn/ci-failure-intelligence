@@ -1,0 +1,2 @@
+    Updating crates.io index
+error: package `clap v4.5.4` cannot be built because it requires rustc 1.74 or newer, while the currently active rustc version is 1.70.0

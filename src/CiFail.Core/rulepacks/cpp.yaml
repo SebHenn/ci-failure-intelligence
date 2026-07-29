@@ -11,6 +11,7 @@
     implementation isn't linked: add the missing source file or library to the link
     line (-l<lib> / target_link_libraries), check for a name-mangling mismatch (wrap C
     headers in `extern "C"`), and confirm the symbol isn't only declared.
+  docs: https://gcc.gnu.org/onlinedocs/gcc/Link-Options.html
 
 - id: cpp-fatal-no-such-file
   ecosystem: cpp
@@ -22,6 +23,7 @@
     The compiler couldn't find an #include'd header. Add its directory with -I (or
     include_directories/target_include_directories in CMake), install the -dev package
     that provides it, or fix the include path/spelling.
+  docs: https://gcc.gnu.org/onlinedocs/cpp/Search-Path.html
 
 - id: cpp-compile-error
   ecosystem: cpp
@@ -33,6 +35,7 @@
     The compiler rejected {file}:{line}: {message}
     Fix the reported line and rebuild. A more specific rule (missing header, linker
     error) wins when it applies.
+  docs: https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html
 
 - id: cmake-package-not-found
   ecosystem: cpp
@@ -56,6 +59,7 @@
     make couldn't build {target} — usually a missing file or a stale/incorrect path in
     the Makefile. Confirm the prerequisite exists (it may not have been generated yet),
     check for a typo, and that the file wasn't excluded from the checkout.
+  docs: https://www.gnu.org/software/make/manual/html_node/Rules.html
 
 - id: cpp-linker-collect2
   ecosystem: cpp
@@ -67,3 +71,4 @@
     The link step failed. If it's "cannot find -l<lib>", install that library or add
     its directory with -L; otherwise the real cause is the undefined-reference lines
     just above. Check the link order (libraries after the objects that use them).
+  docs: https://gcc.gnu.org/onlinedocs/gcc/Link-Options.html

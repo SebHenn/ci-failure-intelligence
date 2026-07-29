@@ -1,0 +1,17 @@
+$ npm test
+> shop@1.4.0 test
+> jest --ci
+
+ FAIL  src/cart.test.js
+  ● cart › includes tax in the total
+
+    expect(received).toBe(expected)
+
+    Expected: 1250
+    Received: 1000
+
+      at Object.<anonymous> (src/cart.test.js:31:23)
+      at node_modules/jest-circus/build/utils.js:391:28
+
+Tests:       1 failed, 41 passed, 42 total
+Test Suites: 1 failed, 7 passed, 8 total

@@ -1,0 +1,4 @@
+$ docker build -t shop .
+[+] Building 0.0s (1/1) FINISHED
+ => ERROR [internal] load build definition from Dockerfile
+ERROR: failed to solve: dockerfile parse error on line 7: unknown instruction: RUNN

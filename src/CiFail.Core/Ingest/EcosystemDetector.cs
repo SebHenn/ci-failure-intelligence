@@ -4,11 +4,26 @@ using CiFail.Core.Models;
 namespace CiFail.Core.Ingest;
 
 /// <summary>
-/// Heuristically detects which ecosystem a log came from by scanning for
-/// characteristic markers. Falls back to <see cref="Ecosystem.Generic"/> when no
-/// strong signal is found, and respects an explicit caller override.
+/// Heuristically detects which ecosystem a log came from by scanning for characteristic
+/// markers. Falls back to <see cref="Ecosystem.Generic"/> when no strong signal is found,
+/// and respects an explicit caller override.
+///
+/// <para>
+/// <b>Scoring counts markers, not occurrences.</b> Each marker contributes its weight at most
+/// once however often it appears. The earlier version summed total match counts, which meant a
+/// verbose tool emitting thirty <c>[ERROR] </c> lines outscored the handful of markers that
+/// actually identified the ecosystem — a Python build with a chatty logger detected as Java.
+/// </para>
+///
+/// <para>
+/// Markers come in two weights. <b>Strong</b> ones are effectively unique to their ecosystem
+/// (<c>npm ERR!</c>, <c>Cargo.toml</c>, <c>AndroidManifest</c>); <b>weak</b> ones are suggestive
+/// but appear elsewhere too (<c>[ERROR] </c>, <c>gcc</c>, <c>gradlew</c>) and only matter in
+/// aggregate. A single weak marker is not enough to claim an ecosystem — see
+/// <see cref="MinimumScore"/>.
+/// </para>
 /// </summary>
-public static partial class EcosystemDetector
+public static class EcosystemDetector
 {
     /// <summary>
     /// The canonical ecosystem names accepted by <c>--type</c>, pipe-separated.
@@ -26,32 +41,78 @@ public static partial class EcosystemDetector
     /// <summary>The same canonical names as a list, split from <see cref="SupportedNamesText"/>.</summary>
     public static readonly IReadOnlyList<string> SupportedNames = SupportedNamesText.Split('|');
 
+    /// <summary>A marker effectively unique to its ecosystem.</summary>
+    private const int StrongWeight = 3;
+
+    /// <summary>A marker that merely suggests its ecosystem and shows up in other logs too.</summary>
+    private const int WeakWeight = 1;
+
+    /// <summary>
+    /// The score an ecosystem needs before it beats <see cref="Ecosystem.Generic"/>: one strong
+    /// marker, or two weak ones. A lone weak marker (one stray <c>gcc</c> in a Node log) is noise,
+    /// and claiming an ecosystem from it only narrows the rule set to the wrong one.
+    /// </summary>
+    private const int MinimumScore = 2;
+
+    /// <summary>Untrusted input; a pathological log must not hang the analysis.</summary>
+    private static readonly TimeSpan MatchTimeout = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Tie-break order, most specific first. Previously a tie fell through to whatever order the
+    /// score dictionary happened to enumerate in, which is not a decision.
+    ///
+    /// <para>
+    /// The ordering principle is "how likely is this ecosystem's marker set to fire on someone
+    /// else's log". Android outranks Java because every Android log is also a Gradle/Java log.
+    /// Infra and C++ come last for the same reason in reverse: nearly every project builds a
+    /// Docker image somewhere in CI, and native-extension builds drag <c>gcc</c>/<c>ld</c> into
+    /// Python, Ruby and Node logs.
+    /// </para>
+    /// </summary>
+    private static readonly Ecosystem[] Precedence =
+    {
+        Ecosystem.Android,
+        Ecosystem.Swift,
+        Ecosystem.Rust,
+        Ecosystem.Go,
+        Ecosystem.Dotnet,
+        Ecosystem.Php,
+        Ecosystem.Ruby,
+        Ecosystem.Python,
+        Ecosystem.Node,
+        Ecosystem.Java,
+        Ecosystem.Cpp,
+        Ecosystem.Infra,
+    };
+
+    /// <summary>Detect the ecosystem, or honour an explicit <paramref name="overrideType"/>.</summary>
     public static Ecosystem Detect(LogDocument log, string? overrideType = null)
     {
         if (!string.IsNullOrWhiteSpace(overrideType) && TryParse(overrideType, out var forced))
             return forced;
 
+        var ranked = Rank(log);
+        return ranked.Count > 0 && ranked[0].Score >= MinimumScore ? ranked[0].Ecosystem : Ecosystem.Generic;
+    }
+
+    /// <summary>
+    /// Every ecosystem's score for this log, best first, ties broken by <see cref="Precedence"/>.
+    /// Exposed because "why did it think this was Java?" is otherwise unanswerable, and because
+    /// it makes the tie-breaking directly testable.
+    /// </summary>
+    public static IReadOnlyList<(Ecosystem Ecosystem, int Score)> Rank(LogDocument log)
+    {
         var text = log.NormalizedText;
 
-        // Score each ecosystem by how many of its markers appear.
-        var scores = new Dictionary<Ecosystem, int>
-        {
-            [Ecosystem.Dotnet] = Count(DotnetMarkers(), text),
-            [Ecosystem.Node] = Count(NodeMarkers(), text),
-            [Ecosystem.Python] = Count(PythonMarkers(), text),
-            [Ecosystem.Java] = Count(JavaMarkers(), text),
-            [Ecosystem.Go] = Count(GoMarkers(), text),
-            [Ecosystem.Rust] = Count(RustMarkers(), text),
-            [Ecosystem.Ruby] = Count(RubyMarkers(), text),
-            [Ecosystem.Php] = Count(PhpMarkers(), text),
-            [Ecosystem.Cpp] = Count(CppMarkers(), text),
-            [Ecosystem.Infra] = Count(InfraMarkers(), text),
-            [Ecosystem.Swift] = Count(SwiftMarkers(), text),
-            [Ecosystem.Android] = Count(AndroidMarkers(), text),
-        };
-
-        var best = scores.OrderByDescending(kv => kv.Value).First();
-        return best.Value > 0 ? best.Key : Ecosystem.Generic;
+        // Rank by score, then by precedence position — OrderBy is stable, so scoring in
+        // precedence order and sorting only on the score would work too; being explicit keeps
+        // the tie-break from depending on a sort's stability guarantee.
+        return Precedence
+            .Select((eco, index) => (Ecosystem: eco, Score: Score(Markers[eco], text), Index: index))
+            .OrderByDescending(x => x.Score)
+            .ThenBy(x => x.Index)
+            .Select(x => (x.Ecosystem, x.Score))
+            .ToList();
     }
 
     public static bool TryParse(string value, out Ecosystem ecosystem)
@@ -76,41 +137,198 @@ public static partial class EcosystemDetector
         return ecosystem != Ecosystem.Unknown;
     }
 
-    private static int Count(Regex regex, string text) => regex.Matches(text).Count;
+    /// <summary>Sum the weights of the markers that fire — each one counted once, however often it occurs.</summary>
+    private static int Score(Marker[] markers, string text)
+    {
+        var total = 0;
+        foreach (var marker in markers)
+        {
+            try
+            {
+                if (marker.Pattern.IsMatch(text)) total += marker.Weight;
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                // Treat a marker that couldn't be evaluated in time as absent; detection is a
+                // heuristic and must never be the thing that fails an analysis.
+            }
+        }
+        return total;
+    }
 
-    [GeneratedRegex(@"error (?:NU|MSB|CS)\d{3,5}|\bdotnet\b|\.csproj|warning (?:NU|MSB|CS)\d{3,5}", RegexOptions.IgnoreCase)]
-    private static partial Regex DotnetMarkers();
+    private readonly record struct Marker(Regex Pattern, int Weight);
 
-    [GeneratedRegex(@"npm ERR!|yarn|ERESOLVE|node_modules|Cannot find module|pnpm", RegexOptions.IgnoreCase)]
-    private static partial Regex NodeMarkers();
+    private static Marker Strong(string pattern) => new(Compile(pattern), StrongWeight);
+    private static Marker Weak(string pattern) => new(Compile(pattern), WeakWeight);
 
-    [GeneratedRegex(@"Traceback \(most recent call last\)|ModuleNotFoundError|pip install|ERROR: Could not|ResolutionImpossible", RegexOptions.IgnoreCase)]
-    private static partial Regex PythonMarkers();
+    /// <summary>Multiline so a marker can anchor to the start of a log line (<c>^denied: </c>).</summary>
+    private static Regex Compile(string pattern) =>
+        new(pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Multiline, MatchTimeout);
 
-    [GeneratedRegex(@"\bBUILD FAILURE\b|\[ERROR\] |\bmaven\b|\bpom\.xml\b|gradlew|\.gradle\b|\bjavac\b|OutOfMemoryError|at org\.junit|Exception in thread", RegexOptions.IgnoreCase)]
-    private static partial Regex JavaMarkers();
+    private static readonly Dictionary<Ecosystem, Marker[]> Markers = new()
+    {
+        [Ecosystem.Dotnet] = new[]
+        {
+            Strong(@"(?:error|warning) (?:NU|MSB|CS|NETSDK)\d{3,5}"),
+            Strong(@"\.csproj"),
+            Strong(@"\bdotnet (?:build|test|restore|publish|run|pack|tool)\b"),
+            Weak(@"\bnuget\b"),
+            Weak(@"\bmsbuild\b"),
+            Weak(@"\.sln\b"),
+        },
 
-    [GeneratedRegex(@"\bgo build\b|\bgo: \b|\bgo\.mod\b|\bgo\.sum\b|\bgo test\b|cannot find package|undefined: |\bgolang\b", RegexOptions.IgnoreCase)]
-    private static partial Regex GoMarkers();
+        [Ecosystem.Node] = new[]
+        {
+            Strong(@"npm ERR!"),
+            Strong(@"\bERESOLVE\b"),
+            Strong(@"Cannot find module"),
+            Strong(@"node_modules"),
+            Strong(@"package-lock\.json"),
+            Strong(@"yarn\.lock"),
+            Strong(@"pnpm-lock\.yaml"),
+            Weak(@"\byarn\b"),
+            Weak(@"\bpnpm\b"),
+            Weak(@"\bnpm\b"),
+        },
 
-    [GeneratedRegex(@"error\[E\d{2,4}\]|\bcargo\b|Cargo\.toml|could not compile|rustc|--> src/", RegexOptions.IgnoreCase)]
-    private static partial Regex RustMarkers();
+        [Ecosystem.Python] = new[]
+        {
+            Strong(@"Traceback \(most recent call last\)"),
+            Strong(@"ModuleNotFoundError"),
+            Strong(@"ResolutionImpossible"),
+            Strong(@"\bpip3? install\b"),
+            Strong(@"requirements\.txt"),
+            Strong(@"ERROR: Could not find a version that satisfies"),
+            Strong(@"\.py"", line \d+"),
+            Weak(@"\bpytest\b"),
+            Weak(@"\bpython3?\b"),
+            Weak(@"\.py\b"),
+        },
 
-    [GeneratedRegex(@"\bbundle(?:r)?\b|Gemfile|\brake\b|\bgem\b|LoadError|\(RSpec|rspec|\.rb:\d+:in ", RegexOptions.IgnoreCase)]
-    private static partial Regex RubyMarkers();
+        [Ecosystem.Java] = new[]
+        {
+            Strong(@"\bBUILD FAILURE\b"),
+            Strong(@"\bpom\.xml\b"),
+            Strong(@"\bjavac\b"),
+            Strong(@"at org\.junit"),
+            Strong(@"\bmaven\b"),
+            Strong(@"\.java:"),
+            Strong(@"Exception in thread ""[^""]*"" java\."),
+            // Deliberately weak: `[ERROR] ` is a Maven convention that a dozen unrelated tools
+            // also use, and gradlew is just as likely to be an Android build.
+            Weak(@"\[ERROR\] "),
+            Weak(@"\bgradlew\b"),
+            Weak(@"\bgradle\b"),
+            Weak(@"\.gradle\b"),
+            Weak(@"OutOfMemoryError"),
+        },
 
-    [GeneratedRegex(@"\bcomposer\b|PHP Fatal error|PHP Parse error|PHPUnit|Fatal error: Uncaught|Call to undefined|vendor/autoload|\.php\b|psr-4", RegexOptions.IgnoreCase)]
-    private static partial Regex PhpMarkers();
+        [Ecosystem.Go] = new[]
+        {
+            Strong(@"\bgo\.mod\b"),
+            Strong(@"\bgo\.sum\b"),
+            Strong(@"\bgo (?:build|test|run|get|mod|vet|install)\b"),
+            Strong(@"cannot find package"),
+            Strong(@"\bgolang\b"),
+            Strong(@"\.go:\d+"),
+            Weak(@"undefined: "),
+        },
 
-    [GeneratedRegex(@"undefined reference to|\bg\+\+\b|\bgcc\b|\bclang\b|CMakeLists\.txt|\bcmake\b|No rule to make target|fatal error: .*\.h|\bld:|\.cpp:\d+|\.cc:\d+|collect2:", RegexOptions.IgnoreCase)]
-    private static partial Regex CppMarkers();
+        [Ecosystem.Rust] = new[]
+        {
+            Strong(@"error\[E\d{2,4}\]"),
+            Strong(@"Cargo\.toml"),
+            Strong(@"Cargo\.lock"),
+            Strong(@"\brustc\b"),
+            Strong(@"\bcargo\b"),
+            Strong(@"could not compile"),
+            Weak(@"--> src/"),
+            Weak(@"\.rs:\d+"),
+        },
 
-    [GeneratedRegex(@"docker build|failed to solve|Dockerfile|\bterraform\b|\btofu\b|Error acquiring the state lock|denied: |unauthorized: |\bbuildkit\b|Step \d+/\d+", RegexOptions.IgnoreCase)]
-    private static partial Regex InfraMarkers();
+        [Ecosystem.Ruby] = new[]
+        {
+            Strong(@"\bGemfile(?:\.lock)?\b"),
+            Strong(@"\bbundler?\b"),
+            Strong(@"\brspec\b"),
+            Strong(@"\.rb:\d+:in "),
+            Strong(@"\brake aborted\b"),
+            Strong(@"\bLoadError\b"),
+            // A bare `gem` matches ordinary prose ("a hidden gem"), so require a verb.
+            Weak(@"\bgem (?:install|not found|""[^""]+"")"),
+            Weak(@"\brake\b"),
+        },
 
-    [GeneratedRegex(@"\bswiftc\b|\bxcodebuild\b|\bXcode\b|no such module|Code Sign(?:ing)?|Provisioning profile|\.swift:\d+|\*\* BUILD FAILED \*\*|CompileSwift", RegexOptions.IgnoreCase)]
-    private static partial Regex SwiftMarkers();
+        [Ecosystem.Php] = new[]
+        {
+            Strong(@"PHP (?:Fatal|Parse|Warning) error"),
+            Strong(@"\bPHPUnit\b"),
+            Strong(@"\bcomposer\b"),
+            Strong(@"vendor/autoload"),
+            Strong(@"Fatal error: Uncaught"),
+            Strong(@"\bpsr-4\b"),
+            // Scoped to a file:line reference: a bare `.php` matches any mention of a filename.
+            Weak(@"\.php(?::\d+|\b on line)"),
+            Weak(@"Call to undefined"),
+        },
 
-    [GeneratedRegex(@"\baapt2?\b|AndroidManifest|:app:|com\.android|SDK location|Android resource|Execution failed for task ':app|lint(?:Debug|Release)|dexing", RegexOptions.IgnoreCase)]
-    private static partial Regex AndroidMarkers();
+        [Ecosystem.Cpp] = new[]
+        {
+            Strong(@"undefined reference to"),
+            Strong(@"CMakeLists\.txt"),
+            Strong(@"\bcmake\b"),
+            Strong(@"No rule to make target"),
+            Strong(@"collect2:"),
+            Strong(@"fatal error: [^\n]*\.h(?:pp)?: No such file"),
+            Weak(@"\.(?:cpp|cc|cxx|hpp)\b"),
+            Weak(@"\bg\+\+\b"),
+            Weak(@"\bgcc\b"),
+            Weak(@"\bclang\b"),
+            Weak(@"\bld: "),
+        },
+
+        [Ecosystem.Infra] = new[]
+        {
+            Strong(@"docker build"),
+            Strong(@"failed to solve"),
+            Strong(@"\bDockerfile\b"),
+            Strong(@"\bterraform\b"),
+            Strong(@"\btofu\b"),
+            Strong(@"Error acquiring the state lock"),
+            Strong(@"\bbuildkit\b"),
+            Strong(@"Step \d+/\d+"),
+            // `denied: ` used to live here and matched every "permission denied:" in every log.
+            Weak(@"\bunauthorized: "),
+            Weak(@"^denied: "),
+        },
+
+        [Ecosystem.Swift] = new[]
+        {
+            Strong(@"\bswiftc\b"),
+            Strong(@"\bxcodebuild\b"),
+            Strong(@"no such module"),
+            Strong(@"Provisioning profile"),
+            Strong(@"\.swift:\d+"),
+            Strong(@"\*\* BUILD FAILED \*\*"),
+            Strong(@"CompileSwift"),
+            Weak(@"\bXcode\b"),
+            Weak(@"Code Sign(?:ing)?"),
+        },
+
+        [Ecosystem.Android] = new[]
+        {
+            Strong(@"\baapt2?\b"),
+            Strong(@"AndroidManifest"),
+            Strong(@"com\.android"),
+            Strong(@"Execution failed for task ':app"),
+            Strong(@"SDK location"),
+            Strong(@"Android resource"),
+            Strong(@"\bdexing\b"),
+            Strong(@":app:"),
+            Weak(@"lint(?:Debug|Release)"),
+            // Shared with Java on purpose: an Android build *is* a Gradle build, so this can
+            // only ever be corroborating evidence, never the deciding vote.
+            Weak(@"\bgradlew\b"),
+        },
+    };
 }

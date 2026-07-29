@@ -1,0 +1,7 @@
+$ cargo test
+running 42 tests
+thread 'cart::tests::total_includes_tax' panicked at src/cart.rs:88:9:
+assertion `left == right` failed
+  left: 1000
+ right: 1250
+test result: FAILED. 41 passed; 1 failed; 0 ignored

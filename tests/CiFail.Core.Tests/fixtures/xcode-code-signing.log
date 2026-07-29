@@ -1,0 +1,4 @@
+$ xcodebuild -scheme Shop archive
+Code Signing error: No profile for team 'ABCDE12345' matching 'Shop Release' found
+Provisioning profile "Shop Release" doesn't match the entitlements file's value for the application-identifier
+** ARCHIVE FAILED **

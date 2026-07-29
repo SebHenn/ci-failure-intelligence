@@ -1,0 +1,5 @@
+$ python -m compileall app
+  File "/src/app/cart.py", line 18
+    if total > 0
+                ^
+SyntaxError: expected ':'

@@ -1,0 +1,3 @@
+> Task :app:checkDebugDuplicateClasses FAILED
+Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt found in modules kotlin-stdlib-1.8.0.jar and kotlin-stdlib-jdk8-1.8.0.jar
+Execution failed for task ':app:checkDebugDuplicateClasses'.
