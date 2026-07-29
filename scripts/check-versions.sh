@@ -13,7 +13,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-version="$(scripts/version.sh)"
+# Invoked through `bash` rather than directly: this repo is developed on Windows, where git
+# does not track the executable bit, so a fresh clone can easily have mode 644 here.
+version="$(bash scripts/version.sh)"
 fail=0
 
 note() { echo "error: $*" >&2; fail=1; }

@@ -15,7 +15,7 @@ PROJECT="src/CiFail.Cli/CiFail.Cli.csproj"
 # The single source of truth (Directory.Build.props, via MSBuild). Overridable for dry runs.
 # These artifact names must match what scripts/install.sh asks for; check-versions.sh keeps
 # the version and the release tag in agreement so they line up by construction.
-VERSION="${CIFAIL_VERSION:-$(scripts/version.sh)}"
+VERSION="${CIFAIL_VERSION:-$(bash scripts/version.sh)}"
 VERSION="${VERSION#v}"
 ALL_RIDS=(win-x64 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64)
 RIDS=("${@:-${ALL_RIDS[@]}}")
