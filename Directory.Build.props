@@ -1,0 +1,34 @@
+<Project>
+
+  <PropertyGroup>
+    <!--
+      THE version for everything in this repo: the assemblies, the NuGet tool, the artifact
+      file names produced by scripts/publish.sh, and (checked, not derived) the Helm chart's
+      appVersion. No .csproj may declare its own <Version> — scripts/check-versions.sh fails
+      the build if one does, because a second copy is how the 0.1.0/0.1.0-alpha split that
+      broke every install path got in.
+    -->
+    <Version>0.2.0</Version>
+
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <Authors>Sebastian Henn</Authors>
+    <Copyright>Copyright (c) Sebastian Henn</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/SebHenn/ci-failure-intelligence</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/SebHenn/ci-failure-intelligence</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <!-- Only CiFail.Cli ships as a package; it opts back in. Keeps a solution-wide
+         `dotnet pack` from emitting nupkgs for the libraries and test projects. -->
+    <IsPackable>false</IsPackable>
+
+    <!-- Keep AssemblyInformationalVersion equal to Version (no "+<sha>" suffix) so the
+         version flag prints "0.2.0" rather than "0.2.0+abc1234". -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

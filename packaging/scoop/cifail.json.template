@@ -1,16 +1,17 @@
 {
-  "version": "0.1.0",
+  "##": "GENERATED FILE - do not edit cifail.json by hand. Rendered by scripts/render-packaging.sh.",
+  "version": "@@VERSION@@",
   "description": "Local-first CI failure intelligence: what broke, whether it happened before, and how to fix it.",
   "homepage": "https://github.com/SebHenn/ci-failure-intelligence",
   "license": "MIT",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/SebHenn/ci-failure-intelligence/releases/download/v0.1.0/cifail-0.1.0-win-x64.zip",
-      "hash": "REPLACE_WITH_WIN_X64_SHA256"
+      "url": "https://github.com/SebHenn/ci-failure-intelligence/releases/download/v@@VERSION@@/cifail-@@VERSION@@-win-x64.zip",
+      "hash": "@@SHA256_WIN_X64@@"
     },
     "arm64": {
-      "url": "https://github.com/SebHenn/ci-failure-intelligence/releases/download/v0.1.0/cifail-0.1.0-win-arm64.zip",
-      "hash": "REPLACE_WITH_WIN_ARM64_SHA256"
+      "url": "https://github.com/SebHenn/ci-failure-intelligence/releases/download/v@@VERSION@@/cifail-@@VERSION@@-win-arm64.zip",
+      "hash": "@@SHA256_WIN_ARM64@@"
     }
   },
   "bin": "cifail.exe",

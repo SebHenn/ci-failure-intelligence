@@ -7,9 +7,6 @@
     CLI is built with `-p:IncludeExternalDb=true` (the Docker image / full build).
   -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <RootNamespace>CiFail.Providers</RootNamespace>
   </PropertyGroup>
 

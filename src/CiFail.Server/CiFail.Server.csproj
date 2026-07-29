@@ -1,9 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <RootNamespace>CiFail.Server</RootNamespace>
     <!-- This is a library the CLI hosts (CiFailServer.Run), not a standalone web app, so it
          has no static-web-assets pipeline of its own; the dashboard renders from C# (Blazor

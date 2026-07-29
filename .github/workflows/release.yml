@@ -1,17 +1,46 @@
 name: Release
 
 # Cut a release by pushing a version tag, e.g.:
-#   git tag v0.1.0 && git push origin v0.1.0
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# The tag must match <Version> in Directory.Build.props — the `verify` job enforces that
+# before anything is built, because a mismatch is what made every 0.1.0 install path 404.
+#
+# The GitHub Release is created as a DRAFT and only published by `finalize`, after the
+# binaries, the NuGet package, the Docker image, the packaging manifests and a real
+# end-to-end install smoke test have all succeeded. Nobody's `install.sh` can ever see a
+# half-published release.
 on:
   push:
     tags: ['v*']
-  workflow_dispatch: {}   # allow a manual dry-run (builds artifacts, skips release)
+  workflow_dispatch: {}   # manual dry-run: builds and renders everything, publishes nothing
 
 permissions:
   contents: write
 
 jobs:
+  # Gate everything on the version/tag agreeing and the shell scripts linting. Runs first so
+  # a mistyped tag publishes nothing at all.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Check version matches the tag
+        run: bash scripts/check-versions.sh "${{ github.ref_type == 'tag' && github.ref_name || '' }}"
+
+      - name: Lint shell scripts
+        run: shellcheck scripts/*.sh
+
   build:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -28,28 +57,94 @@ jobs:
       - name: Build all binaries
         run: bash scripts/publish.sh
 
+      # Regression guard: the Windows archives used to be zipped before LICENSE/README were
+      # copied in, so every .zip shipped without a license.
+      - name: Check archives carry LICENSE
+        run: |
+          unzip -l dist/cifail-*-win-x64.zip | grep -q LICENSE
+          tar -tzf dist/cifail-*-linux-x64.tar.gz | grep -q LICENSE
+
+      # Rendered into dist/ alongside the binaries so the uploaded artifact is one flat
+      # directory — the release job then globs it without guessing at path prefixes.
+      # (publish.sh already wrote SHA256SUMS, so nothing here perturbs it.)
+      - name: Render packaging manifests
+        run: bash scripts/render-packaging.sh "$(bash scripts/version.sh)" dist dist
+
+      # Every pattern sits under dist/, so the artifact is flat. Listing files explicitly
+      # also keeps the six unpacked per-RID binaries (dist/<rid>/cifail) out of it.
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
           name: cifail-binaries
+          if-no-files-found: error
           path: |
             dist/*.tar.gz
             dist/*.zip
             dist/*.sha256
+            dist/SHA256SUMS
+            dist/cifail.rb
+            dist/cifail.json
 
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+  # Create the release as a draft. Assets include the rendered Scoop manifest, which the
+  # README installs via .../releases/latest/download/cifail.json.
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: cifail-binaries
+
+      - name: Publish GitHub Release (draft)
         uses: softprops/action-gh-release@v2
         with:
+          draft: true
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
-            dist/*.tar.gz
-            dist/*.zip
-            dist/*.sha256
+            *.tar.gz
+            *.zip
+            *.sha256
+            SHA256SUMS
+            cifail.rb
+            cifail.json
+
+  # Packed from a clean checkout with no RuntimeIdentifier: PackAsTool and SelfContained are
+  # mutually exclusive, so this must not reuse the publish workspace.
+  nuget:
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    env:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Pack global tool
+        run: dotnet pack src/CiFail.Cli/CiFail.Cli.csproj --configuration Release --output nupkg
+
+      # Step-level (not job-level) gate on the secret: a skipped JOB would also skip
+      # `finalize` through `needs`, stranding the release as a permanent draft.
+      - name: Push to nuget.org
+        if: env.NUGET_API_KEY != ''
+        run: >
+          dotnet nuget push "nupkg/*.nupkg"
+          --api-key "$NUGET_API_KEY"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
 
   # The FULL Docker image (all DB providers + git) is published to GHCR. On a tag push it
   # is pushed; on a manual dispatch it's built only (dry-run), to validate the Dockerfile.
   docker:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -92,3 +187,68 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Install from the real (still-draft) release using the exact command the README gives.
+  # The macOS leg is the point: it is the only thing that catches BSD-vs-GNU breakage in
+  # install.sh, which is how `grep -oP` and `sha256sum` shipped broken.
+  smoke:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      # A draft release is not downloadable anonymously, so fetch its assets with the
+      # workflow token and let install.sh read them over file:// via CIFAIL_BASE_URL.
+      # This runs the REAL script — its RID detection, its BSD/GNU checksum shim, its
+      # extract and install — which is the only way the macOS leg is worth anything.
+      - name: Download the draft release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/assets"
+          gh release download "${{ github.ref_name }}" --dir "$RUNNER_TEMP/assets" --pattern '*' --clobber
+          ls -1 "$RUNNER_TEMP/assets"
+
+      - name: Install via scripts/install.sh
+        env:
+          CIFAIL_VERSION: ${{ github.ref_name }}
+          CIFAIL_INSTALL_DIR: ${{ runner.temp }}/bin
+        run: |
+          export CIFAIL_BASE_URL="file://$RUNNER_TEMP/assets"
+          bash scripts/install.sh
+
+      - name: Run the installed binary
+        run: |
+          "$RUNNER_TEMP/bin/cifail" --version
+          "$RUNNER_TEMP/bin/cifail" analyze samples/nuget-nu1101.log
+
+  # Only once everything is green: publish the release and move the major tag that the
+  # documented `uses: SebHenn/ci-failure-intelligence@v1` resolves to.
+  finalize:
+    needs: [release, nuget, docker, smoke]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false --latest
+
+      # The composite action's major version is tracked independently of the CLI version,
+      # per the GitHub Actions convention. Prereleases (v0.2.0-rc1) must not move it.
+      - name: Move the v1 major tag
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f v1 "${{ github.sha }}"
+          git push --force origin v1

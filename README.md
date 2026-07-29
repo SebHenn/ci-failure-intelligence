@@ -94,7 +94,7 @@ brew install SebHenn/tap/cifail
 **Windows** ([Scoop](https://scoop.sh)):
 
 ```console
-scoop install https://raw.githubusercontent.com/SebHenn/ci-failure-intelligence/main/packaging/scoop/cifail.json
+scoop install https://github.com/SebHenn/ci-failure-intelligence/releases/latest/download/cifail.json
 ```
 
 **Manual:** grab the binary for your OS from the

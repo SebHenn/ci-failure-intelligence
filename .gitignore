@@ -494,3 +494,12 @@ samples/*.local.log
 # but keep transient local logs out.
 !samples/**/*.log
 !tests/**/fixtures/**/*.log
+
+# NuGet client cache/lock artifacts. Three empty `NuGet/Migrations/1` files got committed
+# this way before; they are pure noise.
+NuGet/Migrations/
+**/NuGet/Migrations/
+
+# Rendered packaging manifests (scripts/render-packaging.sh output) — generated per release,
+# never committed. The templates in packaging/*/ are the source of truth.
+packaging/rendered/

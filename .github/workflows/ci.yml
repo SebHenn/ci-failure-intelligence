@@ -19,6 +19,24 @@ jobs:
             8.0.x
             9.0.x
 
+      # One version, everywhere. Catches a stray <Version> in a csproj and Helm appVersion
+      # drift — the split that made every documented install path 404 in 0.1.0.
+      - name: Check version consistency
+        run: bash scripts/check-versions.sh
+
+      # The release depends on these scripts being correct on macOS as well as Linux.
+      - name: Lint shell scripts
+        run: shellcheck scripts/*.sh
+
+      # Exercise manifest templating offline against fake checksums, so a broken template or
+      # an unsubstituted placeholder is caught on the PR rather than in a published release.
+      - name: Check packaging manifests render
+        run: |
+          bash scripts/render-packaging.sh 9.9.9 tests/fixtures/dist-fake "$RUNNER_TEMP/pkg"
+          jq empty "$RUNNER_TEMP/pkg/cifail.json"
+          test "$(grep -c 'sha256 "' "$RUNNER_TEMP/pkg/cifail.rb")" = 4
+          ! grep -q '@@' "$RUNNER_TEMP/pkg/cifail.rb" "$RUNNER_TEMP/pkg/cifail.json"
+
       - name: Restore
         run: dotnet restore
 
