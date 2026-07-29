@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.RegularExpressions;
+using CiFail.Cli.Output;
 using CiFail.Core.Ingest;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -26,7 +27,7 @@ public sealed class RulesTestCommand : Command<RulesTestCommand.Settings>
         public string? File { get; init; }
 
         [CommandOption("--stdin")]
-        [Description("Read the log from stdin (the default when no --file is given).")]
+        [Description("Read the log from stdin, ignoring --file.")]
         public bool Stdin { get; init; }
     }
 
@@ -40,8 +41,8 @@ public sealed class RulesTestCommand : Command<RulesTestCommand.Settings>
         }
         catch (ArgumentException ex)
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] invalid regex — {Markup.Escape(ex.Message)}");
-            return 2;
+            CliConsole.Error($"invalid regex — {Markup.Escape(ex.Message)}");
+            return ExitCodes.Usage;
         }
 
         string raw;
@@ -51,14 +52,15 @@ public sealed class RulesTestCommand : Command<RulesTestCommand.Settings>
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] {Markup.Escape(ex.Message)}");
-            return 2;
+            CliConsole.Error(Markup.Escape(ex.Message));
+            return ExitCodes.Usage;
         }
 
         if (string.IsNullOrWhiteSpace(raw))
         {
-            AnsiConsole.MarkupLine("[yellow]no log to test against.[/] Pass [bold]--file <log>[/] or pipe one in.");
-            return 2;
+            CliConsole.Error("no log to test against.");
+            CliConsole.Hint("[grey]Pass [bold]--file <log>[/] or pipe one in.[/]");
+            return ExitCodes.Usage;
         }
 
         // Normalize exactly like analyze (strip ANSI / CI timestamps) so what you test is
@@ -68,34 +70,38 @@ public sealed class RulesTestCommand : Command<RulesTestCommand.Settings>
 
         if (matches.Count == 0)
         {
-            AnsiConsole.MarkupLine("[yellow]no match.[/]");
-            return 1;
+            // Stays on stdout: "did my regex match?" is the question this command answers, so
+            // "no" is the answer, not a diagnostic.
+            CliConsole.Out.MarkupLine("[yellow]no match.[/]");
+            return ExitCodes.Negative;
         }
 
-        AnsiConsole.MarkupLine($"[green]{matches.Count} match(es).[/]");
+        CliConsole.Out.MarkupLine($"[green]{matches.Count} match(es).[/]");
         var groupNames = regex.GetGroupNames().Where(n => !int.TryParse(n, out _)).ToArray();
 
         foreach (var m in matches.Take(MaxMatchesShown).Cast<Match>())
         {
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine($"  [bold]line:[/] {Markup.Escape(LineAt(text, m.Index))}");
+            CliConsole.Out.WriteLine();
+            CliConsole.Out.MarkupLine($"  [bold]line:[/] {Markup.Escape(LineAt(text, m.Index))}");
             foreach (var name in groupNames)
             {
                 var g = m.Groups[name];
                 if (g.Success)
-                    AnsiConsole.MarkupLine($"    [grey]{{{Markup.Escape(name)}}}[/] = {Markup.Escape(g.Value.Trim())}");
+                    CliConsole.Out.MarkupLine($"    [grey]{{{Markup.Escape(name)}}}[/] = {Markup.Escape(g.Value.Trim())}");
             }
         }
 
         if (matches.Count > MaxMatchesShown)
-            AnsiConsole.MarkupLine($"  [grey]… and {matches.Count - MaxMatchesShown} more[/]");
+            CliConsole.Out.MarkupLine($"  [grey]{Glyphs.Ellipsis} and {matches.Count - MaxMatchesShown} more[/]");
 
-        return 0;
+        return ExitCodes.Ok;
     }
 
     private static string ReadLog(Settings settings)
     {
-        if (!string.IsNullOrWhiteSpace(settings.File))
+        // --stdin was accepted but never read, so `--stdin --file x` silently used the file.
+        // Now the explicit flag wins over the implicit --file default.
+        if (!settings.Stdin && !string.IsNullOrWhiteSpace(settings.File))
         {
             if (!File.Exists(settings.File))
                 throw new FileNotFoundException($"file not found: {settings.File}");

@@ -1,6 +1,6 @@
+using CiFail.Cli.Output;
 using CiFail.Core.Analysis;
 using CiFail.Core.Git;
-using CiFail.Core.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -25,30 +25,30 @@ public sealed class ReconcileCommand : Command<ReconcileCommand.Settings>
         var git = GitContext.Detect(Directory.GetCurrentDirectory());
         if (git is null)
         {
-            AnsiConsole.MarkupLine("[yellow]cifail reconcile only works inside a git repository.[/]");
-            return 2;
+            CliConsole.Error("cifail reconcile only works inside a git repository.");
+            return ExitCodes.DependencyUnavailable;
         }
 
-        using var store = StoreSupport.TryCreate(settings);
-        if (store is null) return 2;
-
-        // No observed fingerprints: this is a pure "anything from an older commit is likely
-        // fixed" pass, so it credits the moved-past commits.
-        var resolved = ResolutionReconciler.Reconcile(store, git);
-
-        if (resolved.Count == 0)
+        return StoreSupport.WithStore(settings, store =>
         {
-            AnsiConsole.MarkupLine("[grey]Nothing to reconcile — no open failures from older commits.[/]");
-            return 0;
-        }
+            // No observed fingerprints: this is a pure "anything from an older commit is likely
+            // fixed" pass, so it credits the moved-past commits.
+            var resolved = ResolutionReconciler.Reconcile(store, git);
 
-        var noun = resolved.Count == 1 ? "failure" : "failures";
-        AnsiConsole.MarkupLine($"[green]✓[/] Auto-resolved {resolved.Count} past {noun}:");
-        foreach (var r in resolved)
-        {
-            var shortSha = r.Commit.Length >= 7 ? r.Commit[..7] : r.Commit;
-            AnsiConsole.MarkupLine($"  [grey]#{r.Id}[/] likely fixed by [bold]{Markup.Escape(shortSha)}[/]");
-        }
-        return 0;
+            if (resolved.Count == 0)
+            {
+                CliConsole.Hint("[grey]Nothing to reconcile — no open failures from older commits.[/]");
+                return ExitCodes.Ok;
+            }
+
+            var noun = resolved.Count == 1 ? "failure" : "failures";
+            CliConsole.Out.MarkupLine($"[green]{Glyphs.Check}[/] Auto-resolved {resolved.Count} past {noun}:");
+            foreach (var r in resolved)
+            {
+                var shortSha = r.Commit.Length >= 7 ? r.Commit[..7] : r.Commit;
+                CliConsole.Out.MarkupLine($"  [grey]#{r.Id}[/] likely fixed by [bold]{Markup.Escape(shortSha)}[/]");
+            }
+            return ExitCodes.Ok;
+        });
     }
 }

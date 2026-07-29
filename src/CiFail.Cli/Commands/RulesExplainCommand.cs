@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using CiFail.Cli.Output;
 using CiFail.Core.Rules;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -25,9 +26,9 @@ public sealed class RulesExplainCommand : Command<RulesExplainCommand.Settings>
 
         if (rule is null)
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] no rule with id '{Markup.Escape(settings.Id)}'. " +
-                "Run [bold]cifail rules list[/] to see them all.");
-            return 1;
+            CliConsole.Error($"no rule with id '{Markup.Escape(settings.Id)}'.");
+            CliConsole.Hint("[grey]Run [bold]cifail rules list[/] to see them all.[/]");
+            return ExitCodes.NotFound;
         }
 
         var embeddedIds = RulePackLoader.LoadEmbedded()
@@ -48,16 +49,16 @@ public sealed class RulesExplainCommand : Command<RulesExplainCommand.Settings>
         Row("source", source);
         if (!string.IsNullOrWhiteSpace(rule.Docs)) Row("docs", rule.Docs!);
 
-        AnsiConsole.Write(new Panel(grid)
+        CliConsole.Out.Write(new Panel(grid)
             .Header($"[bold]{Markup.Escape(rule.Title)}[/]")
             .Border(BoxBorder.Rounded));
 
-        AnsiConsole.MarkupLine("[bold]match[/] (regex):");
-        AnsiConsole.MarkupLine($"  [grey]{Markup.Escape(rule.Match)}[/]");
-        AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine("[bold]fix[/] (template):");
+        CliConsole.Out.MarkupLine("[bold]match[/] (regex):");
+        CliConsole.Out.MarkupLine($"  [grey]{Markup.Escape(rule.Match)}[/]");
+        CliConsole.Out.WriteLine();
+        CliConsole.Out.MarkupLine("[bold]fix[/] (template):");
         foreach (var line in rule.Fix.TrimEnd().Split('\n'))
-            AnsiConsole.MarkupLine($"  {Markup.Escape(line.TrimEnd())}");
+            CliConsole.Out.MarkupLine($"  {Markup.Escape(line.TrimEnd())}");
 
         return 0;
     }

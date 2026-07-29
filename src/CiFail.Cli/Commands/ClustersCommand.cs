@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using CiFail.Cli.Output;
 using CiFail.Core.Analysis;
 using CiFail.Core.Output;
 using CiFail.Core.Storage;
@@ -47,8 +48,8 @@ public sealed class ClustersCommand : Command<ClustersCommand.Settings>
     {
         if (settings.Threshold is < 0 or > 1)
         {
-            AnsiConsole.MarkupLine("[red]error:[/] --threshold must be between 0 and 1.");
-            return 2;
+            CliConsole.Error("--threshold must be between 0 and 1.");
+            return ExitCodes.Usage;
         }
 
         DateTimeOffset? since;
@@ -58,12 +59,9 @@ public sealed class ClustersCommand : Command<ClustersCommand.Settings>
         }
         catch (FormatException ex)
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] {Markup.Escape(ex.Message)}");
-            return 2;
+            CliConsole.Error(Markup.Escape(ex.Message));
+            return ExitCodes.Usage;
         }
-
-        using var store = StoreSupport.TryCreate(settings);
-        if (store is null) return 2;
 
         var query = new ClusterQuery
         {
@@ -74,29 +72,32 @@ public sealed class ClustersCommand : Command<ClustersCommand.Settings>
             IncludeSingletons = settings.All,
         };
 
-        var result = ClusterService.Compute(store, query);
-
-        if (settings.Json)
+        return StoreSupport.WithStore(settings, store =>
         {
-            Console.Out.WriteLine(JsonSerializer.Serialize(ClustersJson.ToDto(result), AnalysisJson.Options));
-            return 0;
-        }
+            var result = ClusterService.Compute(store, query);
 
-        Render(result, query);
-        return 0;
+            if (settings.Json)
+            {
+                Console.Out.WriteLine(JsonSerializer.Serialize(ClustersJson.ToDto(result), AnalysisJson.Options));
+                return ExitCodes.Ok;
+            }
+
+            Render(result, query);
+            return ExitCodes.Ok;
+        });
     }
 
     private static void Render(ClusterResult r, ClusterQuery query)
     {
         if (r.TotalAnalyzed == 0)
         {
-            AnsiConsole.MarkupLine("[grey]No failures recorded in that window yet. Run [bold]cifail analyze[/] first.[/]");
+            CliConsole.Hint("[grey]No failures recorded in that window yet. Run [bold]cifail analyze[/] first.[/]");
             return;
         }
 
         if (r.Clusters.Count == 0)
         {
-            AnsiConsole.MarkupLine($"[grey]Looked at {r.TotalAnalyzed} failures but found no recurring groups " +
+            CliConsole.Hint($"[grey]Looked at {r.TotalAnalyzed} failures but found no recurring groups " +
                 "(every failure is unique). Try [bold]--all[/] to list singletons or a lower [bold]--threshold[/].[/]");
             return;
         }
@@ -121,6 +122,6 @@ public sealed class ClustersCommand : Command<ClustersCommand.Settings>
                 ids);
         }
 
-        AnsiConsole.Write(table);
+        CliConsole.Out.Write(table);
     }
 }

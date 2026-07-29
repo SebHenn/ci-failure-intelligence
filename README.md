@@ -47,8 +47,9 @@ Saved as #1. Once you've fixed it, record how so future-you remembers:
   - [See the trends: `cifail stats`](#see-the-trends-cifail-stats)
   - [It remembers your fixes — often without being told](#it-remembers-your-fixes--often-without-being-told)
   - [Handy options for `analyze`](#handy-options-for-analyze)
-- [Use cifail in CI](#use-cifail-in-ci) — [GitHub Actions](#github-actions-the-ready-made-action) · [GitLab CI](#gitlab-ci)
+- [Use cifail in CI](#use-cifail-in-ci) — [GitHub Actions](#github-actions-the-ready-made-action) · [GitLab CI](#gitlab-ci) · [Exit codes](#exit-codes)
 - [What do the words mean?](#what-do-the-words-mean)
+- [Check your setup: `cifail config`](#check-your-setup-cifail-config)
 - [Where your data is kept](#where-your-data-is-kept)
 - [Use a shared database (optional)](#use-a-shared-database-optional)
 - [Run a shared server (optional)](#run-a-shared-server-optional)
@@ -342,6 +343,30 @@ If you've installed the binary (or are in a `cifail` container), just pipe into 
   run: cifail analyze build.log
 ```
 
+### Exit codes
+
+Scripts can branch on *why* something failed, not just whether it did:
+
+| Code | Meaning |
+|-----:|---------|
+| `0` | Success. For `analyze`, every log matched a known pattern. |
+| `1` | Ran fine, negative answer: `analyze` found nothing it recognizes, `rules test` didn't match, `rules validate` found errors. Not a tool failure. |
+| `2` | Bad invocation — unknown flag or value, missing argument, unreadable input. |
+| `3` | Not found — no analysis with that id, no rule with that id. |
+| `4` | Your `~/.cifail/config.yaml` is broken or invalid. Run `cifail config`. |
+| `5` | The history store is unreachable: bad connection string, or a `--server` that's down or rejected the token. |
+| `6` | An optional dependency is missing (no local AI model, not a git repository). |
+| `7` | Produced a result that isn't usable as-is (a drafted rule that failed validation). |
+| `70` | Unexpected error. Set `CIFAIL_DEBUG=1` to see the stack trace, then please file an issue. |
+| `130` | Interrupted (Ctrl-C). |
+
+`0`, `1` and `2` are stable and safe to depend on. Two related guarantees:
+
+- **stdout is only ever the answer** — the report, `--json`, SARIF, the drafted YAML. Warnings,
+  errors and hints all go to **stderr**, so `cifail analyze --json build.log | jq` never breaks,
+  even when cifail has something to complain about.
+- **cifail never prints a stack trace** for a problem it understands. If you see one, it's a bug.
+
 ---
 
 ## What do the words mean?
@@ -356,6 +381,40 @@ cifail tries to keep things plain, but a few terms show up:
   Low confidence means "this is my best guess — double-check it".
 - **rule / pattern** — a single known failure cifail can recognize (for example, "NuGet
   package not found"). The set of all of them is what `cifail rules list` shows.
+
+---
+
+## Check your setup: `cifail config`
+
+When something isn't behaving the way you expect, this answers "what is cifail actually
+doing?" in one screen:
+
+```bash
+cifail config          # or: cifail doctor
+cifail config --json   # machine-readable
+cifail config --strict # also fail on warnings (for CI)
+```
+
+It shows the version and build flavour (slim vs. the full Docker build), every path it uses,
+which database providers this binary actually has, and the effective database / AI /
+notification settings — each one labelled with **where it came from**: `config.yaml`, the name
+of an environment variable, or `default`. That last column is usually the answer to "I edited
+the config file and nothing changed", since environment variables win over the file.
+
+It also lints `config.yaml` and reports what the loader otherwise ignores in silence. A
+misspelled key is the classic one:
+
+```
+warning: line 2: unknown setting 'notifications.slackWebhoookUrl', so it is ignored — did you mean 'slackWebhookUrl'?
+```
+
+cifail deliberately tolerates unknown keys at load time (so an older cifail never chokes on a
+config written for a newer one) — which means a typo like that silently does nothing until you
+run this.
+
+**It never prints secrets.** Connection-string passwords, webhook URLs and tokens are reported
+only as `set` / `not set`, next to the name of the variable they come from — so the output is
+safe to paste into a bug report.
 
 ---
 

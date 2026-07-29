@@ -40,7 +40,34 @@ public class EcosystemDetectorTests
     [Fact]
     public void Detect_ignores_unknown_override_and_falls_back_to_detection()
     {
+        // Detect() itself stays lenient; it is `cifail analyze --type` that now rejects an
+        // unknown value up front, so nothing is silently mis-analyzed.
         EcosystemDetector.Detect(Doc("npm ERR! boom"), "not-a-real-type")
             .Should().Be(Ecosystem.Node);
+    }
+
+    [Fact]
+    public void Every_advertised_type_name_actually_parses()
+    {
+        // SupportedNamesText is the single source for both the --type help text and its error
+        // message. The old hand-written help list had drifted four ecosystems behind reality.
+        foreach (var name in EcosystemDetector.SupportedNames)
+        {
+            EcosystemDetector.TryParse(name, out var parsed).Should().BeTrue($"'{name}' is advertised as valid");
+            parsed.Should().NotBe(Ecosystem.Unknown);
+        }
+    }
+
+    [Fact]
+    public void Every_ecosystem_the_detector_can_return_is_advertised()
+    {
+        var advertised = EcosystemDetector.SupportedNames
+            .Select(n => { EcosystemDetector.TryParse(n, out var e); return e; })
+            .ToHashSet();
+
+        var detectable = Enum.GetValues<Ecosystem>().Where(e => e != Ecosystem.Unknown);
+
+        advertised.Should().BeEquivalentTo(detectable,
+            "a user cannot force an ecosystem that --type never mentions");
     }
 }

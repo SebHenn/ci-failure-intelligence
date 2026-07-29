@@ -1,5 +1,6 @@
 #if CIFAIL_SERVER
 using System.ComponentModel;
+using CiFail.Cli.Output;
 using CiFail.Core.Ai;
 using CiFail.Core.Configuration;
 using CiFail.Core.Notifications;
@@ -68,8 +69,8 @@ public sealed class ServeCommand : Command<ServeCommand.Settings>
         {
             if (!File.Exists(settings.TokensFile))
             {
-                AnsiConsole.MarkupLine($"[red]error:[/] tokens file not found: {Markup.Escape(settings.TokensFile)}");
-                return 2;
+                CliConsole.Error($"tokens file not found: {Markup.Escape(settings.TokensFile)}");
+                return ExitCodes.Usage;
             }
             tokens.AddRange(ServerTokens.ParseFile(settings.TokensFile));
         }
@@ -77,8 +78,8 @@ public sealed class ServeCommand : Command<ServeCommand.Settings>
         // mTLS (R20): a client CA implies mutual TLS, which requires a server cert.
         if (!string.IsNullOrWhiteSpace(settings.ClientCa) && string.IsNullOrWhiteSpace(settings.TlsCert))
         {
-            AnsiConsole.MarkupLine("[red]error:[/] --client-ca requires --tls-cert (mutual TLS needs a server certificate).");
-            return 2;
+            CliConsole.Error("--client-ca requires --tls-cert (mutual TLS needs a server certificate).");
+            return ExitCodes.Usage;
         }
 
         // Optional vector embeddings (R10): only when opted in (ai.embeddings / CIFAIL_AI_EMBEDDINGS).
@@ -95,7 +96,7 @@ public sealed class ServeCommand : Command<ServeCommand.Settings>
         var scheme = !string.IsNullOrWhiteSpace(settings.ClientCa) ? "https" : "http";
         var sim = embedder is null ? "tf-idf" : $"embeddings:{Markup.Escape(config.Ai.Provider)}";
         var notify = notifications is { HasNotifiers: true } ? "[green]notifications: on[/]" : "notifications: off";
-        AnsiConsole.MarkupLine(
+        CliConsole.Out.MarkupLine(
             $"[green]cifail serve[/] listening on [bold]{scheme}://{settings.Host}:{settings.Port}[/] " +
             $"(database: [bold]{Markup.Escape(database.Provider)}[/], {auth}, {mtls}, similarity: {sim}, {notify})");
 
@@ -121,14 +122,13 @@ public sealed class ServeCommand : Command<ServeCommand.Settings>
         {
             var embedder = AiFactory.CreateEmbedder(ai);
             if (embedder is null)
-                AnsiConsole.MarkupLine(
-                    $"[yellow]warning:[/] the '{Markup.Escape(ai.Provider)}' AI provider has no embeddings; " +
+                CliConsole.Warn($"the '{Markup.Escape(ai.Provider)}' AI provider has no embeddings; " +
                     "falling back to TF-IDF similarity.");
             return embedder;
         }
         catch (Exception ex)
         {
-            AnsiConsole.MarkupLine($"[yellow]warning:[/] embeddings disabled — {Markup.Escape(ex.Message)}");
+            CliConsole.Warn($"embeddings disabled — {Markup.Escape(ex.Message)}");
             return null;
         }
     }

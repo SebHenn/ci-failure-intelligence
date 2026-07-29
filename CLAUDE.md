@@ -24,6 +24,7 @@ dotnet run --project src/CiFail.Cli -- history
 dotnet run --project src/CiFail.Cli -- rules list
 dotnet run --project src/CiFail.Cli -- reconcile   # auto-resolve fixed failures (git)
 dotnet run --project src/CiFail.Cli -- init        # install git hooks for auto-reconcile
+dotnet run --project src/CiFail.Cli -- config      # resolved paths/settings + lint config.yaml
 
 # Package as a global tool:
 dotnet pack src/CiFail.Cli/CiFail.Cli.csproj -c Release -o ./nupkg
@@ -94,6 +95,8 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
 
 - **`src/CiFail.Core`** — all logic, no console dependencies.
 - **`src/CiFail.Cli`** — Spectre.Console.Cli `CommandApp`; thin commands that call Core.
+  `Program.cs` is one line; everything is in `CliApp.Build()` (a testable factory that takes an
+  optional `IAnsiConsole` for Spectre's own help/version/parse output) plus `CliApp.Run()`.
 - **`src/CiFail.Providers`** — external DB providers (EF Core + MongoDB), size-gated out
   of the default binary (see "External database providers" below).
 - **`src/CiFail.Server`** — `cifail serve` HTTP API (ASP.NET Core), size-gated into the
@@ -122,6 +125,10 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
 - **`tests/CiFail.Core.Tests`** — xUnit + FluentAssertions; fixtures in `fixtures/*.log`.
 - **`tests/CiFail.Providers.Tests`** — shared store contract + Docker-gated DB tests.
 - **`tests/CiFail.Server.Tests`** — boots a real serve instance on a random port (no Docker).
+- **`tests/CiFail.Cli.Tests`** — drives `CliApp.Build()` in-process via `CliHarness`, which
+  captures **stdout and stderr separately** (a single combined buffer can't test the stream
+  split) and gives each test its own `CIFAIL_HOME`. It redirects the process console and
+  `AnsiConsole.Console`, so everything is in the serial `CliCollection`.
 
 ### The analyze pipeline (`Core/Analysis/AnalysisService.cs`)
 
@@ -278,7 +285,25 @@ are chosen at runtime by name through a small registry:
   `--db-connection`) > env (`CIFAIL_DB_PROVIDER`, `CIFAIL_DB_CONNECTION`) >
   `~/.cifail/config.yaml` (`database: { provider, connectionString }`) > default (sqlite).
   Provider name is normalized to lowercase. CLI commands open the store via
-  `StoreSupport.TryCreate(settings)`, which prints the error and returns null (→ exit 2).
+  `StoreSupport.WithStore(settings, store => ...)` — see the Output section.
+- **Config validation:** the loader keeps `IgnoreUnmatchedProperties()` (an old cifail must not
+  choke on a key a newer one added), so a malformed file now throws `ConfigException` (path +
+  line/col, from `ConfigException.FromYaml`) instead of a raw `YamlException`, and
+  `ConfigValidator.Validate(path)` / `ConfigLoader.Validate()` lints what the loader tolerates:
+  unknown keys with a "did you mean" suggestion, plus value checks. **The known-key schema is
+  derived by reflection over `CiFailConfig`** (`Shape()` + camelCase, matched *ordinally* because
+  that's how YamlDotNet matches), so it can never drift when a setting is added — don't hand-write
+  it. Surfaced by `cifail config`.
+
+### `cifail config` / `doctor` (`Cli/Commands/ConfigCommand.cs`)
+
+Answers "what is cifail actually doing?": version + build flavor (slim vs. full, via
+`#if CIFAIL_EXTERNAL_DB`), every `CiFailPaths` value, `StoreRegistry`/`AiRegistry` availability,
+and the effective database/AI/notification settings **each labelled with its provenance**
+(`config.yaml` / the env-var name / `default` — `Resolve()` mirrors `ConfigLoader.Load`'s
+precedence), plus the config diagnostics. `--json`, `--strict` (warnings also exit 4), `--path`.
+**Invariant: it never prints a secret** — `Secret()` reports presence only, and a test plants a
+password and a webhook URL and asserts neither appears on either stream. Keep it that way.
 
 `SqliteAnalysisRepository` (Microsoft.Data.Sqlite) is the default: creates its schema on
 first use, term vectors stored as JSON per row and reloaded as the similarity corpus, and
@@ -360,8 +385,36 @@ of the file). Wiring: `ServeCommand` builds the dispatcher and passes it via `Se
 
 `ConsoleRenderer` (Spectre panels/tables) and `JsonOutput` are separate. `JsonOutput`
 serializes an explicit DTO, **not** the domain model, so the `--json` contract can
-evolve independently — keep it stable. Exit codes: `0` matched, `1` analyzed but no
-rule matched, `2` input error.
+evolve independently — keep it stable.
+
+**Two streams, one rule (`Cli/Output/CliConsole.cs`): stdout carries the answer, stderr carries
+everything about the run.** Never call `AnsiConsole.*` from a command — use `CliConsole.Out` /
+`CliConsole.Err`, or the `Error()` / `Warn()` / `Hint()` helpers (which take *markup*, so escape
+interpolated values with `Markup.Escape`). Tables, `--json`, SARIF and the drafted YAML are the
+answer; warnings, errors, and "nothing recorded yet" notes are not. Two deliberate exceptions
+where the diagnostics *are* the answer: `rules validate`'s lint output and `rules test`'s
+`no match.` stay on stdout. `--annotations` writes `::error::` to **stderr** (the Actions runner
+scans both streams) so `--json --annotations` can't corrupt the JSON document.
+
+**`Cli/Output/Glyphs.cs`** — use `Glyphs.Check/Cross/Warning/Bullet/Ellipsis/Dash/Times/Dot`
+instead of literal `✓✗⚠•…—×·` in console output; they degrade to ASCII when the console encoding
+can't represent them. Files/payloads written as UTF-8 by construction (SARIF, Markdown,
+notifications) keep the real characters. `CliApp.ConfigureConsole()` sets UTF-8 **including when
+redirected** — via `UTF8Encoding(false)`, never `Encoding.UTF8`, whose preamble .NET would emit
+as a BOM at the head of a pipe.
+
+**Exit codes: `Cli/ExitCodes.cs` is the single taxonomy** (0 Ok · 1 Negative · 2 Usage ·
+3 NotFound · 4 Config · 5 StoreUnavailable · 6 DependencyUnavailable · 7 NotUsable · 70 Internal ·
+130 Canceled). `1` means "negative result", not "error" — that's what keeps `analyze`'s 0/1/2 and
+`rules validate`'s 0/1 unchanged for `ci.yml` and `action.yml`, which branch on them. Never
+return a bare int. `CliApp` installs a `SetExceptionHandler` (**not** `PropagateExceptions()`,
+which bypasses it) mapping anything that escapes to a one-line stderr message + a code;
+`CIFAIL_DEBUG=1` prints the stack trace instead.
+
+**Store-backed commands must use `StoreSupport.WithStore(settings, store => ...)`**, not
+`TryCreate` — `TryCreate` only guards *opening* the store, so an unreachable `--server` or an
+expired token (failures that happen during the query) escaped as a raw exception. `WithStore`
+also turns a 401 into a "pass `--server-token`" hint and maps a `ConfigException` to exit 4.
 
 The human-facing wording is deliberately **plain / beginner-oriented** (e.g. "What
 broke", "How to fix it", confidence shown as high/medium/low not `0.90`, and a

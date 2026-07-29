@@ -10,6 +10,22 @@ namespace CiFail.Core.Ingest;
 /// </summary>
 public static partial class EcosystemDetector
 {
+    /// <summary>
+    /// The canonical ecosystem names accepted by <c>--type</c>, pipe-separated.
+    ///
+    /// <para>
+    /// A <c>const</c> so it can be embedded directly in a <c>[Description]</c> attribute as well
+    /// as in the "unknown value" error — the help text used to be a hand-written list and had
+    /// silently fallen four ecosystems behind. <see cref="TryParse"/> additionally accepts the
+    /// obvious aliases (npm, mvn, cargo, xcode…).
+    /// </para>
+    /// </summary>
+    public const string SupportedNamesText =
+        "dotnet|node|python|java|go|rust|ruby|php|cpp|infra|swift|android|generic";
+
+    /// <summary>The same canonical names as a list, split from <see cref="SupportedNamesText"/>.</summary>
+    public static readonly IReadOnlyList<string> SupportedNames = SupportedNamesText.Split('|');
+
     public static Ecosystem Detect(LogDocument log, string? overrideType = null)
     {
         if (!string.IsNullOrWhiteSpace(overrideType) && TryParse(overrideType, out var forced))

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using CiFail.Cli.Output;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -24,8 +25,8 @@ public sealed class InitCommand : Command<InitCommand.Settings>
         var hooksDir = ResolveHooksDir(Directory.GetCurrentDirectory());
         if (hooksDir is null)
         {
-            AnsiConsole.MarkupLine("[yellow]cifail init only works inside a git repository.[/]");
-            return 2;
+            CliConsole.Error("cifail init only works inside a git repository.");
+            return ExitCodes.DependencyUnavailable;
         }
 
         Directory.CreateDirectory(hooksDir);
@@ -36,19 +37,18 @@ public sealed class InitCommand : Command<InitCommand.Settings>
             var path = Path.Combine(hooksDir, hook);
             if (File.Exists(path) && !File.ReadAllText(path).Contains(Marker))
             {
-                AnsiConsole.MarkupLine(
-                    $"[yellow]![/] {hook} already exists and wasn't created by cifail — left untouched.");
-                AnsiConsole.MarkupLine($"  [grey]Add this line yourself to enable it:[/] {ReconcileLine()}");
+                CliConsole.Warn($"{hook} already exists and wasn't created by cifail — left untouched.");
+                CliConsole.Hint($"  [grey]Add this line yourself to enable it:[/] {ReconcileLine()}");
                 continue;
             }
 
             File.WriteAllText(path, script);
             MakeExecutable(path);
-            AnsiConsole.MarkupLine($"[green]✓[/] installed {hook} hook");
+            CliConsole.Out.MarkupLine($"[green]{Glyphs.Check}[/] installed {hook} hook");
         }
 
-        AnsiConsole.MarkupLine("[grey]cifail will now auto-resolve fixed failures on each commit/merge.[/]");
-        return 0;
+        CliConsole.Hint("[grey]cifail will now auto-resolve fixed failures on each commit/merge.[/]");
+        return ExitCodes.Ok;
     }
 
     private static string? ResolveHooksDir(string workingDir)

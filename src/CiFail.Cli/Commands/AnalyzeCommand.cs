@@ -1,10 +1,12 @@
 using System.ComponentModel;
+using System.Net;
 using System.Xml;
 using CiFail.Cli.Output;
 using CiFail.Core.Ai;
 using CiFail.Core.Analysis;
 using CiFail.Core.Configuration;
 using CiFail.Core.Git;
+using CiFail.Core.Ingest;
 using CiFail.Core.Ingest.Reports;
 using CiFail.Core.Models;
 using CiFail.Core.Output;
@@ -21,10 +23,11 @@ namespace CiFail.Cli.Commands;
 /// </summary>
 public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
 {
-    // Exit codes (documented for CI use).
-    private const int ExitMatched = 0;   // at least one log produced a confident match
-    private const int ExitNoMatch = 1;   // analyzed, but no rule matched
-    private const int ExitInputError = 2; // could not read input
+    // The two codes CI depends on. They keep their original meaning: 0 = every input matched a
+    // rule, 1 = analyzed fine but something went unexplained. Anything actually wrong is >= 2
+    // (see ExitCodes), so existing `if cifail analyze log; then` scripts are unaffected.
+    private const int ExitMatched = ExitCodes.Ok;
+    private const int ExitNoMatch = ExitCodes.Negative;
 
     public sealed class Settings : StoreSettings
     {
@@ -33,7 +36,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         public string[] Paths { get; init; } = Array.Empty<string>();
 
         [CommandOption("-t|--type <ECOSYSTEM>")]
-        [Description("Force ecosystem (dotnet|node|python|java|go|rust|ruby|generic) instead of auto-detecting.")]
+        [Description($"Force ecosystem ({EcosystemDetector.SupportedNamesText}) instead of auto-detecting.")]
         public string? Type { get; init; }
 
         [CommandOption("--json")]
@@ -84,6 +87,10 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
+        // Validate every flag before touching input, so a typo costs nothing and reports all
+        // at once rather than after a slow read.
+        if (Validate(settings) is { } invalid) return invalid;
+
         List<(string source, string text)> inputs;
         try
         {
@@ -91,54 +98,40 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] {Markup.Escape(ex.Message)}");
-            return ExitInputError;
+            CliConsole.Error(Markup.Escape(ex.Message));
+            return ExitCodes.Usage;
         }
 
         if (inputs.Count == 0)
         {
-            AnsiConsole.MarkupLine("[yellow]cifail needs a log to look at.[/] Two ways to give it one:");
-            AnsiConsole.MarkupLine("  1. Point it at a file:   [bold]cifail analyze build.log[/]");
-            AnsiConsole.MarkupLine("  2. Pipe a command's output straight in:");
-            AnsiConsole.MarkupLine("       [grey]dotnet build 2>&1 | cifail analyze[/]");
-            AnsiConsole.MarkupLine("       [grey]npm install   2>&1 | cifail analyze[/]");
-            return ExitInputError;
+            CliConsole.Hint("[yellow]cifail needs a log to look at.[/] Two ways to give it one:");
+            CliConsole.Hint("  1. Point it at a file:   [bold]cifail analyze build.log[/]");
+            CliConsole.Hint("  2. Pipe a command's output straight in:");
+            CliConsole.Hint("       [grey]dotnet build 2>&1 | cifail analyze[/]");
+            CliConsole.Hint("       [grey]npm install   2>&1 | cifail analyze[/]");
+            return ExitCodes.Usage;
         }
 
         // R17: a raw log is one unit; a JUnit/TRX report expands into one unit per failing
         // test, so similarity/history/fingerprints work per test.
-        var format = TestReportParser.TryParseFormat(settings.Format);
-        if (format is null)
-        {
-            AnsiConsole.MarkupLine($"[red]error:[/] unknown --format '{Markup.Escape(settings.Format!)}' " +
-                "(use auto, log, junit, or trx).");
-            return ExitInputError;
-        }
-
-        // R24: --report adds a SARIF/Markdown rendering. Validate it up front (fail fast).
-        if (settings.Report is not null && ParseReportFormat(settings.Report) is null)
-        {
-            AnsiConsole.MarkupLine($"[red]error:[/] unknown --report '{Markup.Escape(settings.Report)}' " +
-                "(use sarif or markdown).");
-            return ExitInputError;
-        }
+        var format = TestReportParser.TryParseFormat(settings.Format)!.Value;
 
         List<AnalysisUnit> units;
         try
         {
-            units = BuildUnits(inputs, format.Value);
+            units = BuildUnits(inputs, format);
         }
         catch (XmlException ex)
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] could not parse the report — {Markup.Escape(ex.Message)}");
-            return ExitInputError;
+            CliConsole.Error($"could not parse the report — {Markup.Escape(ex.Message)}");
+            return ExitCodes.Usage;
         }
 
         if (units.Count == 0)
         {
             // A report that parsed cleanly but had no failing tests is a success.
             if (!settings.Json)
-                AnsiConsole.MarkupLine("[green]✓[/] No failing tests found.");
+                CliConsole.Out.MarkupLine($"[green]{Glyphs.Check}[/] No failing tests found.");
             return ExitMatched;
         }
 
@@ -158,9 +151,43 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
 
         // History + similarity are backed by the configured store (SQLite by default).
         // --no-history still queries similarity but skips persisting the current run.
-        using var store = StoreSupport.TryCreate(settings);
-        if (store is null) return ExitInputError;
+        return StoreSupport.WithStore(settings, store => AnalyzeLocally(settings, units, options, store));
+    }
 
+    /// <summary>
+    /// Check the flags whose values we own before doing any work. Returns an exit code when
+    /// something is wrong, null when everything is fine.
+    /// </summary>
+    private static int? Validate(Settings settings)
+    {
+        // An unrecognized --type used to be *silently ignored* and auto-detection ran instead —
+        // so `--type dotnetcore` looked like it worked and quietly analyzed as something else.
+        if (settings.Type is not null && !EcosystemDetector.TryParse(settings.Type, out _))
+        {
+            CliConsole.Error($"unknown --type '{Markup.Escape(settings.Type)}'.");
+            CliConsole.Hint($"[grey]Valid values: {EcosystemDetector.SupportedNamesText.Replace("|", ", ")}.[/]");
+            return ExitCodes.Usage;
+        }
+
+        if (TestReportParser.TryParseFormat(settings.Format) is null)
+        {
+            CliConsole.Error($"unknown --format '{Markup.Escape(settings.Format!)}' (use auto, log, junit, or trx).");
+            return ExitCodes.Usage;
+        }
+
+        // R24: --report adds a SARIF/Markdown rendering.
+        if (settings.Report is not null && ParseReportFormat(settings.Report) is null)
+        {
+            CliConsole.Error($"unknown --report '{Markup.Escape(settings.Report)}' (use sarif or markdown).");
+            return ExitCodes.Usage;
+        }
+
+        return null;
+    }
+
+    private static int AnalyzeLocally(Settings settings, IReadOnlyList<AnalysisUnit> units,
+        AnalysisOptions options, IAnalysisStore store)
+    {
         // Git correlation (R3): when run inside a repo, tag each record with the commit and
         // auto-resolve past failures that no longer occur at HEAD.
         var git = settings.NoGit ? null : GitContext.Detect(Directory.GetCurrentDirectory());
@@ -187,7 +214,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             allMatched &= analysis.HasMatch;
         }
 
-        EmitResults(settings, results);
+        if (EmitResults(settings, results) is { } writeError) return writeError;
 
         // GitHub annotations (R17): surface each failing test inline on the PR.
         if (settings.Annotations)
@@ -219,7 +246,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         catch (Exception ex)
         {
             // Don't fail the analysis just because AI is misconfigured — warn and go rules-only.
-            AnsiConsole.MarkupLine($"[yellow]warning:[/] AI disabled — {Markup.Escape(ex.Message)}");
+            CliConsole.Warn($"AI disabled — {Markup.Escape(ex.Message)}");
             return null;
         }
     }
@@ -231,14 +258,13 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         {
             var embedder = AiFactory.CreateEmbedder(ai);
             if (embedder is null)
-                AnsiConsole.MarkupLine(
-                    $"[yellow]warning:[/] the '{Markup.Escape(ai.Provider)}' AI provider has no embeddings; " +
+                CliConsole.Warn($"the '{Markup.Escape(ai.Provider)}' AI provider has no embeddings; " +
                     "using TF-IDF similarity.");
             return embedder;
         }
         catch (Exception ex)
         {
-            AnsiConsole.MarkupLine($"[yellow]warning:[/] embeddings disabled — {Markup.Escape(ex.Message)}");
+            CliConsole.Warn($"embeddings disabled — {Markup.Escape(ex.Message)}");
             return null;
         }
     }
@@ -271,6 +297,12 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
     /// <summary>
     /// Emit a GitHub Actions <c>::error::</c> annotation per failing test, so failures show
     /// inline on the PR. Only fires under Actions (GITHUB_ACTIONS=true); a no-op elsewhere.
+    ///
+    /// <para>
+    /// Written to <b>stderr</b>. The runner scans both streams for workflow commands, so the
+    /// annotations still appear — while <c>--annotations --json</c> no longer interleaves
+    /// <c>::error::</c> lines into the JSON document on stdout and breaks the parse.
+    /// </para>
     /// </summary>
     private static void EmitAnnotations(IReadOnlyList<AnalysisUnit> units, IReadOnlyList<Analysis> results)
     {
@@ -282,7 +314,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             if (units[i].Test is not { } test) continue;
             var analysis = results[i];
             var message = analysis.RootCause is { } rc ? $"{rc.Rule.Title} — {rc.Fix}" : test.Message;
-            Console.Out.WriteLine(
+            Console.Error.WriteLine(
                 $"::error title={EscapeAnnotationProperty(test.FullName)}::{EscapeAnnotationData(message)}");
         }
     }
@@ -301,25 +333,28 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
     /// </summary>
     private static int AnalyzeViaServer(Settings settings, IReadOnlyList<AnalysisUnit> units, bool recordHistory)
     {
-        var token = !string.IsNullOrWhiteSpace(settings.ServerToken)
-            ? settings.ServerToken
-            : Environment.GetEnvironmentVariable(HttpAnalysisStore.TokenEnvVar);
-
         var results = new List<Analysis>(units.Count);
         try
         {
-            using var client = new HttpAnalyzeClient(settings.Server!, token);
+            using var client = new HttpAnalyzeClient(settings.Server!, StoreSupport.ResolveToken(settings));
             foreach (var unit in units)
                 results.Add(client.Analyze(unit.Text, settings.Type, unit.Source, noHistory: !recordHistory));
         }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or UriFormatException)
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
         {
-            AnsiConsole.MarkupLine(
-                $"[red]error:[/] could not analyze against {Markup.Escape(settings.Server!)} — {Markup.Escape(ex.Message)}");
-            return ExitInputError;
+            CliConsole.Error($"{Markup.Escape(settings.Server!)} rejected the request (401 Unauthorized).");
+            CliConsole.Hint($"[grey]Pass [bold]--server-token <TOKEN>[/] or set " +
+                $"[bold]{HttpAnalysisStore.TokenEnvVar}[/].[/]");
+            return ExitCodes.StoreUnavailable;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+            or InvalidOperationException or UriFormatException)
+        {
+            CliConsole.Error($"could not analyze against {Markup.Escape(settings.Server!)} — {Markup.Escape(ex.Message)}");
+            return ExitCodes.StoreUnavailable;
         }
 
-        EmitResults(settings, results);
+        if (EmitResults(settings, results) is { } writeError) return writeError;
 
         if (settings.Annotations)
             EmitAnnotations(units, results);
@@ -332,7 +367,8 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
     /// When --report goes to stdout (no --report-out) it takes over stdout, so the normal view is
     /// suppressed; with --report-out the report is written to the file and the normal view still shows.
     /// </summary>
-    private static void EmitResults(Settings settings, IReadOnlyList<Analysis> results)
+    /// <returns>An exit code if writing the report failed, otherwise null.</returns>
+    private static int? EmitResults(Settings settings, IReadOnlyList<Analysis> results)
     {
         var reportToStdout = settings.Report is not null && string.IsNullOrWhiteSpace(settings.ReportOut);
 
@@ -342,7 +378,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             else EmitConsole(results);
         }
 
-        if (settings.Report is null) return;
+        if (settings.Report is null) return null;
 
         var dtos = results.Select(AnalysisJson.ToDto).ToList();
         var content = ParseReportFormat(settings.Report) switch
@@ -352,9 +388,25 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         };
 
         if (string.IsNullOrWhiteSpace(settings.ReportOut))
+        {
             Console.Out.Write(content);
-        else
+            return null;
+        }
+
+        try
+        {
+            // A missing directory or a read-only path is a user mistake, not a crash: an
+            // unwritable --report-out used to surface as an unhandled IOException.
             File.WriteAllText(settings.ReportOut, content);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or NotSupportedException or ArgumentException)
+        {
+            CliConsole.Error($"could not write the report to " +
+                $"{Markup.Escape(settings.ReportOut)} — {Markup.Escape(ex.Message)}");
+            return ExitCodes.Usage;
+        }
     }
 
     private enum ReportKind { Sarif, Markdown }
@@ -402,13 +454,13 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
 
     private static void ReportAutoResolved(IReadOnlyList<ResolutionReconciler.Resolved> resolved)
     {
-        AnsiConsole.WriteLine();
+        CliConsole.Out.WriteLine();
         var noun = resolved.Count == 1 ? "failure" : "failures";
-        AnsiConsole.MarkupLine($"[green]✓[/] Auto-resolved {resolved.Count} past {noun} (no longer happening here):");
+        CliConsole.Out.MarkupLine($"[green]{Glyphs.Check}[/] Auto-resolved {resolved.Count} past {noun} (no longer happening here):");
         foreach (var r in resolved)
         {
             var shortSha = r.Commit.Length >= 7 ? r.Commit[..7] : r.Commit;
-            AnsiConsole.MarkupLine($"  [grey]#{r.Id}[/] likely fixed by [bold]{Markup.Escape(shortSha)}[/]");
+            CliConsole.Out.MarkupLine($"  [grey]#{r.Id}[/] likely fixed by [bold]{Markup.Escape(shortSha)}[/]");
         }
     }
 
@@ -416,8 +468,8 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
     {
         for (int i = 0; i < results.Count; i++)
         {
-            if (i > 0) AnsiConsole.WriteLine();
-            ConsoleRenderer.Render(AnsiConsole.Console, results[i]);
+            if (i > 0) CliConsole.Out.WriteLine();
+            ConsoleRenderer.Render(CliConsole.Out, results[i]);
         }
     }
 }

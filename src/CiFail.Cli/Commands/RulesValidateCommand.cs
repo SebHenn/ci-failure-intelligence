@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using CiFail.Cli.Output;
 using CiFail.Core.Rules;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -28,32 +29,34 @@ public sealed class RulesValidateCommand : Command<RulesValidateCommand.Settings
         }
         else if (!Directory.Exists(settings.Path))
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] directory not found: {Markup.Escape(settings.Path)}");
-            return 2;
+            CliConsole.Error($"directory not found: {Markup.Escape(settings.Path)}");
+            return ExitCodes.Usage;
         }
         else
         {
             result = RulePackValidator.ValidatePath(settings.Path);
         }
 
+        // The diagnostics stay on stdout: for a linter they *are* the answer, and CI jobs
+        // already capture them from there.
         foreach (var d in result.Diagnostics.OrderBy(d => d.Severity).ThenBy(d => d.Source, StringComparer.Ordinal))
         {
             var tag = d.Severity == DiagnosticSeverity.Error ? "[red]error[/]" : "[yellow]warn [/]";
             var where = d.RuleId is null
                 ? Markup.Escape(d.Source)
                 : $"{Markup.Escape(d.Source)} [grey]({Markup.Escape(d.RuleId)})[/]";
-            AnsiConsole.MarkupLine($"{tag} {where}: {Markup.Escape(d.Message)}");
+            CliConsole.Out.MarkupLine($"{tag} {where}: {Markup.Escape(d.Message)}");
         }
 
-        AnsiConsole.WriteLine();
-        var summary = $"{result.RuleCount} rules · {result.ErrorCount} errors · {result.WarningCount} warnings";
+        CliConsole.Out.WriteLine();
+        var summary = $"{result.RuleCount} rules {Glyphs.Dot} {result.ErrorCount} errors {Glyphs.Dot} {result.WarningCount} warnings";
         if (result.HasErrors)
         {
-            AnsiConsole.MarkupLine($"[red]✗ {summary}[/]");
-            return 1;
+            CliConsole.Out.MarkupLine($"[red]{Glyphs.Cross} {summary}[/]");
+            return ExitCodes.Negative;
         }
 
-        AnsiConsole.MarkupLine($"[green]✓ {summary}[/]");
-        return 0;
+        CliConsole.Out.MarkupLine($"[green]{Glyphs.Check} {summary}[/]");
+        return ExitCodes.Ok;
     }
 }

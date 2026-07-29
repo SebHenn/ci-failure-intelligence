@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using CiFail.Cli.Output;
 using CiFail.Core.Analysis;
 using CiFail.Core.Output;
 using CiFail.Core.Storage;
@@ -50,35 +51,35 @@ public sealed partial class StatsCommand : Command<StatsCommand.Settings>
         }
         catch (FormatException ex)
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] {Markup.Escape(ex.Message)}");
-            return 2;
+            CliConsole.Error(Markup.Escape(ex.Message));
+            return ExitCodes.Usage;
         }
-
-        using var store = StoreSupport.TryCreate(settings);
-        if (store is null) return 2;
 
         var repo = string.IsNullOrWhiteSpace(settings.Repo) ? null : settings.Repo;
 
-        if (settings.Tests)
-            return RunTests(store, settings, since, repo);
-
-        var query = new StatsQuery
+        return StoreSupport.WithStore(settings, store =>
         {
-            Since = since,
-            RepoId = repo,
-            Top = settings.Top,
-        };
+            if (settings.Tests)
+                return RunTests(store, settings, since, repo);
 
-        var stats = StatsService.Compute(store, query);
+            var query = new StatsQuery
+            {
+                Since = since,
+                RepoId = repo,
+                Top = settings.Top,
+            };
 
-        if (settings.Json)
-        {
-            Console.Out.WriteLine(JsonSerializer.Serialize(StatsJson.ToDto(stats), AnalysisJson.Options));
-            return 0;
-        }
+            var stats = StatsService.Compute(store, query);
 
-        Render(stats, query);
-        return 0;
+            if (settings.Json)
+            {
+                Console.Out.WriteLine(JsonSerializer.Serialize(StatsJson.ToDto(stats), AnalysisJson.Options));
+                return ExitCodes.Ok;
+            }
+
+            Render(stats, query);
+            return ExitCodes.Ok;
+        });
     }
 
     private static int RunTests(IAnalysisStore store, Settings settings, DateTimeOffset? since, string? repo)
@@ -89,23 +90,23 @@ public sealed partial class StatsCommand : Command<StatsCommand.Settings>
         if (settings.Json)
         {
             Console.Out.WriteLine(JsonSerializer.Serialize(TestStatsJson.ToDto(snapshot), AnalysisJson.Options));
-            return 0;
+            return ExitCodes.Ok;
         }
 
         RenderTests(snapshot);
-        return 0;
+        return ExitCodes.Ok;
     }
 
     private static void RenderTests(TestStatsSnapshot s)
     {
         if (s.TotalTestFailures == 0)
         {
-            AnsiConsole.MarkupLine("[grey]No test failures in history yet. Analyze a JUnit/TRX report " +
+            CliConsole.Hint("[grey]No test failures in history yet. Analyze a JUnit/TRX report " +
                 "([bold]cifail analyze --format junit results.xml[/]) to track per-test flakiness.[/]");
             return;
         }
 
-        AnsiConsole.MarkupLine($"[grey]{s.DistinctTests} tests · {s.TotalTestFailures} failures · " +
+        CliConsole.Out.MarkupLine($"[grey]{s.DistinctTests} tests {Glyphs.Dot} {s.TotalTestFailures} failures {Glyphs.Dot} " +
             $"{s.FlakyCount} flaky.[/] [grey](cifail tracks failures, not passes — this is recurring/flaky, not a pass-rate.)[/]");
 
         var table = new Table().Border(TableBorder.Rounded).Title("flakiest / noisiest tests");
@@ -121,7 +122,7 @@ public sealed partial class StatsCommand : Command<StatsCommand.Settings>
                 Markup.Escape(t.FullName),
                 Markup.Escape(t.LastSeen.LocalDateTime.ToString("yyyy-MM-dd")),
                 TestStateCell(t));
-        AnsiConsole.Write(table);
+        CliConsole.Out.Write(table);
     }
 
     private static string TestStateCell(TestStat t)
@@ -135,23 +136,23 @@ public sealed partial class StatsCommand : Command<StatsCommand.Settings>
     {
         if (s.Total == 0)
         {
-            AnsiConsole.MarkupLine("[grey]No failures recorded in that window yet. Run [bold]cifail analyze[/] first.[/]");
+            CliConsole.Hint("[grey]No failures recorded in that window yet. Run [bold]cifail analyze[/] first.[/]");
             return;
         }
 
         var scope = query.Since is { } since ? $" since {since.LocalDateTime:yyyy-MM-dd}" : "";
-        var repo = query.RepoId is null ? "" : $" · repo {Short(query.RepoId)}";
+        var repo = query.RepoId is null ? "" : $" {Glyphs.Dot} repo {Short(query.RepoId)}";
 
         var summary = new Grid().AddColumn().AddColumn();
         void Row(string k, string v) => summary.AddRow($"[grey]{k}[/]", v);
         Row("total failures", s.Total.ToString());
         Row("open / resolved", $"[yellow]{s.Open}[/] / [green]{s.Resolved}[/]");
         Row("unmatched (coverage gaps)", s.Unmatched.ToString());
-        Row("recurrence rate", $"{s.RecurrenceRate:P0} [grey]of distinct failures seen >1×[/]");
+        Row("recurrence rate", $"{s.RecurrenceRate:P0} [grey]of distinct failures seen >1{Glyphs.Times}[/]");
         Row("mean time to resolve", s.MeanTimeToResolution is { } m
             ? $"{Humanize(m)} [grey](over {s.ResolvedWithTiming})[/]"
-            : "[grey]—[/]");
-        AnsiConsole.Write(new Panel(summary).Header($"[bold]cifail stats[/][grey]{scope}{repo}[/]").Border(BoxBorder.Rounded));
+            : $"[grey]{Glyphs.Dash}[/]");
+        CliConsole.Out.Write(new Panel(summary).Header($"[bold]cifail stats[/][grey]{scope}{repo}[/]").Border(BoxBorder.Rounded));
 
         if (s.ByEcosystem.Count > 0)
         {
@@ -160,11 +161,11 @@ public sealed partial class StatsCommand : Command<StatsCommand.Settings>
             eco.AddColumn(new TableColumn("count").RightAligned());
             foreach (var c in s.ByEcosystem)
                 eco.AddRow(Markup.Escape(c.Key), c.Count.ToString());
-            AnsiConsole.Write(eco);
+            CliConsole.Out.Write(eco);
         }
 
         var top = new Table().Border(TableBorder.Rounded).Title("top recurring failures");
-        top.AddColumn(new TableColumn("×").RightAligned());
+        top.AddColumn(new TableColumn(Glyphs.Times).RightAligned());
         top.AddColumn("rule");
         top.AddColumn("last seen");
         top.AddColumn("state");
@@ -174,14 +175,14 @@ public sealed partial class StatsCommand : Command<StatsCommand.Settings>
                 Markup.Escape(f.RuleId),
                 Markup.Escape(f.LastSeen.LocalDateTime.ToString("yyyy-MM-dd")),
                 StateCell(f));
-        AnsiConsole.Write(top);
+        CliConsole.Out.Write(top);
 
         if (s.Flaky.Count > 0)
         {
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine($"[orange1]⚠ {s.Flaky.Count} flaky[/] (resolved, then recurred — the fix didn't stick):");
+            CliConsole.Out.WriteLine();
+            CliConsole.Out.MarkupLine($"[orange1]{Glyphs.Warning} {s.Flaky.Count} flaky[/] (resolved, then recurred — the fix didn't stick):");
             foreach (var f in s.Flaky)
-                AnsiConsole.MarkupLine($"  [orange1]•[/] {Markup.Escape(f.RuleId)} [grey]({f.Count}×, last {f.LastSeen.LocalDateTime:yyyy-MM-dd})[/]");
+                CliConsole.Out.MarkupLine($"  [orange1]{Glyphs.Bullet}[/] {Markup.Escape(f.RuleId)} [grey]({f.Count}{Glyphs.Times}, last {f.LastSeen.LocalDateTime:yyyy-MM-dd})[/]");
         }
     }
 

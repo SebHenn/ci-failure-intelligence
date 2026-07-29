@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <!-- Pinned to 7.2.0 deliberately: v8+ is commercially licensed and incompatible with
+         this MIT project. See CLAUDE.md. -->
+    <PackageReference Include="FluentAssertions" Version="7.2.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- References the CLI itself: these tests drive CliApp.Build() rather than shelling out,
+       so an assertion failure points at a line of C# instead of a process exit code. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CiFail.Cli\CiFail.Cli.csproj" />
+  </ItemGroup>
+
+</Project>

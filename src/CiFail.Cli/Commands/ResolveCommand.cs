@@ -1,5 +1,5 @@
 using System.ComponentModel;
-using CiFail.Core.Storage;
+using CiFail.Cli.Output;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -28,17 +28,17 @@ public sealed class ResolveCommand : Command<ResolveCommand.Settings>
             : ValidationResult.Success();
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
-    {
-        using var store = StoreSupport.TryCreate(settings);
-        if (store is null) return 2;
-
-        if (!store.SetResolution(settings.Id, settings.Note!.Trim()))
+        => StoreSupport.WithStore(settings, store =>
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] no analysis with id {settings.Id}.");
-            return 2;
-        }
+            if (!store.SetResolution(settings.Id, settings.Note!.Trim()))
+            {
+                CliConsole.Error($"no analysis with id {settings.Id}.");
+                CliConsole.Hint("[grey]Run [bold]cifail history[/] to see the ids you have.[/]");
+                return ExitCodes.NotFound;
+            }
 
-        AnsiConsole.MarkupLine($"[green]✓[/] recorded resolution for analysis #{settings.Id}.");
-        return 0;
-    }
+            CliConsole.Out.MarkupLine(
+                $"[green]{Glyphs.Check}[/] recorded resolution for analysis #{settings.Id}.");
+            return ExitCodes.Ok;
+        });
 }

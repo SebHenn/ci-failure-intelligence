@@ -1,3 +1,4 @@
+using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -93,14 +94,48 @@ public static class ConfigLoader
         return config;
     }
 
+    /// <summary>
+    /// Lint the config file without applying it: unknown/misspelled settings, and values that
+    /// can't work. Powers <c>cifail config</c>. A missing file is valid and yields nothing.
+    /// </summary>
+    public static IReadOnlyList<ConfigDiagnostic> Validate(string? configPath = null) =>
+        ConfigValidator.Validate(configPath ?? CiFailPaths.ConfigPath);
+
     private static bool IsTruthy(string? v) =>
         v is not null && (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Read one config file, with no env/CLI layering applied. Exposed so the validator can
+    /// materialize the same object the loader would. Throws <see cref="ConfigException"/> when
+    /// the file exists but isn't parseable.
+    /// </summary>
+    public static CiFailConfig LoadFile(string path) => LoadFromFile(path);
 
     private static CiFailConfig LoadFromFile(string path)
     {
         if (!File.Exists(path)) return new CiFailConfig();
-        var text = File.ReadAllText(path);
+
+        string text;
+        try
+        {
+            text = File.ReadAllText(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new ConfigException(path, $"could not read the config file — {ex.Message}", inner: ex);
+        }
+
         if (string.IsNullOrWhiteSpace(text)) return new CiFailConfig();
-        return Yaml.Deserialize<CiFailConfig>(text) ?? new CiFailConfig();
+
+        try
+        {
+            return Yaml.Deserialize<CiFailConfig>(text) ?? new CiFailConfig();
+        }
+        catch (YamlException ex)
+        {
+            // Without this the raw YamlDotNet exception reaches the user as a stack trace with
+            // no mention of which file it came from.
+            throw ConfigException.FromYaml(path, ex);
+        }
     }
 }

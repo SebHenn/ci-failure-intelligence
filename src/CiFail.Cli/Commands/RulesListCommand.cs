@@ -1,3 +1,4 @@
+using CiFail.Cli.Output;
 using CiFail.Core.Rules;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -31,9 +32,8 @@ public sealed class RulesListCommand : Command<RulesListCommand.Settings>
                 Markup.Escape(r.Title));
         }
 
-        AnsiConsole.Write(table);
-        AnsiConsole.MarkupLine(
-            $"[grey]user rule packs: {Markup.Escape(RulePackLoader.DefaultUserRulesDir)}[/]");
-        return 0;
+        CliConsole.Out.Write(table);
+        CliConsole.Hint($"[grey]user rule packs: {Markup.Escape(RulePackLoader.DefaultUserRulesDir)}[/]");
+        return ExitCodes.Ok;
     }
 }

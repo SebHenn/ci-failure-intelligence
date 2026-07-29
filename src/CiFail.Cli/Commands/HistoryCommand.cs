@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using CiFail.Cli.Output;
 using CiFail.Core.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -24,22 +25,19 @@ public sealed class HistoryCommand : Command<HistoryCommand.Settings>
     }
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
-    {
-        using var store = StoreSupport.TryCreate(settings);
-        if (store is null) return 2;
-
-        return settings.Id is { } id
+        => StoreSupport.WithStore(settings, store => settings.Id is { } id
             ? ShowOne(store, id)
-            : ShowList(store, settings.Limit);
-    }
+            : ShowList(store, settings.Limit));
 
     private static int ShowList(IAnalysisStore store, int limit)
     {
         var rows = store.GetRecent(limit);
         if (rows.Count == 0)
         {
-            AnsiConsole.MarkupLine("[grey]No analyses recorded yet. Run [bold]cifail analyze[/] first.[/]");
-            return 0;
+            // Not the answer, just an explanation for the empty output — so stderr, keeping
+            // stdout clean for whatever the caller is piping this into.
+            CliConsole.Hint("[grey]No analyses recorded yet. Run [bold]cifail analyze[/] first.[/]");
+            return ExitCodes.Ok;
         }
 
         var table = new Table().Border(TableBorder.Rounded).Title("[bold]cifail history[/]");
@@ -61,8 +59,8 @@ public sealed class HistoryCommand : Command<HistoryCommand.Settings>
                 ResolvedCell(r));
         }
 
-        AnsiConsole.Write(table);
-        return 0;
+        CliConsole.Out.Write(table);
+        return ExitCodes.Ok;
     }
 
     private static int ShowOne(IAnalysisStore store, long id)
@@ -70,8 +68,9 @@ public sealed class HistoryCommand : Command<HistoryCommand.Settings>
         var r = store.GetById(id);
         if (r is null)
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] no analysis with id {id}.");
-            return 2;
+            CliConsole.Error($"no analysis with id {id}.");
+            CliConsole.Hint("[grey]Run [bold]cifail history[/] to see the ids you have.[/]");
+            return ExitCodes.NotFound;
         }
 
         var grid = new Grid().AddColumn().AddColumn();
@@ -87,21 +86,23 @@ public sealed class HistoryCommand : Command<HistoryCommand.Settings>
                 + (r.GitDirty ? " [yellow](dirty)[/]" : ""));
         grid.AddRow("[grey]resolution[/]", ResolutionDetail(r));
 
-        AnsiConsole.Write(new Panel(grid).Header($" analysis #{r.Id} ").Border(BoxBorder.Rounded));
-        AnsiConsole.Write(new Panel(new Markup(Markup.Escape(r.Excerpt)))
+        CliConsole.Out.Write(new Panel(grid).Header($" analysis #{r.Id} ").Border(BoxBorder.Rounded));
+        CliConsole.Out.Write(new Panel(new Markup(Markup.Escape(r.Excerpt)))
             .Header(" excerpt ").Border(BoxBorder.Rounded).BorderColor(Color.Grey));
-        return 0;
+        return ExitCodes.Ok;
     }
 
     private static string ResolvedCell(StoredAnalysis r)
     {
-        if (r.Resolution is null) return "[grey]—[/]";
-        return r.ResolutionSource == ResolutionSource.Auto ? "[blue]✓ auto[/]" : "[green]✓[/]";
+        if (r.Resolution is null) return $"[grey]{Glyphs.Dash}[/]";
+        return r.ResolutionSource == ResolutionSource.Auto
+            ? $"[blue]{Glyphs.Check} auto[/]"
+            : $"[green]{Glyphs.Check}[/]";
     }
 
     private static string ResolutionDetail(StoredAnalysis r)
     {
-        if (r.Resolution is null) return "[grey]—[/]";
+        if (r.Resolution is null) return $"[grey]{Glyphs.Dash}[/]";
 
         var when = r.ResolvedAt?.LocalDateTime.ToString("yyyy-MM-dd");
         var tag = r.ResolutionSource == ResolutionSource.Auto
@@ -112,6 +113,13 @@ public sealed class HistoryCommand : Command<HistoryCommand.Settings>
 
     private static string Short(string sha) => sha.Length >= 7 ? sha[..7] : sha;
 
-    private static string Truncate(string s, int max) =>
-        s.Length <= max ? s : "…" + s[^(max - 1)..];
+    /// <summary>Keep the tail (where the interesting part of a path is), marked with a leading ellipsis.</summary>
+    private static string Truncate(string s, int max)
+    {
+        if (s.Length <= max) return s;
+        // The ellipsis is 1 char in Unicode but 3 in the ASCII fallback, so the room it needs
+        // has to be subtracted rather than assumed.
+        var keep = Math.Max(0, max - Glyphs.Ellipsis.Length);
+        return Glyphs.Ellipsis + s[^keep..];
+    }
 }

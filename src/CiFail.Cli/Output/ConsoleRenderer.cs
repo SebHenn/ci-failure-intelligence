@@ -11,7 +11,7 @@ public static class ConsoleRenderer
 {
     public static void Render(IAnsiConsole console, Analysis analysis)
     {
-        console.Write(new Rule($"[bold]cifail[/] · {Markup.Escape(analysis.Source)}").LeftJustified());
+        console.Write(new Rule($"[bold]cifail[/] {Glyphs.Dot} {Markup.Escape(analysis.Source)}").LeftJustified());
 
         if (analysis.RootCause is { } rc)
             RenderRootCause(console, analysis, rc);
@@ -31,8 +31,8 @@ public static class ConsoleRenderer
     {
         var color = ConfidenceColor(rc.Score);
         var header = $"[{color}]{Markup.Escape(rc.Rule.Title)}[/]  " +
-                     $"[grey]({analysis.Ecosystem.ToString().ToLowerInvariant()} · " +
-                     $"{Markup.Escape(rc.Rule.Category)} · {ConfidenceWord(rc.Score)} confidence)[/]";
+                     $"[grey]({analysis.Ecosystem.ToString().ToLowerInvariant()} {Glyphs.Dot} " +
+                     $"{Markup.Escape(rc.Rule.Category)} {Glyphs.Dot} {ConfidenceWord(rc.Score)} confidence)[/]";
 
         var body = new Markup(
             "[bold]How to fix it[/]\n" +
@@ -66,9 +66,9 @@ public static class ConsoleRenderer
                 "[yellow]cifail doesn't recognize this failure yet.[/]\n\n" +
                 "It looks like a [bold]" + analysis.Ecosystem.ToString().ToLowerInvariant() +
                 "[/] log, but none of the built-in patterns matched. You can:\n" +
-                "  • read the log yourself and look for the first line containing [bold]error[/] or [bold]failed[/]\n" +
-                "  • try [bold]--ai[/] to ask a local AI model (needs Ollama installed)\n" +
-                "  • teach cifail this pattern by adding a rule (see the README)"))
+                $"  {Glyphs.Bullet} read the log yourself and look for the first line containing [bold]error[/] or [bold]failed[/]\n" +
+                $"  {Glyphs.Bullet} try [bold]--ai[/] to ask a local AI model (needs Ollama installed)\n" +
+                $"  {Glyphs.Bullet} teach cifail this pattern by adding a rule (see the README)"))
             .Header(" What broke: [yellow]not sure yet[/] ")
             .Border(BoxBorder.Rounded)
             .BorderColor(Color.Yellow)
@@ -92,7 +92,7 @@ public static class ConsoleRenderer
                 $"{s.Similarity:0%}",
                 Markup.Escape(s.RuleId),
                 Markup.Escape(s.AnalyzedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm")),
-                Markup.Escape(string.IsNullOrWhiteSpace(s.Resolution) ? "— (not recorded)" : Truncate(s.Resolution!, 50)));
+                Markup.Escape(string.IsNullOrWhiteSpace(s.Resolution) ? $"{Glyphs.Dash} (not recorded)" : Truncate(s.Resolution!, 50)));
         }
 
         console.Write(table);
@@ -142,6 +142,12 @@ public static class ConsoleRenderer
         _ => Color.Grey,
     };
 
-    private static string Truncate(string s, int max) =>
-        s.Length <= max ? s : s[..(max - 1)] + "…";
+    private static string Truncate(string s, int max)
+    {
+        if (s.Length <= max) return s;
+        // The ellipsis is 1 char in Unicode but 3 in the ASCII fallback, so the room it needs
+        // has to be subtracted rather than assumed.
+        var keep = Math.Max(0, max - Glyphs.Ellipsis.Length);
+        return s[..keep] + Glyphs.Ellipsis;
+    }
 }

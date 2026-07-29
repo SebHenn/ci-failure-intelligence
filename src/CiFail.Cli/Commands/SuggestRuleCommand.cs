@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using CiFail.Cli.Output;
 using CiFail.Core;
 using CiFail.Core.Ai;
 using CiFail.Core.Configuration;
@@ -20,9 +21,14 @@ namespace CiFail.Cli.Commands;
 public sealed class SuggestRuleCommand : Command<SuggestRuleCommand.Settings>
 {
     private const double LowConfidenceThreshold = 0.6;
-    private const int ExitOk = 0;
-    private const int ExitNoDraft = 1;
-    private const int ExitInputError = 2;
+
+    // This command used to collapse three very different outcomes onto exit 1 — "no AI
+    // available", "the model produced nothing", and "the draft failed validation" — so a CI
+    // job could not tell a missing model from a bad rule. They are now distinct.
+    private const int ExitOk = ExitCodes.Ok;
+    private const int ExitNoAi = ExitCodes.DependencyUnavailable;
+    private const int ExitNotUsable = ExitCodes.NotUsable;
+    private const int ExitInputError = ExitCodes.Usage;
 
     public sealed class Settings : CommandSettings
     {
@@ -31,7 +37,7 @@ public sealed class SuggestRuleCommand : Command<SuggestRuleCommand.Settings>
         public string[] Paths { get; init; } = Array.Empty<string>();
 
         [CommandOption("-t|--type <ECOSYSTEM>")]
-        [Description("Force ecosystem instead of auto-detecting.")]
+        [Description($"Force ecosystem ({EcosystemDetector.SupportedNamesText}) instead of auto-detecting.")]
         public string? Type { get; init; }
 
         [CommandOption("--ai-provider <PROVIDER>")]
@@ -57,6 +63,13 @@ public sealed class SuggestRuleCommand : Command<SuggestRuleCommand.Settings>
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
+        if (settings.Type is not null && !EcosystemDetector.TryParse(settings.Type, out _))
+        {
+            CliConsole.Error($"unknown --type '{Markup.Escape(settings.Type)}'.");
+            CliConsole.Hint($"[grey]Valid values: {EcosystemDetector.SupportedNamesText.Replace("|", ", ")}.[/]");
+            return ExitInputError;
+        }
+
         (string Source, string Text)? input;
         try
         {
@@ -64,14 +77,14 @@ public sealed class SuggestRuleCommand : Command<SuggestRuleCommand.Settings>
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] {Markup.Escape(ex.Message)}");
+            CliConsole.Error(Markup.Escape(ex.Message));
             return ExitInputError;
         }
 
         if (input is null)
         {
-            AnsiConsole.MarkupLine("[yellow]cifail suggest-rule needs a log to look at.[/]");
-            AnsiConsole.MarkupLine("  [bold]cifail suggest-rule build.log[/]   or   [grey]some-command 2>&1 | cifail suggest-rule[/]");
+            CliConsole.Hint("[yellow]cifail suggest-rule needs a log to look at.[/]");
+            CliConsole.Hint("  [bold]cifail suggest-rule build.log[/]   or   [grey]some-command 2>&1 | cifail suggest-rule[/]");
             return ExitInputError;
         }
 
@@ -85,7 +98,7 @@ public sealed class SuggestRuleCommand : Command<SuggestRuleCommand.Settings>
         var top = matches.Count > 0 ? matches[0] : null;
         if (top is not null && top.Score >= LowConfidenceThreshold && !settings.Json)
         {
-            AnsiConsole.MarkupLine(
+            CliConsole.Out.MarkupLine(
                 $"[green]Already covered.[/] '{Markup.Escape(top.Rule.Title)}' " +
                 $"([grey]{Markup.Escape(top.Rule.Id)}[/]) already matches this log with " +
                 $"{Confidence(top.Score)} confidence — no new rule needed.");
@@ -123,9 +136,9 @@ public sealed class SuggestRuleCommand : Command<SuggestRuleCommand.Settings>
 
         if (draft is null)
         {
-            AnsiConsole.MarkupLine("[yellow]The model didn't return a usable rule draft.[/] " +
-                "Try again, or author one by hand (see CONTRIBUTING.md).");
-            return ExitNoDraft;
+            CliConsole.Error("the model didn't return a usable rule draft.");
+            CliConsole.Hint("[grey]Try again, or author one by hand (see CONTRIBUTING.md).[/]");
+            return ExitNotUsable;
         }
 
         var validation = RuleDraftValidator.Validate(draft, log);
@@ -134,20 +147,20 @@ public sealed class SuggestRuleCommand : Command<SuggestRuleCommand.Settings>
         if (settings.Json)
         {
             EmitJson(validation, yaml);
-            return validation.Ok ? ExitOk : ExitNoDraft;
+            return validation.Ok ? ExitOk : ExitNotUsable;
         }
 
         RenderPreview(validation, yaml);
 
         if (!validation.Ok)
         {
-            AnsiConsole.MarkupLine("[red]Not usable as-is.[/] Fix the problems above by hand, or refine and re-run.");
-            return ExitNoDraft;
+            CliConsole.Error("not usable as-is. Fix the problems above by hand, or refine and re-run.");
+            return ExitNotUsable;
         }
 
         if (!settings.Write)
         {
-            AnsiConsole.MarkupLine("[grey]Preview only.[/] Re-run with [bold]--write[/] to save it to your user rules.");
+            CliConsole.Hint("[grey]Preview only.[/] Re-run with [bold]--write[/] to save it to your user rules.");
             return ExitOk;
         }
 
@@ -155,9 +168,9 @@ public sealed class SuggestRuleCommand : Command<SuggestRuleCommand.Settings>
             .Any(r => string.Equals(r.Id, validation.Rule.Id, StringComparison.OrdinalIgnoreCase));
         if (clash && !settings.Force)
         {
-            AnsiConsole.MarkupLine($"[red]A rule with id '{Markup.Escape(validation.Rule.Id)}' already exists.[/] " +
-                "Pass [bold]--force[/] to write it anyway (it will override that id).");
-            return ExitNoDraft;
+            CliConsole.Error($"a rule with id '{Markup.Escape(validation.Rule.Id)}' already exists.");
+            CliConsole.Hint("[grey]Pass [bold]--force[/] to write it anyway (it will override that id).[/]");
+            return ExitNotUsable;
         }
 
         try
@@ -166,11 +179,11 @@ public sealed class SuggestRuleCommand : Command<SuggestRuleCommand.Settings>
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AnsiConsole.MarkupLine($"[red]error:[/] couldn't write the rule — {Markup.Escape(ex.Message)}");
+            CliConsole.Error($"couldn't write the rule — {Markup.Escape(ex.Message)}");
             return ExitInputError;
         }
 
-        AnsiConsole.MarkupLine($"[green]✓ Saved[/] to [bold]{Markup.Escape(CiFailPaths.SuggestedRulesPath)}[/] " +
+        CliConsole.Out.MarkupLine($"[green]{Glyphs.Check} Saved[/] to [bold]{Markup.Escape(CiFailPaths.SuggestedRulesPath)}[/] " +
             "— it's now part of your rules. Double-check it with [bold]cifail rules validate[/].");
         return ExitOk;
     }
@@ -185,25 +198,27 @@ public sealed class SuggestRuleCommand : Command<SuggestRuleCommand.Settings>
 
     private static int AiUnavailable(string provider, string detail)
     {
-        AnsiConsole.MarkupLine($"[yellow]AI isn't available for drafting[/] ({Markup.Escape(detail)}).");
-        AnsiConsole.MarkupLine("suggest-rule needs a local model. Start [bold]Ollama[/] " +
+        CliConsole.Err.MarkupLine($"[yellow]AI isn't available for drafting[/] ({Markup.Escape(detail)}).");
+        CliConsole.Hint("suggest-rule needs a local model. Start [bold]Ollama[/] " +
             "([grey]https://ollama.com[/]) and pull a model, or author the rule by hand (see CONTRIBUTING.md).");
-        return ExitNoDraft;
+        return ExitNoAi;
     }
 
     private static void RenderPreview(DraftValidation v, string yaml)
     {
-        AnsiConsole.Write(new Panel(new Markup($"[grey]{Markup.Escape(yaml.TrimEnd())}[/]"))
+        // The proposed YAML is the answer (people pipe it into a file), so it stays on stdout;
+        // the diagnostics about it go to stderr.
+        CliConsole.Out.Write(new Panel(new Markup($"[grey]{Markup.Escape(yaml.TrimEnd())}[/]"))
             .Header("[bold]Proposed rule[/]")
             .Border(BoxBorder.Rounded));
 
         if (!string.IsNullOrWhiteSpace(v.MatchedLine))
-            AnsiConsole.MarkupLine($"[grey]Matches:[/] {Markup.Escape(v.MatchedLine)}");
+            CliConsole.Out.MarkupLine($"[grey]Matches:[/] {Markup.Escape(v.MatchedLine)}");
 
         foreach (var d in v.Diagnostics.OrderByDescending(d => d.Severity == DiagnosticSeverity.Error))
         {
-            var (tag, colour) = d.Severity == DiagnosticSeverity.Error ? ("error", "red") : ("warning", "yellow");
-            AnsiConsole.MarkupLine($"[{colour}]{tag}:[/] {Markup.Escape(d.Message)}");
+            if (d.Severity == DiagnosticSeverity.Error) CliConsole.Error(Markup.Escape(d.Message));
+            else CliConsole.Warn(Markup.Escape(d.Message));
         }
     }
 
