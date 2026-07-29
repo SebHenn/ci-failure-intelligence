@@ -10,6 +10,9 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 # Restore against just the project files first so layers cache when only code changes.
+# Directory.Build.props must come along: it carries TargetFramework and Version for every
+# project, and without it restore fails with NETSDK1013 (TargetFramework value '').
+COPY Directory.Build.props                      ./
 COPY src/CiFail.Core/CiFail.Core.csproj         src/CiFail.Core/
 COPY src/CiFail.Cli/CiFail.Cli.csproj           src/CiFail.Cli/
 COPY src/CiFail.Providers/CiFail.Providers.csproj src/CiFail.Providers/
