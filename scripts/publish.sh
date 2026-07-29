@@ -47,8 +47,16 @@ for rid in "${RIDS[@]}"; do
 done
 
 # Aggregate manifest, in addition to (never instead of) the per-artifact .sha256 files that
-# install.sh and any existing user scripts already consume.
-( cd dist && sha256sum cifail-*.tar.gz cifail-*.zip 2>/dev/null > SHA256SUMS || true )
+# install.sh and any existing user scripts already consume. nullglob keeps a single-RID run
+# working (no .zip exists when only a linux RID was built) without masking real errors.
+(
+  cd dist
+  shopt -s nullglob
+  artifacts=(cifail-*.tar.gz cifail-*.zip)
+  if [ ${#artifacts[@]} -gt 0 ]; then
+    sha256sum "${artifacts[@]}" > SHA256SUMS
+  fi
+)
 
 echo "==> done. artifacts in dist/"
 ls -1 dist
