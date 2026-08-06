@@ -42,8 +42,12 @@ dotnet build src/CiFail.Cli/CiFail.Cli.csproj -p:IncludeExternalDb=true
 docker build -t cifail .
 docker run --rm -v "$PWD:/work" cifail analyze build.log
 # CI integration (R5): composite GitHub Action `action.yml` (wraps the GHCR image, writes
-# the analysis to the step summary) and GitLab template `ci-templates/gitlab.yml`. The
-# image symlinks /app/cifail -> /usr/local/bin/cifail so `cifail` is on PATH when a runner
+# the analysis to the step summary). For GitLab there are TWO files and they are not
+# interchangeable: `templates/cifail.yml` is the CI/CD **component** (spec:inputs — stage,
+# log, image, args, fail, comment, comment_image) that the README leads with, and
+# `ci-templates/gitlab.yml` is the older hidden-job (`.cifail` + `extends:`) template kept
+# for back-compat with runners that can't use components. Change both or neither. The image
+# symlinks /app/cifail -> /usr/local/bin/cifail so `cifail` is on PATH when a runner
 # overrides the entrypoint (GitLab).
 
 # Run the external-DB contract tests against real engines (needs Docker):
@@ -490,8 +494,20 @@ input (→ `--report sarif --report-out`), paired with `github/codeql-action/upl
 - Spectre.Console.Cli 0.55: `Command<T>.Execute` and `.Validate` overrides are
   `protected` and `Execute` takes a `CancellationToken`.
 - `FluentAssertions` is pinned to **7.2.0** deliberately — v8+ is commercially
-  licensed and incompatible with this MIT project. Do not upgrade it.
+  licensed and incompatible with this MIT project. Do not upgrade it. `.github/dependabot.yml`
+  ignores it by name for the same reason; that entry is a legal constraint, not a preference.
 - Targets `net8.0` even though only the .NET 9 SDK is installed locally (builds fine).
+  Consequences worth knowing: **EF Core majors are pinned below 10** (EF 10 targets net10.0
+  only) and the Docker **runtime** base must stay `aspnet:8.0` — both are encoded as
+  dependabot `ignore` rules so they don't reappear as a failing PR every week. The **SDK**
+  image is free to move ahead.
+- User-visible changes get an entry under `## [Unreleased]` in `CHANGELOG.md`. `SECURITY.md`
+  documents the honest bits (history.db can contain secrets from the logs you analyzed;
+  `serve` runs open without a token) — keep it accurate rather than reassuring.
+- `.editorconfig` **describes** the existing style at `suggestion` severity; it is not a
+  reformatting mandate, and nothing in it may turn into a build warning. Note the naming
+  rules are order-sensitive: const/static-readonly (PascalCase) must precede the
+  private-field rule (`_camelCase`), which would otherwise match them too.
 - `*.log` is globally gitignored; sample and fixture logs are committed via explicit
   `!` un-ignore rules in `.gitignore` — keep new committed logs under `samples/` or a
   `fixtures/` dir.

@@ -1,0 +1,90 @@
+name: Bug report
+description: cifail did something wrong, crashed, or didn't do what the docs say.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. One thing before you paste anything:
+
+        > ⚠️ **CI logs routinely contain secrets** — tokens echoed by a step, connection
+        > strings in a stack trace, signed URLs in a curl trace. Anything you put in a
+        > public issue is public forever. **Redact first.**
+
+        Found a *security* problem instead? Don't file it here — use
+        [private reporting](https://github.com/SebHenn/ci-failure-intelligence/security/advisories/new).
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `cifail --version`.
+      placeholder: "0.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - scripts/install.sh (curl one-liner)
+        - Scoop (Windows)
+        - dotnet tool install --global cifail
+        - Docker (ghcr.io/sebhenn/cifail)
+        - GitHub Action / GitLab template
+        - Built from source
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: OS and architecture — and whether this was on a CI runner.
+      placeholder: "macOS 15 arm64 / ubuntu-latest runner / Windows 11 x64"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: >
+        The exact command, and the output. If a log is involved, attach the **smallest
+        redacted excerpt** that still reproduces it. `CIFAIL_DEBUG=1` adds a stack trace to
+        stderr for unexpected errors.
+      render: shell
+      placeholder: |
+        $ cifail analyze build.log
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Output of `cifail config`
+      description: >
+        Optional but usually decisive — it shows the build flavour, the resolved paths, and
+        where each setting came from. It is designed never to print a secret: it reports only
+        whether one is set, and a test enforces that. Still worth a glance before you paste.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed any tokens, credentials, hostnames or URLs I don't want public.
+          required: true
+        - label: I searched existing issues.
+          required: true

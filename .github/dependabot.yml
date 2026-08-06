@@ -1,0 +1,69 @@
+# Dependency updates.
+#
+# Grouped and weekly on purpose: an unreviewed PR per package per week is noise nobody
+# reads, and noise nobody reads is how a real security bump gets missed.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # These move in lockstep and are only ever consumed by the test projects, so one PR
+      # per week is both reviewable and safe to merge on green CI.
+      test-dependencies:
+        patterns:
+          - "xunit*"
+          - "Xunit*"
+          - "Microsoft.NET.Test.Sdk"
+          - "coverlet*"
+          - "Testcontainers*"
+      # Every relational provider shares an EF Core version; splitting them produces PRs
+      # that cannot build on their own.
+      efcore:
+        patterns:
+          - "Microsoft.EntityFrameworkCore*"
+          - "Npgsql.EntityFrameworkCore*"
+          - "Pomelo.EntityFrameworkCore*"
+          - "Pgvector*"
+    ignore:
+      # DO NOT REMOVE. FluentAssertions 8.0 changed to a commercial licence that is
+      # incompatible with this MIT project. The 7.2.0 pin is a legal constraint, not a
+      # compatibility one, so no amount of green CI makes the bump acceptable.
+      - dependency-name: FluentAssertions
+
+      # This project targets net8.0 (LTS) deliberately. EF Core 10 targets net10.0 only, so
+      # a major bump cannot build here — it would be a PR that fails CI every week forever.
+      # Drop these entries in the same change that moves the TFM.
+      - dependency-name: Microsoft.EntityFrameworkCore*
+        versions: [">=10.0.0"]
+      - dependency-name: Npgsql.EntityFrameworkCore.PostgreSQL
+        versions: [">=10.0.0"]
+      - dependency-name: Pomelo.EntityFrameworkCore.MySql
+        versions: [">=10.0.0"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+    # Covers .github/workflows/*.yml and the composite action.yml at the repo root — both
+    # pin actions by major tag, and a runtime deprecation (Node 20 -> 24) has already bitten
+    # this repo once.
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    ignore:
+      # The runtime image must match the app's TFM: aspnet:9.0 cannot run a net8.0 app
+      # without the 8.0 runtime installed alongside it. The SDK image is allowed to move
+      # ahead (a newer SDK builds net8.0 fine) — that is why only major bumps are held.
+      - dependency-name: mcr.microsoft.com/dotnet/aspnet
+        update-types: ["version-update:semver-major"]

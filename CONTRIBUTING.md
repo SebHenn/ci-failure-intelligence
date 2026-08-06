@@ -62,18 +62,25 @@ adding a rule to an existing file is enough — no project changes.
   fix: |
     The widget registry rejected the build (code {code}): {message}
     Check your WIDGET_TOKEN secret is set and not expired, then re-run.
-  docs: https://example.com/widget/errors   # optional
+  docs: https://example.com/widget/errors   # the tool's own reference page for this error
 ```
 
 Notes:
 
 - The regex runs against the **normalized** log (ANSI stripped, CI timestamps removed) with
   `IgnoreCase | Multiline`. Use `cifail rules test` (below) to iterate.
+  **`Multiline` is not `Singleline`:** `.` does not cross a newline. A shipped rule was dead
+  for exactly this reason.
 - **Named capture groups** (`(?<name>...)`) are interpolated into `fix` (and `title`) via
   `{name}`. Scrub volatile tokens out of captures where you can.
 - **Confidence guidance:** `0.9+` an unambiguous, well-known error code; `0.6–0.85` a
   strong signal; `0.4–0.55` a generic/ambiguous signal. Generic rules sit lower so an
   ecosystem-specific rule wins when both match.
+  **If your rule can fire on the same line as an existing one, the more specific rule must
+  have the strictly higher confidence** — equal confidence makes the winner arbitrary, which
+  was live between two Go rules until fixtures exposed it.
+- **`docs:` is expected**, not decorative: it's where a reader goes when the `fix` text isn't
+  enough. All 91 shipped rules have one and `cifail rules validate` warns when a rule doesn't.
 - New ecosystem? Add an enum value to `Models/Ecosystem.cs`, marker regexes to
   `Ingest/EcosystemDetector.cs`, and a new `rulepacks/<eco>.yaml`. That's the only case
   that touches C#.
@@ -93,12 +100,24 @@ cifail rules validate src/CiFail.Core/rulepacks
 
 ### 3. Add a fixture + a test case
 
+**This step is not optional — the build fails for a rule with no fixture.** A rule is data,
+so a rule nothing exercises is an untested claim: nothing proves the regex ever fires on what
+the tool actually prints, and nothing notices when it stops.
+
 1. Drop a representative log at
    `tests/CiFail.Core.Tests/fixtures/<name>.log` (committed via the `!fixtures` un-ignore
    rule in `.gitignore`).
-2. Add a row to
-   [`RulePackBreadthTests`](./tests/CiFail.Core.Tests/Rules/RulePackBreadthTests.cs) —
-   usually one `[InlineData(...)]` asserting the ecosystem + expected rule id.
+
+   > **Copy real tool output. Do not write the fixture from your regex.** Three shipped rules
+   > could never have matched anything real — a reversed shell word order, a `.` that had to
+   > cross a newline, and a wording composer doesn't use — and all three passed review. Only a
+   > realistic fixture caught them. Run the tool, break it on purpose, paste what it printed.
+
+2. Add a row to the `EcosystemRules` (or `GenericRules`) `TheoryData` in
+   [`RulePackBreadthTests`](./tests/CiFail.Core.Tests/Rules/RulePackBreadthTests.cs):
+   `{ "<fixture>.log", Ecosystem.Node, "<rule-id>" }`. The assertion is that your rule
+   **wins** the ranking, not merely that it matched — matching while losing to a vaguer rule
+   is indistinguishable from not working.
 3. For a headline new ecosystem, also add a `samples/<name>.log` for docs/demos.
 
 ### 4. Run the suite
@@ -108,15 +127,23 @@ dotnet build
 dotnet test
 ```
 
-`dotnet test` runs the Core, Server, and Providers suites. The external-DB integration
+`dotnet test` runs the Core, Cli, Server, and Providers suites. The external-DB integration
 tests are skipped unless `CIFAIL_DB_IT=1` (they need Docker).
 
 ## Submitting
+
+The [pull-request template](./.github/PULL_REQUEST_TEMPLATE.md) has the full checklist; the
+short version:
 
 - Keep PRs focused; one feature/pattern set per PR.
 - Make sure `dotnet test` is green and `cifail rules validate src/CiFail.Core/rulepacks`
   exits 0.
 - Match the surrounding code style and the plain, beginner-oriented tone of the output
   ("What broke" / "How to fix it", confidence shown as high/medium/low).
+- **stdout is the answer, stderr is everything about the run.** Commands write through
+  `CliConsole.Out` / `CliConsole.Err`, never `AnsiConsole.*` directly, and exit codes come
+  from `Cli/ExitCodes.cs`.
+- Anything user-visible gets an entry under `## [Unreleased]` in
+  [`CHANGELOG.md`](./CHANGELOG.md).
 
 Thank you! 🛠️

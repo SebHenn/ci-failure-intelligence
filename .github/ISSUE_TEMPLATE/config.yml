@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/SebHenn/ci-failure-intelligence/security/advisories/new
+    about: Report privately, never in a public issue. See SECURITY.md.
+  - name: Adding a rule yourself
+    url: https://github.com/SebHenn/ci-failure-intelligence/blob/main/CONTRIBUTING.md
+    about: Rules are plain YAML — the guide walks through rule, fixture and test.
+  - name: Check your setup first
+    url: https://github.com/SebHenn/ci-failure-intelligence#check-your-setup-cifail-config
+    about: "`cifail config` shows the resolved paths and where every setting came from."

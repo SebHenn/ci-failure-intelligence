@@ -1,0 +1,103 @@
+name: New failure pattern (rule request)
+description: cifail should recognize a failure but doesn't, or explains it badly.
+title: "rule: "
+labels: ["rule-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most valuable kind of contribution — a rule is plain YAML, no C#. If you'd
+        rather send it as a PR, [CONTRIBUTING.md](https://github.com/SebHenn/ci-failure-intelligence/blob/main/CONTRIBUTING.md)
+        walks through the whole thing (rule + fixture + one test row).
+
+        > ⚠️ **Redact the log before you paste it.** Build logs routinely contain tokens,
+        > connection strings, internal hostnames and signed URLs, and a public issue is public
+        > forever. Replace them with `<REDACTED>` — the pattern is what matters, not your
+        > secrets. Keep the tool's own wording, punctuation and error codes **exactly** as
+        > printed; that is what the rule has to match.
+
+  - type: dropdown
+    id: ecosystem
+    attributes:
+      label: Ecosystem
+      options:
+        - dotnet
+        - node
+        - python
+        - java
+        - go
+        - rust
+        - ruby
+        - php
+        - cpp
+        - infra (Docker/Terraform/k8s)
+        - swift
+        - android
+        - generic (any CI, any language)
+        - none of these / a new one
+    validations:
+      required: true
+
+  - type: input
+    id: tool
+    attributes:
+      label: Which tool printed it?
+      description: Include the version if you have it — error wording changes between versions.
+      placeholder: "npm 10.8.2 / dotnet 8.0.404 / gradle 8.10"
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: The failure, as the tool actually printed it
+      description: >
+        A **redacted** excerpt — a handful of lines around the error is plenty. Real output
+        only, please: a hand-written approximation produces a rule that matches nothing real,
+        which has happened here before.
+      render: shell
+      placeholder: |
+        npm ERR! code ERESOLVE
+        npm ERR! ERESOLVE unable to resolve dependency tree
+        npm ERR! While resolving: <REDACTED>@1.0.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: What does cifail say about it today?
+      description: >
+        Paste the output of `cifail analyze <log>`. "Nothing matched" is a perfectly good
+        answer — say so. If a rule *did* match but explained it badly, name the rule
+        (`cifail rules explain <id>`).
+      render: shell
+
+  - type: textarea
+    id: fix
+    attributes:
+      label: How do you fix this failure?
+      description: >
+        This becomes the "How to fix it" text, so write it for someone who has never seen this
+        error: what actually went wrong, and the concrete command or change that resolves it.
+    validations:
+      required: true
+
+  - type: input
+    id: docs
+    attributes:
+      label: Documentation link
+      description: >
+        The tool's own reference page for this error, if there is one. Every shipped rule
+        carries one, and `cifail rules validate` warns when a rule doesn't.
+      placeholder: "https://docs.npmjs.com/cli/v10/using-npm/config#legacy-peer-deps"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: The log excerpt above is redacted — no tokens, credentials, internal hostnames or signed URLs.
+          required: true
+        - label: It is real tool output, copied verbatim (not retyped or paraphrased).
+          required: true

@@ -41,7 +41,8 @@ started with a token (see **Auth** below).
 | `GET /repos/{repoId}/open` | —                               | open failures for one repo (R11)     |
 | `POST /resolve/{id}` | `{ "note": "..." }`; `?source=auto&commit=<sha>` for auto | the updated record |
 
-Implemented now (R7 + R9 + R11) and what's still open:
+What the server does today (release history lives in [CHANGELOG.md](../CHANGELOG.md);
+the `R<n>` markers are this repo's internal milestone ids, cross-referenced from `CLAUDE.md`):
 - **Stateless**: ✅ the pod holds no state; a fresh store is opened per request and all
   persistence is the external DB, so it scales horizontally behind the Service.
 - **Auth**: ✅ (**R9**) a shared bearer token, set via `CIFAIL_SERVER_TOKEN` or

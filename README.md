@@ -47,6 +47,7 @@ Saved as #1. Once you've fixed it, record how so future-you remembers:
   - [See the trends: `cifail stats`](#see-the-trends-cifail-stats)
   - [It remembers your fixes — often without being told](#it-remembers-your-fixes--often-without-being-told)
   - [Handy options for `analyze`](#handy-options-for-analyze)
+- [Teach it a new failure](#teach-it-a-new-failure)
 - [Use cifail in CI](#use-cifail-in-ci) — [GitHub Actions](#github-actions-the-ready-made-action) · [GitLab CI](#gitlab-ci) · [Exit codes](#exit-codes)
 - [What do the words mean?](#what-do-the-words-mean)
 - [Check your setup: `cifail config`](#check-your-setup-cifail-config)
@@ -160,7 +161,7 @@ cifail analyze samples/nuget-nu1101.log
 | `cifail history` | Show the failures you've analyzed before. Each has a number (its id). |
 | `cifail resolve <id> --note "..."` | Write down how you fixed failure number `<id>`, so cifail can remind you next time you hit something similar. |
 
-There's also `cifail rules list` to see every failure pattern cifail can recognize, and
+There's also [`cifail rules`](#teach-it-a-new-failure) for the patterns themselves, and
 `cifail --help` (or `cifail analyze --help`) for the full list of options.
 
 ### See the trends: `cifail stats`
@@ -232,7 +233,43 @@ we fix this last time?" history fills itself in. In `cifail history` these show 
     `CIFAIL_AI_KEY` environment variable (they make outbound network calls).
   - Defaults live under an `ai:` section in `~/.cifail/config.yaml`; env overrides are
     `CIFAIL_AI_PROVIDER` / `CIFAIL_AI_MODEL` / `CIFAIL_AI_URL` / `CIFAIL_AI_KEY`.
+  - **Cap the cost** of a hosted backend with `CIFAIL_AI_MAX_CALLS` (per run) and
+    `CIFAIL_AI_MAX_CALLS_PER_MIN`, or the matching `ai.limits` block
+    (`maxCallsPerRun`, `maxCallsPerMinute`, `maxRequestChars`). Unset means unlimited —
+    worth setting before you point cifail at a hundred-log directory.
 - `--no-history` — analyze without saving this run to history.
+- `--no-git` — skip git correlation, so nothing is tagged with a commit and no past failure
+  is auto-resolved.
+- `--top <N>` — how many similar past failures to show (default 3).
+- **Several logs at once:** `cifail analyze build.log test.log deploy.log`. Each is analyzed
+  on its own and gets its own history entry; the exit code reflects the whole run.
+
+---
+
+## Teach it a new failure
+
+A rule is plain YAML — a regex, a title, and the fix text. No C# required.
+
+```console
+cifail rules list                    # every pattern cifail can recognize
+cifail rules explain nuget-nu1101    # what one rule matches, and its fix text
+cifail rules test 'error NU1101'     # try a regex against a log, see what it captures
+cifail rules validate                # lint your packs: bad regex, duplicate id, missing docs
+```
+
+Drop your own `*.yaml` into `~/.cifail/rules/` and it loads next run. Reuse a shipped rule's
+`id` to override it. `cifail rules validate` exits non-zero on a real error, so it works as a
+CI step for a repo that maintains its own packs.
+
+Stuck on the regex? **`cifail suggest-rule <log>`** drafts one with an AI model — and then
+cifail's own validators gate the draft: the regex has to compile inside a one-second timeout,
+it has to *actually match the log you gave it*, and it can't be something as broad as `.*`.
+`--write` appends the accepted draft to `~/.cifail/rules/suggested.yaml`. This needs a model
+(local Ollama by default); without one it says so and exits, like every other AI path.
+
+If the pattern would help other people too, please
+[open a rule request](https://github.com/SebHenn/ci-failure-intelligence/issues/new?template=rule_request.yml)
+or send a PR — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ---
 
@@ -398,6 +435,7 @@ When something isn't behaving the way you expect, this answers "what is cifail a
 doing?" in one screen:
 
 ```bash
+cifail --version       # just the version
 cifail config          # or: cifail doctor
 cifail config --json   # machine-readable
 cifail config --strict # also fail on warnings (for CI)

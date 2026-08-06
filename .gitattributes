@@ -10,6 +10,10 @@
 *.json  text eol=lf
 *.log   text eol=lf
 
+# .editorconfig declares `end_of_line = lf` for everything; checking it out as CRLF would
+# make the file contradict itself.
+.editorconfig text eol=lf
+
 # Shell scripts must stay LF — they run on Linux/macOS CI and via `curl | bash`.
 *.sh    text eol=lf
 Dockerfile text eol=lf
