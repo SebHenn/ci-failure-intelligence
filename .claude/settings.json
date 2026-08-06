@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test)",
+      "Bash(dotnet test *)",
+      "Bash(dotnet restore)",
+      "Bash(dotnet format --verify-no-changes *)",
+      "PowerShell(dotnet build)",
+      "PowerShell(dotnet build *)",
+      "PowerShell(dotnet test)",
+      "PowerShell(dotnet test *)",
+      "PowerShell(dotnet restore)",
+      "PowerShell(dotnet format --verify-no-changes *)",
+
+      "Bash(bash scripts/check-versions.sh)",
+      "Bash(bash scripts/check-versions.sh *)",
+      "Bash(shellcheck scripts/*.sh)",
+      "Bash(dotnet run --project src/CiFail.Cli -- rules validate src/CiFail.Core/rulepacks)",
+
+      "Bash(gh run list *)",
+      "Bash(gh run view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr diff *)"
+    ],
+    "ask": [
+      "Bash(git push --force *)",
+      "PowerShell(git push --force *)",
+      "Bash(gh pr merge *)",
+      "PowerShell(gh pr merge *)"
+    ]
+  }
+}

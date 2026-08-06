@@ -38,6 +38,21 @@ covered in [Test it as you write](#2-test-it-as-you-write) below.
 
 See [CLAUDE.md](./CLAUDE.md) for the full command reference and architecture notes.
 
+### If you use an AI coding agent
+
+`CLAUDE.md` is the architecture brief, and `.claude/settings.json` is a committed permission
+allowlist covering the commands this repo actually runs — `dotnet build`/`test`, the version
+and rule-pack linters, and read-only `gh` queries. Merging and force-pushing are deliberately
+left as prompts rather than grants.
+
+It's checked in because a permission allowlist is a security boundary, and a reviewable one in
+the repo beats an invisible one on each contributor's machine. Personal overrides belong in
+`.claude/settings.local.json`, which is gitignored. Nothing here is required to contribute —
+delete it locally and everything still builds.
+
+One repo-specific trap it does **not** paper over: running the CLI by hand writes history to
+your real `~/.cifail/`. Set `CIFAIL_HOME` to a temp directory first (see [CLAUDE.md](./CLAUDE.md)).
+
 ## Add a failure pattern (the common case)
 
 A rule is one entry in a YAML pack under

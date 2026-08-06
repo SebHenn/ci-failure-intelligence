@@ -503,3 +503,7 @@ NuGet/Migrations/
 # Rendered packaging manifests (scripts/render-packaging.sh output) — generated per release,
 # never committed. The templates in packaging/*/ are the source of truth.
 packaging/rendered/
+
+# Claude Code: .claude/settings.json IS committed (it's the shared, reviewable allowlist).
+# Personal overrides and transcripts are not.
+.claude/settings.local.json
