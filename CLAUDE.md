@@ -49,9 +49,25 @@ docker run --rm -v "$PWD:/work" cifail analyze build.log
 # Run the external-DB contract tests against real engines (needs Docker):
 CIFAIL_DB_IT=1 dotnet test tests/CiFail.Providers.Tests
 docker compose -f docker-compose.test.yml up -d   # manual DBs for --db-* runs
-# Releases are cut by pushing a tag (git tag v0.1.0 && git push origin v0.1.0),
-# which triggers .github/workflows/release.yml to build the matrix + attach binaries.
+# Releases are cut by pushing a tag (git tag v0.2.0 && git push origin v0.2.0). The tag must
+# equal <Version> in Directory.Build.props — release.yml's `verify` job enforces it, because a
+# mismatch is what made every 0.1.0 install path 404. One Linux runner cross-publishes all 6
+# RIDs (there is no build matrix; only `smoke` is a matrix, ubuntu + macos).
 ```
+
+**Release chain (`release.yml`): `verify → build → release(draft) → smoke → finalize`,** with
+`nuget` and `docker` hanging off `verify`. The GitHub Release stays a **draft** until the real
+`install.sh` has installed the real assets on Linux *and* macOS; `finalize` un-drafts it and
+force-moves the `v1` tag that `uses: SebHenn/ci-failure-intelligence@v1` resolves to.
+
+**NuGet publishing uses trusted publishing (OIDC) — there is no `NUGET_API_KEY` secret.** The
+`nuget` job declares `id-token: write`, and `NuGet/login@v1` exchanges a GitHub-signed token for
+an API key valid one hour. nuget.org matches the token's claims against a policy naming the repo
+owner, the repo, and **the workflow file name** (`release.yml`) — so renaming that file silently
+breaks publishing. The push is gated at **step** level on `secrets.NUGET_USER` (the nuget.org
+profile name): a skipped *job* would skip `finalize` through `needs` and strand the release as a
+permanent draft. A published NuGet version can only be unlisted, never replaced, which is why
+`Check the package identity` asserts the packed file name before the push.
 
 The published executable is named **`cifail`** (set via `<AssemblyName>`), not
 `CiFail.Cli`. Self-contained/single-file props in `CiFail.Cli.csproj` are gated on

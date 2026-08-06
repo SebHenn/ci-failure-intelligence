@@ -86,21 +86,29 @@ install.** Pick your platform:
 curl -fsSL https://raw.githubusercontent.com/SebHenn/ci-failure-intelligence/main/scripts/install.sh | bash
 ```
 
-**Homebrew** (macOS / Linux):
-
-```console
-brew install SebHenn/tap/cifail
-```
-
 **Windows** ([Scoop](https://scoop.sh)):
 
 ```console
 scoop install https://github.com/SebHenn/ci-failure-intelligence/releases/latest/download/cifail.json
 ```
 
+**.NET global tool** (if you already have the .NET 8+ SDK):
+
+```console
+dotnet tool install --global cifail
+```
+
 **Manual:** grab the binary for your OS from the
 [Releases page](https://github.com/SebHenn/ci-failure-intelligence/releases), unzip it,
-and put it on your `PATH`.
+and put it on your `PATH`. Every archive ships a `.sha256` next to it, and each release has
+an aggregate `SHA256SUMS` — verify before you run:
+
+```console
+sha256sum -c cifail-0.2.0-linux-x64.tar.gz.sha256   # macOS: shasum -a 256 -c
+```
+
+**Homebrew:** every release ships a rendered `cifail.rb` formula, but there is no official
+tap yet — copy it into your own tap, or use the `curl … install.sh` line above.
 
 **Docker** (no install — and the image bundles every database driver):
 

@@ -112,12 +112,28 @@ jobs:
 
   # Packed from a clean checkout with no RuntimeIdentifier: PackAsTool and SelfContained are
   # mutually exclusive, so this must not reuse the publish workspace.
+  #
+  # Publishing uses nuget.org TRUSTED PUBLISHING (OIDC) — there is no long-lived API key in
+  # this repo's secrets. The job asks GitHub for a short-lived signed token describing this
+  # workflow run; nuget.org verifies that signature with GitHub, matches the claims against
+  # the policy registered on the account, and returns an API key valid for one hour.
+  #
+  # The policy on nuget.org must name exactly:
+  #   Repository Owner: SebHenn · Repository: ci-failure-intelligence · Workflow File: release.yml
+  # with Environment left blank (this job declares none). Renaming this file breaks publishing.
+  # https://learn.microsoft.com/nuget/nuget-org/trusted-publishing
   nuget:
     needs: verify
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    # A job-level block replaces the workflow-level one, so contents must be restated.
+    permissions:
+      contents: read
+      id-token: write   # lets this job mint the OIDC token nuget.org verifies. Required.
     env:
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      # The `secrets` context is not available in a step-level `if`, so the presence check
+      # reads it through `env`. NUGET_USER is the nuget.org profile name, not an email.
+      NUGET_USER: ${{ secrets.NUGET_USER }}
     steps:
       - uses: actions/checkout@v7
 
@@ -131,13 +147,37 @@ jobs:
       - name: Pack global tool
         run: dotnet pack src/CiFail.Cli/CiFail.Cli.csproj --configuration Release --output nupkg
 
-      # Step-level (not job-level) gate on the secret: a skipped JOB would also skip
-      # `finalize` through `needs`, stranding the release as a permanent draft.
+      # A published NuGet version can only ever be unlisted — never deleted, never replaced.
+      # So assert the artifact is the one we mean before it becomes permanent.
+      - name: Check the package identity
+        run: |
+          version="$(bash scripts/version.sh)"
+          expected="nupkg/cifail.$version.nupkg"
+          if [ ! -f "$expected" ]; then
+            echo "error: expected $expected, but pack produced:" >&2
+            ls -1 nupkg >&2
+            exit 1
+          fi
+          echo "packing $expected"
+
+      # Must run immediately before the push: the key lasts an hour and each OIDC token can
+      # be exchanged exactly once.
+      #
+      # Step-level (not job-level) gating on NUGET_USER: a skipped JOB would also skip
+      # `finalize` through `needs`, stranding the release as a permanent draft. A fork or a
+      # clone without the secret still gets a green `verify → build → release` chain.
+      - name: Log in to nuget.org (OIDC)
+        id: login
+        if: env.NUGET_USER != ''
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Push to nuget.org
-        if: env.NUGET_API_KEY != ''
+        if: env.NUGET_USER != ''
         run: >
           dotnet nuget push "nupkg/*.nupkg"
-          --api-key "$NUGET_API_KEY"
+          --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
 
