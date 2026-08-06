@@ -69,3 +69,81 @@
     pytest reported failures ({summary}). Look for the FAILED lines and the assert
     diffs above. Reproduce one with `pytest path::test_name -x`.
   docs: https://docs.pytest.org/en/stable/how-to/usage.html
+
+- id: pip-wheel-build-failed
+  ecosystem: python
+  category: build
+  title: Building a wheel from source failed
+  match: "ERROR: Failed building wheel for (?<package>\\S+)|Building wheel for (?<package2>\\S+) \\(pyproject\\.toml\\) did not run successfully"
+  confidence: 0.85
+  fix: |
+    pip had no prebuilt wheel for this platform and had to compile from source, which
+    failed. Almost always a missing build dependency: a compiler, Python headers
+    (`python3-dev`), or the C library the package binds to. Read the compiler error above
+    for which header is missing. Often avoidable entirely — check whether a wheel exists
+    for a slightly different Python version or architecture before installing a toolchain.
+  docs: https://pip.pypa.io/en/stable/cli/pip_install/#building-packages
+
+- id: pip-externally-managed
+  ecosystem: python
+  category: environment
+  title: Refusing to install into a system Python (PEP 668)
+  match: "error: externally-managed-environment|This environment is externally managed"
+  confidence: 0.9
+  fix: |
+    The distro marked this Python as managed by its own package manager, so pip won't
+    install into it. In CI the right fix is a virtual environment:
+    `python -m venv .venv && . .venv/bin/activate`, then install as normal.
+    `--break-system-packages` works but earns its name; prefer the venv.
+  docs: https://peps.python.org/pep-0668/
+
+- id: poetry-lock-outdated
+  ecosystem: python
+  category: dependency
+  title: poetry.lock is out of date with pyproject.toml
+  match: "pyproject\\.toml changed significantly since poetry\\.lock was last generated"
+  confidence: 0.9
+  fix: |
+    A dependency changed in pyproject.toml without the lockfile being regenerated. Run
+    `poetry lock` (add `--no-update` to keep everything else pinned where it is), then
+    commit poetry.lock.
+  docs: https://python-poetry.org/docs/cli/#lock
+
+- id: py-attribute-error
+  ecosystem: python
+  category: test
+  title: Python AttributeError
+  match: "AttributeError: (?<message>.+)"
+  confidence: 0.75
+  fix: |
+    {message}
+    Something was not the type the code expected — very often `None` where an object was
+    expected, which means the real failure is wherever that value was produced. Read the
+    traceback above from the bottom up to find it.
+  docs: https://docs.python.org/3/library/exceptions.html#AttributeError
+
+- id: mypy-type-error
+  ecosystem: python
+  category: compile
+  title: mypy type error
+  match: "(?<file>\\S+\\.py):(?<line>\\d+): error: (?<message>.+?)\\s+\\[(?<code>[\\w-]+)\\]"
+  confidence: 0.8
+  fix: |
+    mypy rejected {file}:{line} — {message} [{code}]
+    Fix the annotation or the value. To silence one line deliberately, use
+    `# type: ignore[{code}]` — the code in brackets keeps it narrow, so the ignore doesn't
+    quietly swallow a different error later.
+  docs: https://mypy.readthedocs.io/en/stable/error_codes.html
+
+- id: ruff-lint-error
+  ecosystem: python
+  category: ci
+  title: Ruff lint error
+  match: "(?<file>\\S+\\.py):(?<line>\\d+):\\d+: (?<code>[A-Z]{1,4}\\d{3,4}) (?<message>.+)"
+  confidence: 0.75
+  fix: |
+    Ruff flagged {file}:{line} — {code}: {message}
+    `ruff check --fix .` fixes most rules automatically, and `ruff rule {code}` explains
+    this one. If the rule doesn't apply to your codebase, turn it off in the `[tool.ruff]`
+    section of pyproject.toml rather than adding a `# noqa` to every occurrence.
+  docs: https://docs.astral.sh/ruff/rules/

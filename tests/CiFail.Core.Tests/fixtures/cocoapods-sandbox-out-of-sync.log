@@ -1,0 +1,8 @@
+Run xcodebuild -workspace App.xcworkspace -scheme App build
+note: Using new build system
+
+PhaseScriptExecution [CP]\ Check\ Pods\ Manifest.lock /Users/runner/Library/Developer/Xcode/DerivedData/App/Build/Intermediates.noindex/App.build/Debug-iphonesimulator/App.build/Script-46EB2E0001.sh
+diff: /Users/runner/work/App/Podfile.lock: No such file or directory
+error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.
+
+** BUILD FAILED **

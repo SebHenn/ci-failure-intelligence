@@ -39,6 +39,11 @@ public class RulePackBreadthTests
         { "csc-compile-error.log", Ecosystem.Dotnet, "csc-compile-error" },
         { "xunit-assert-failed.log", Ecosystem.Dotnet, "xunit-assert-failed" },
         { "dotnet-sdk-not-found.log", Ecosystem.Dotnet, "dotnet-sdk-not-found" },
+        { "netsdk-assets-missing.log", Ecosystem.Dotnet, "netsdk-assets-missing" },
+        { "nuget-nu1301.log", Ecosystem.Dotnet, "nuget-nu1301" },
+        { "msbuild-msb4018.log", Ecosystem.Dotnet, "msbuild-msb4018" },
+        { "mstest-assert-failed.log", Ecosystem.Dotnet, "mstest-assert-failed" },
+        { "nunit-assert-failed.log", Ecosystem.Dotnet, "nunit-assert-failed" },
 
         // node
         { "node-eresolve.log", Ecosystem.Node, "npm-eresolve" },
@@ -47,6 +52,14 @@ public class RulePackBreadthTests
         { "npm-missing-script.log", Ecosystem.Node, "npm-missing-script" },
         { "node-enoent.log", Ecosystem.Node, "node-enoent" },
         { "jest-test-failed.log", Ecosystem.Node, "jest-test-failed" },
+        { "npm-ci-lock-mismatch.log", Ecosystem.Node, "npm-ci-lock-mismatch" },
+        { "npm-ebadengine.log", Ecosystem.Node, "npm-ebadengine" },
+        { "npm-eintegrity.log", Ecosystem.Node, "npm-eintegrity" },
+        { "yarn-frozen-lockfile.log", Ecosystem.Node, "yarn-frozen-lockfile" },
+        { "pnpm-frozen-lockfile.log", Ecosystem.Node, "pnpm-frozen-lockfile" },
+        { "typescript-compile-error.log", Ecosystem.Node, "typescript-compile-error" },
+        { "vitest-test-failed.log", Ecosystem.Node, "vitest-test-failed" },
+        { "playwright-test-failed.log", Ecosystem.Node, "playwright-test-failed" },
 
         // python
         { "python-modulenotfound.log", Ecosystem.Python, "py-module-not-found" },
@@ -55,6 +68,12 @@ public class RulePackBreadthTests
         { "pip-no-matching-version.log", Ecosystem.Python, "pip-no-matching-version" },
         { "py-syntax-error.log", Ecosystem.Python, "py-syntax-error" },
         { "pytest-failed.log", Ecosystem.Python, "pytest-failed" },
+        { "pip-wheel-build-failed.log", Ecosystem.Python, "pip-wheel-build-failed" },
+        { "pip-externally-managed.log", Ecosystem.Python, "pip-externally-managed" },
+        { "poetry-lock-outdated.log", Ecosystem.Python, "poetry-lock-outdated" },
+        { "py-attribute-error.log", Ecosystem.Python, "py-attribute-error" },
+        { "mypy-type-error.log", Ecosystem.Python, "mypy-type-error" },
+        { "ruff-lint-error.log", Ecosystem.Python, "ruff-lint-error" },
 
         // java
         { "java-compile-error.log", Ecosystem.Java, "java-compile-error" },
@@ -123,6 +142,11 @@ public class RulePackBreadthTests
         { "xcode-code-signing.log", Ecosystem.Swift, "xcode-code-signing" },
         { "xcode-build-failed.log", Ecosystem.Swift, "xcode-build-failed" },
         { "swift-linker-symbols.log", Ecosystem.Swift, "swift-linker-symbols" },
+        { "xctest-failed.log", Ecosystem.Swift, "xctest-failed" },
+        { "swift-package-resolution.log", Ecosystem.Swift, "swift-package-resolution" },
+        { "swift-missing-product.log", Ecosystem.Swift, "swift-missing-product" },
+        { "xcodebuild-no-destination.log", Ecosystem.Swift, "xcodebuild-no-destination" },
+        { "cocoapods-sandbox-out-of-sync.log", Ecosystem.Swift, "cocoapods-sandbox-out-of-sync" },
 
         // android
         { "android-resource.log", Ecosystem.Android, "android-resource-not-found" },

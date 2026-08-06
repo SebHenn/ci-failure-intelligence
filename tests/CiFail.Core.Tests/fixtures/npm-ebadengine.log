@@ -1,0 +1,9 @@
+Run npm install
+npm ERR! code EBADENGINE
+npm ERR! engine Unsupported engine
+npm ERR! engine Not compatible with your version of node/npm: my-app@1.0.0
+npm ERR! notsup Not compatible with your version of node/npm: my-app@1.0.0
+npm ERR! notsup Required: {"node":">=20.0.0"}
+npm ERR! notsup Actual:   {"npm":"10.2.4","node":"v18.19.0"}
+npm ERR!
+npm ERR! A complete log of this run can be found in: /home/runner/.npm/_logs/2026-08-06T09_20_11_004Z-debug-0.log

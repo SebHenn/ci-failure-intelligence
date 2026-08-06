@@ -1,0 +1,6 @@
+Run ruff check .
+src/app/cli.py:1:1: F401 [*] `os` imported but unused
+src/app/cli.py:47:5: E722 Do not use bare `except`
+src/app/models.py:12:89: E501 Line too long (104 > 88)
+Found 3 errors.
+[*] 1 fixable with the `--fix` option.

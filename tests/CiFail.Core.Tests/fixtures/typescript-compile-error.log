@@ -1,0 +1,10 @@
+Run npm run build
+
+> my-app@1.0.0 build
+> tsc --noEmit
+
+src/services/user.ts(42,7): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/services/user.ts(58,22): error TS2339: Property 'emailAddress' does not exist on type 'User'. Did you mean 'email'?
+node_modules/@types/express/index.d.ts(128,5): error TS2717: Subsequent property declarations must have the same type.
+Error: Process completed with exit code 2.

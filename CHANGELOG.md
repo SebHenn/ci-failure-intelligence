@@ -20,8 +20,28 @@ after 1.0.
   gives the same verdict on a laptop and in a scratch container. `--json`, `--format` and
   `--type` work as they do on `analyze`.
 
+- **24 new rules** across the four thinnest packs, each with a fixture proving it matches
+  real tool output and wins the ranking:
+  - **node** (6 → 14): `npm ci` lockfile mismatch, `EBADENGINE`, `EINTEGRITY`, yarn
+    `--frozen-lockfile`, pnpm `ERR_PNPM_OUTDATED_LOCKFILE`, TypeScript `TS####`, Vitest and
+    Playwright failures.
+  - **python** (6 → 12): wheel build failure, PEP 668 `externally-managed-environment`,
+    `poetry.lock` drift, `AttributeError`, mypy and Ruff.
+  - **dotnet** (7 → 12): `NETSDK1004` (restore never ran), `NU1301` (unreachable feed),
+    `MSB4018`, and MSTest/NUnit assertions — previously only xUnit was recognized.
+  - **swift** (5 → 10): **XCTest failures** (there was no Swift test rule at all), SwiftPM
+    resolution, missing package product, no matching simulator destination, and CocoaPods
+    sandbox drift.
+
 ### Fixed
 
+- **Ecosystem detection only knew each ecosystem's oldest tool.** A yarn or pnpm failure
+  need never mention its own lockfile, a mypy or Ruff run has nothing but a `.py` suffix,
+  and a SwiftPM build never says "xcodebuild" — so all of those scored below the threshold
+  and fell back to `generic`. Tool invocations (`yarn install`, `npm run`, `npx`, `swift
+  build`) and modern config files (`pyproject.toml`, `Package.swift`, `Podfile`) are now
+  markers, alongside `mypy`/`ruff`/`poetry`/`flake8`/`pylint`.
+- `swift-compile-error` no longer restates every XCTest failure.
 - **`cifail serve --help` crashed** (`Could not find color or style 'name'`, exit 70) in the
   Docker/full build. Spectre renders option descriptions as markup, and `--tokens-file`'s
   description contained a literal `[name]`. CI now builds the image and *runs* it, since a

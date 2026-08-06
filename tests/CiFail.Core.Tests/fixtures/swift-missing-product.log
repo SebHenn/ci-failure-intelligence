@@ -1,0 +1,3 @@
+Run swift build -c release
+error: product 'AsyncHTTPClient' required by package 'app' target 'AppCore' not found.
+[0/1] Planning build

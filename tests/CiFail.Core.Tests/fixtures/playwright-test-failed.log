@@ -1,0 +1,22 @@
+Run npm run e2e
+
+> my-app@1.0.0 e2e
+> playwright test
+
+Running 24 tests using 4 workers
+
+  1) [chromium] › tests/checkout.spec.ts:31:5 › checkout › shows a validation error
+
+    Error: Timed out 5000ms waiting for expect(locator).toBeVisible()
+
+    Locator: getByRole('alert')
+    Expected: visible
+    Received: hidden
+
+      30 |     await page.getByRole('button', { name: 'Pay' }).click();
+    > 31 |     await expect(page.getByRole('alert')).toBeVisible();
+
+        at /home/runner/work/my-app/node_modules/@playwright/test/lib/matchers.js:112:23
+
+  1 failed
+  23 passed (18.2s)

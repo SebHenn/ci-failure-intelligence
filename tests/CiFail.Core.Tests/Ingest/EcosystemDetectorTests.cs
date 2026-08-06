@@ -212,6 +212,36 @@ public class EcosystemDetectorTests
         }
     }
 
+    /// <summary>
+    /// A tool invocation identifies its ecosystem as surely as an error code does. These are
+    /// all real logs that scored below <c>MinimumScore</c> and fell back to <c>generic</c>,
+    /// because the markers only knew the ecosystem's *oldest* tool: a yarn or pnpm failure
+    /// need never mention its own lockfile, a mypy or ruff run has nothing but a `.py`
+    /// suffix, and a SwiftPM build never says "xcodebuild".
+    /// </summary>
+    [Theory]
+    [InlineData("yarn install v1.22.22\nerror Your lockfile needs to be updated", Ecosystem.Node)]
+    [InlineData("Run pnpm install\n ERR_PNPM_OUTDATED_LOCKFILE  Cannot install", Ecosystem.Node)]
+    [InlineData("> my-app@1.0.0 test\nnpm run test\nfailed", Ecosystem.Node)]
+    [InlineData("npx playwright test\n1 failed", Ecosystem.Node)]
+    [InlineData("Run mypy src\nsrc/app.py:12: error: bad type  [assignment]", Ecosystem.Python)]
+    [InlineData("Run ruff check .\nsrc/app.py:1:1: F401 unused import", Ecosystem.Python)]
+    [InlineData("Run poetry install\npyproject.toml changed significantly", Ecosystem.Python)]
+    [InlineData("Run swift build -c release\nerror: product 'X' not found.", Ecosystem.Swift)]
+    [InlineData("error: The sandbox is not in sync with the Podfile.lock", Ecosystem.Swift)]
+    public void A_tool_invocation_identifies_the_ecosystem(string log, Ecosystem expected)
+        => EcosystemDetector.Detect(Doc(log)).Should().Be(expected);
+
+    /// <summary>
+    /// The counterweight to the theory above: those markers must stay narrow enough that a
+    /// passing mention doesn't hijack an unrelated log.
+    /// </summary>
+    [Theory]
+    [InlineData("Installing the npm package would fix this, apparently.")]
+    [InlineData("The build produced a black box; a hidden gem of a yarn.")]
+    public void A_passing_mention_of_a_tool_does_not_claim_the_log(string log)
+        => EcosystemDetector.Detect(Doc(log)).Should().Be(Ecosystem.Generic);
+
     [Fact]
     public void Every_ecosystem_the_detector_can_return_is_advertised()
     {

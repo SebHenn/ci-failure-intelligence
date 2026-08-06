@@ -186,6 +186,14 @@ public static class EcosystemDetector
             Strong(@"package-lock\.json"),
             Strong(@"yarn\.lock"),
             Strong(@"pnpm-lock\.yaml"),
+            // An invoked command, like the `go build` / `dotnet build` markers. A bare `npm`
+            // or `yarn` stays weak (it turns up in prose), but nobody writes `yarn install`
+            // about anything else — and a yarn/pnpm log need never mention its own lockfile,
+            // which is how a real `--frozen-lockfile` failure scored 1 and fell back to generic.
+            Strong(@"\bnpm (?:install|ci|run|test|publish|exec|audit|pack)\b"),
+            Strong(@"\byarn (?:install|add|run|test|why|workspaces|dlx)\b"),
+            Strong(@"\bpnpm (?:install|add|run|test|dlx|exec)\b"),
+            Strong(@"\bnpx\b"),
             Weak(@"\byarn\b"),
             Weak(@"\bpnpm\b"),
             Weak(@"\bnpm\b"),
@@ -200,6 +208,16 @@ public static class EcosystemDetector
             Strong(@"requirements\.txt"),
             Strong(@"ERROR: Could not find a version that satisfies"),
             Strong(@"\.py"", line \d+"),
+            // The pip/pytest markers above missed all of modern Python tooling, so a mypy,
+            // ruff or poetry log scored 1 on a bare `.py` and fell back to generic. Each of
+            // these names is effectively unique to Python — `black` is deliberately absent,
+            // being an ordinary English word.
+            Strong(@"\bpyproject\.toml\b"),
+            Strong(@"\bpoetry\.lock\b"),
+            Strong(@"\bmypy\b"),
+            Strong(@"\bruff\b"),
+            Strong(@"\b(?:flake8|pylint|pipenv|virtualenv)\b"),
+            Strong(@"\b(?:poetry|uv|pipenv|tox) (?:install|lock|add|run|sync|-r|-e)\b"),
             Weak(@"\bpytest\b"),
             Weak(@"\bpython3?\b"),
             Weak(@"\.py\b"),
@@ -311,6 +329,12 @@ public static class EcosystemDetector
             Strong(@"\.swift:\d+"),
             Strong(@"\*\* BUILD FAILED \*\*"),
             Strong(@"CompileSwift"),
+            // SwiftPM and CocoaPads builds need never mention xcodebuild or a .swift line
+            // number, so `swift build` alone used to score 0 and fall back to generic.
+            Strong(@"\bswift (?:build|test|package|run)\b"),
+            Strong(@"Package\.swift"),
+            Strong(@"\bPodfile(?:\.lock)?\b"),
+            Strong(@"\bxcrun\b"),
             Weak(@"\bXcode\b"),
             Weak(@"Code Sign(?:ing)?"),
         },

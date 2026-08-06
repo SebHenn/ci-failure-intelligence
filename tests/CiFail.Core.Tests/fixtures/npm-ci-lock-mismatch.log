@@ -1,0 +1,12 @@
+Run npm ci
+npm ERR! code EUSAGE
+npm ERR!
+npm ERR! `npm ci` can only install packages when your package.json and package-lock.json or npm-shrinkwrap.json are in sync. Please update your lock file with `npm install` before continuing.
+npm ERR!
+npm ERR! Invalid: lock file's react@17.0.2 does not satisfy react@18.2.0
+npm ERR! Missing: @testing-library/react@14.1.2 from lock file
+npm ERR!
+npm ERR! Clean install a project
+npm ERR!
+npm ERR! A complete log of this run can be found in: /home/runner/.npm/_logs/2026-08-06T09_14_22_331Z-debug-0.log
+Error: Process completed with exit code 1.

@@ -1,0 +1,9 @@
+Run dotnet build --no-restore -c Release
+MSBuild version 17.11.4+37eb419ad for .NET
+/home/runner/work/app/src/Api/Api.csproj : error NETSDK1004: Assets file '/home/runner/work/app/src/Api/obj/project.assets.json' not found. Run a NuGet package restore to generate this file.
+
+Build FAILED.
+
+/home/runner/work/app/src/Api/Api.csproj : error NETSDK1004: Assets file '/home/runner/work/app/src/Api/obj/project.assets.json' not found. Run a NuGet package restore to generate this file.
+    0 Warning(s)
+    1 Error(s)

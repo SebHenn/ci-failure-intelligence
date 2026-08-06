@@ -85,3 +85,67 @@
     Check global.json for a pinned SDK version and either install that SDK or
     relax/remove the version constraint.
   docs: https://learn.microsoft.com/dotnet/core/tools/global-json
+
+- id: netsdk-assets-missing
+  ecosystem: dotnet
+  category: build
+  title: project.assets.json missing — restore hasn't run
+  match: "error NETSDK1004: Assets file '(?<file>[^']+)' not found"
+  confidence: 0.9
+  fix: |
+    {file} is produced by restore, and the build ran without it. Add a `dotnet restore`
+    step, or drop `--no-restore` from the build. In a Docker build this usually means the
+    restore layer ran against a different set of project files than the build layer —
+    check that every .csproj referenced by the solution is COPYed in before restore.
+  docs: https://learn.microsoft.com/dotnet/core/tools/sdk-errors/netsdk1004
+
+- id: nuget-nu1301
+  ecosystem: dotnet
+  category: network
+  title: NuGet source unreachable
+  match: "error NU1301: Unable to load the service index for source (?<source>\\S+?)\\.?$"
+  confidence: 0.88
+  fix: |
+    NuGet could not read the feed at {source}. Either the host is unreachable from this
+    runner (proxy/firewall/DNS), or it needs credentials the build doesn't have. For a
+    private feed, add the token as a NuGet source credential; if the feed is simply gone,
+    remove it from nuget.config — an unreachable source fails restore even when every
+    package is available elsewhere.
+  docs: https://learn.microsoft.com/nuget/reference/errors-and-warnings/nu1301
+
+- id: msbuild-msb4018
+  ecosystem: dotnet
+  category: build
+  title: An MSBuild task crashed
+  match: "error MSB4018: The \"(?<task>[^\"]+)\" task failed unexpectedly"
+  confidence: 0.8
+  fix: |
+    The '{task}' task threw instead of reporting an error, so the exception below is the
+    real message — read that, not this line. Common causes are a missing file the task
+    expected, a corrupted obj/ directory (delete it and rebuild), or a task assembly built
+    against a different MSBuild version than the SDK in use.
+  docs: https://learn.microsoft.com/visualstudio/msbuild/errors/msb4018
+
+- id: mstest-assert-failed
+  ecosystem: dotnet
+  category: test
+  title: MSTest assertion failed
+  match: "Assert\\.(?<method>\\w+) failed\\.(?: Expected:<(?<expected>[^>]*)>\\. Actual:<(?<actual>[^>]*)>\\.)?"
+  confidence: 0.75
+  fix: |
+    Assert.{method} failed — expected <{expected}>, got <{actual}>.
+    The failing test's name is on the `Failed ...` line just above. Re-run only that one
+    with `dotnet test --filter FullyQualifiedName~<TestName>`.
+  docs: https://learn.microsoft.com/dotnet/core/testing/unit-testing-with-mstest
+
+- id: nunit-assert-failed
+  ecosystem: dotnet
+  category: test
+  title: NUnit assertion failed
+  match: "Expected:\\s*(?<expected>[^\\n]+)\\n\\s*But was:\\s*(?<actual>[^\\n]+)"
+  confidence: 0.75
+  fix: |
+    An NUnit assertion failed: expected {expected}, but was {actual}.
+    The failing test's name is on the `Failed ...` line just above. Re-run only that one
+    with `dotnet test --filter FullyQualifiedName~<TestName>`.
+  docs: https://docs.nunit.org/articles/nunit/writing-tests/assertions/assertions.html

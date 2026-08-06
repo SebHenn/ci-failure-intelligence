@@ -70,3 +70,107 @@
     see the expected vs received values, then run it in isolation with
     `npx jest -t "<test name>"`.
   docs: https://jestjs.io/docs/cli
+
+- id: npm-ci-lock-mismatch
+  ecosystem: node
+  category: dependency
+  title: package-lock.json is out of sync with package.json
+  match: "`npm ci` can only install packages when your package\\.json and package-lock\\.json|npm ERR! Invalid: lock file's (?<package>\\S+) does not satisfy|npm ERR! Missing: (?<missing>\\S+) from lock file"
+  confidence: 0.9
+  fix: |
+    `npm ci` installs strictly from the lockfile and refuses to update it, so a
+    package.json change that was committed without re-running `npm install` fails here
+    rather than silently drifting. Run `npm install` locally, then commit the updated
+    package-lock.json. Do not "fix" this by switching CI to `npm install` — the strictness
+    is the point.
+  docs: https://docs.npmjs.com/cli/v10/commands/npm-ci
+
+- id: npm-ebadengine
+  ecosystem: node
+  category: environment
+  title: Node version does not satisfy the package's engines
+  match: "npm ERR! code EBADENGINE|npm (?:ERR!|WARN) (?:engine|notsup) Unsupported engine"
+  confidence: 0.85
+  fix: |
+    A package declares an `engines.node` range that the runner's Node does not satisfy.
+    Look for the `Required:`/`Actual:` pair just below this line, then pin CI to a matching
+    version (for example actions/setup-node's `node-version`), or widen `engines` if the
+    package really does support the older runtime.
+  docs: https://docs.npmjs.com/cli/v10/configuring-npm/package-json#engines
+
+- id: npm-eintegrity
+  ecosystem: node
+  category: dependency
+  title: Package checksum did not match the lockfile
+  match: "npm ERR! code EINTEGRITY|integrity checksum failed when using (?<algorithm>sha\\d+)"
+  confidence: 0.85
+  fix: |
+    The tarball npm downloaded doesn't hash to what package-lock.json recorded. Usually a
+    corrupted or half-populated cache, or a proxy/mirror serving a different artifact:
+    `npm cache clean --force` and re-run. If it persists, the lockfile entry and the
+    registry genuinely disagree — delete that entry and re-resolve with `npm install`.
+    Treat a repeated mismatch on a public package as worth investigating, not retrying.
+  docs: https://docs.npmjs.com/cli/v10/commands/npm-cache
+
+- id: yarn-frozen-lockfile
+  ecosystem: node
+  category: dependency
+  title: yarn.lock would have changed
+  match: "Your lockfile needs to be updated, but yarn was run with `--frozen-lockfile`|YN0028: The lockfile would have been modified by this install, which is explicitly forbidden"
+  confidence: 0.9
+  fix: |
+    CI runs yarn in a mode that forbids changing the lockfile, and installing would have
+    changed it — so package.json and yarn.lock disagree. Run `yarn install` locally and
+    commit the updated yarn.lock.
+  docs: https://yarnpkg.com/cli/install#options-immutable
+
+- id: pnpm-frozen-lockfile
+  ecosystem: node
+  category: dependency
+  title: pnpm-lock.yaml is out of date
+  match: "ERR_PNPM_OUTDATED_LOCKFILE|Cannot install with \"frozen-lockfile\" because pnpm-lock\\.yaml is not up to date"
+  confidence: 0.9
+  fix: |
+    pnpm defaults to `--frozen-lockfile` in CI and found pnpm-lock.yaml out of date with
+    package.json. Run `pnpm install` locally and commit the updated pnpm-lock.yaml. The
+    lines below list which specifiers differ.
+  docs: https://pnpm.io/cli/install#--frozen-lockfile
+
+- id: typescript-compile-error
+  ecosystem: node
+  category: compile
+  title: TypeScript type error
+  match: "(?<file>[^\\s(]+)\\((?<line>\\d+),\\d+\\): error (?<code>TS\\d+): (?<message>.+)|(?<file2>[^\\s:]+\\.tsx?):(?<line2>\\d+):\\d+ - error (?<code2>TS\\d+): (?<message2>.+)"
+  confidence: 0.8
+  fix: |
+    tsc rejected {file}:{line} — {code}: {message}
+    Fix the type at that location. `npx tsc --noEmit` reproduces it locally without
+    emitting output. If the error comes from inside node_modules, a @types package is
+    probably mismatched with the library version.
+  docs: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html
+
+- id: vitest-test-failed
+  ecosystem: node
+  category: test
+  title: Vitest test failed
+  match: "Test Files\\s+(?<files>\\d+) failed"
+  confidence: 0.7
+  fix: |
+    A Vitest test failed. The FAIL block above names the file and test; the assertion
+    error follows it. Re-run just that one with
+    `npx vitest run -t '<test name>'`.
+  docs: https://vitest.dev/guide/cli.html
+
+- id: playwright-test-failed
+  ecosystem: node
+  category: test
+  title: Playwright test failed
+  match: "\\d+\\) \\[(?<project>[^\\]]+)\\][^\\n]*\\.spec\\.[jt]sx?:(?<line>\\d+):\\d+"
+  confidence: 0.8
+  fix: |
+    A Playwright test failed in the '{project}' project. Playwright writes a trace and
+    screenshots for each failure — open the HTML report with `npx playwright show-report`
+    to see what the page actually looked like. Re-run one spec with
+    `npx playwright test <file>:<line>`.
+    A test that only fails in CI is usually a missing `await` on a locator assertion.
+  docs: https://playwright.dev/docs/test-reporters

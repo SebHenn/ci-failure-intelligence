@@ -1,0 +1,5 @@
+Run mypy src
+src/app/billing.py:88: error: Incompatible return value type (got "str", expected "Decimal")  [return-value]
+src/app/billing.py:104: error: Argument 1 to "charge" has incompatible type "int | None"; expected "int"  [arg-type]
+src/app/models.py:31: error: Missing type parameters for generic type "dict"  [type-arg]
+Found 3 errors in 2 files (checked 27 source files)

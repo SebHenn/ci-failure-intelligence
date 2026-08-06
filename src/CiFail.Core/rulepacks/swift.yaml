@@ -17,7 +17,10 @@
   ecosystem: swift
   category: compile
   title: Swift compile error
-  match: "(?<file>[^\\s:]+\\.swift):(?<line>\\d+):(?:\\d+:)? error: (?<message>.+)"
+  # The negative lookahead keeps this off XCTest failures, which Xcode also reports as
+  # `File.swift:23: error: -[SuiteName testName] : XCTAssertEqual failed`. Without it both
+  # rules fire on every failing test and "other things cifail noticed" is pure restatement.
+  match: "(?<file>[^\\s:]+\\.swift):(?<line>\\d+):(?:\\d+:)? error: (?!-\\[)(?<message>.+)"
   confidence: 0.7
   fix: |
     The Swift compiler rejected {file}:{line}: {message}
@@ -62,3 +65,67 @@
     Libraries", check the source file belongs to the target, and that any C/ObjC
     bridging is set up.
   docs: https://developer.apple.com/documentation/xcode/linking-and-loading-symbols
+
+- id: xctest-failed
+  ecosystem: swift
+  category: test
+  title: XCTest test failed
+  match: "XCTAssert\\w* failed(?::| -)|Test Case '-\\[(?<suite>[\\w.]+) (?<test>[\\w]+)\\]' failed"
+  confidence: 0.8
+  fix: |
+    An XCTest assertion failed in {suite}.{test}. The line above shows the file and the
+    values it compared. Re-run just that test with
+    `xcodebuild test -only-testing:<Target>/{suite}/{test}` (or `swift test --filter {test}`
+    for a SwiftPM package).
+  docs: https://developer.apple.com/documentation/xctest
+
+- id: swift-package-resolution
+  ecosystem: swift
+  category: dependency
+  title: Swift package dependencies could not be resolved
+  match: "error: [Dd]ependencies could not be resolved|the package at '(?<path>[^']+)' cannot be accessed|error: Couldn't get revision"
+  confidence: 0.85
+  fix: |
+    SwiftPM could not build a dependency graph. Either two packages demand incompatible
+    version ranges of a shared dependency — the line below names it — or a repository
+    isn't reachable (a private repo needs the runner's SSH key or token). Reproduce with
+    `swift package resolve`, and `swift package show-dependencies` prints the graph.
+  docs: https://developer.apple.com/documentation/packagedescription
+
+- id: swift-missing-product
+  ecosystem: swift
+  category: dependency
+  title: Package product not found
+  match: "error: product '(?<product>[^']+)' required by package '(?<package>[^']+)' target '(?<target>[^']+)' not found"
+  confidence: 0.9
+  fix: |
+    Target '{target}' depends on a product named '{product}', which package '{package}'
+    doesn't publish under that name. Product names are not package names — check the
+    `products:` list in the dependency's Package.swift and use the exact string from there.
+  docs: https://developer.apple.com/documentation/packagedescription/target/dependency
+
+- id: xcodebuild-no-destination
+  ecosystem: swift
+  category: environment
+  title: No matching build destination (simulator/device)
+  match: "Unable to find a destination matching the provided destination specifier"
+  confidence: 0.9
+  fix: |
+    The simulator or device you asked for doesn't exist on this runner — usually an OS or
+    device name that a newer/older Xcode image no longer ships. `xcrun simctl list devices
+    available` shows what is actually there. In CI, prefer a loose specifier like
+    `-destination 'platform=iOS Simulator,name=iPhone 15'` (no OS pin), or
+    `generic/platform=iOS` when you only need to build.
+  docs: https://developer.apple.com/documentation/xcode/building-and-running-an-app
+
+- id: cocoapods-sandbox-out-of-sync
+  ecosystem: swift
+  category: dependency
+  title: Pods are out of sync with Podfile.lock
+  match: "The sandbox is not in sync with the Podfile\\.lock"
+  confidence: 0.9
+  fix: |
+    The checked-in Pods/ directory doesn't match Podfile.lock, so someone changed the
+    Podfile without committing the result of `pod install`. Run `pod install` and commit
+    both Podfile.lock and the Pods/Manifest.lock it updates.
+  docs: https://guides.cocoapods.org/using/pod-install-vs-update.html

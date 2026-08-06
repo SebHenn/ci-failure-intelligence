@@ -1,0 +1,14 @@
+Run dotnet test --configuration Release
+  Determining projects to restore...
+  Api.Tests -> /home/runner/work/app/tests/Api.Tests/bin/Release/net8.0/Api.Tests.dll
+Test run for /home/runner/work/app/tests/Api.Tests/bin/Release/net8.0/Api.Tests.dll (.NETCoreApp,Version=v8.0)
+Microsoft (R) Test Execution Command Line Tool Version 17.11.1
+Starting test execution, please wait...
+
+  Failed Api.Tests.InvoiceTests.Total_includes_tax [4 ms]
+  Error Message:
+   Assert.AreEqual failed. Expected:<121>. Actual:<100>.
+  Stack Trace:
+     at Api.Tests.InvoiceTests.Total_includes_tax() in /home/runner/work/app/tests/Api.Tests/InvoiceTests.cs:line 34
+
+Failed!  - Failed:     1, Passed:    46, Skipped:     0, Total:    47, Duration: 812 ms

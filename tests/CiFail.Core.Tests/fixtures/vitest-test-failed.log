@@ -1,0 +1,24 @@
+Run npm run test
+
+> my-app@1.0.0 test
+> vitest run
+
+ RUN  v1.6.0 /home/runner/work/my-app
+
+ FAIL  src/lib/money.test.ts > formatMoney > rounds to two decimals
+AssertionError: expected '1.235' to be '1.24' // Object.is equality
+
+- Expected
++ Received
+
+- 1.24
++ 1.235
+
+ ❯ src/lib/money.test.ts:14:31
+     12|   it('rounds to two decimals', () => {
+     13|     expect(formatMoney(1.2349)).toBe('1.24')
+     14|   })
+
+ Test Files  1 failed | 12 passed (13)
+      Tests  1 failed | 47 passed (48)
+   Duration  3.44s

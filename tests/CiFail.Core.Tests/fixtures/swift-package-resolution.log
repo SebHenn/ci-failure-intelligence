@@ -1,0 +1,5 @@
+Run xcodebuild -resolvePackageDependencies -scheme App
+Resolve Package Graph
+error: Dependencies could not be resolved because root depends on 'swift-argument-parser' 1.3.0..<2.0.0 and root depends on 'swift-tools-support-core' 0.6.1.
+  'swift-tools-support-core' >= 0.6.1 practically depends on 'swift-argument-parser' 0.4.3..<1.0.0.
+** BUILD FAILED **

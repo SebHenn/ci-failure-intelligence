@@ -1,0 +1,5 @@
+Run npm ci
+npm ERR! code EINTEGRITY
+npm ERR! sha512-tE0Ppq5Q9k2H8kBqZTBqmR2Z1PPZfEwFhZ0BqQpUw== integrity checksum failed when using sha512: wanted sha512-tE0Ppq5Q9k2H8kBqZTBqmR2Z1PPZfEwFhZ0BqQpUw== but got sha512-9m4kQpQ7oW1oS0kZlLmxg8XW1hQqBQZ0vWQrTa5Nn0M=. (26542 bytes)
+npm ERR!
+npm ERR! A complete log of this run can be found in: /home/runner/.npm/_logs/2026-08-06T09_31_47_882Z-debug-0.log

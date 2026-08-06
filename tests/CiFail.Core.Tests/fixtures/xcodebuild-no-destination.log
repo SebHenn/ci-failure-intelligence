@@ -1,0 +1,10 @@
+Run xcodebuild test -scheme App -destination 'platform=iOS Simulator,OS=17.0,name=iPhone 14 Pro'
+Command line invocation:
+    /Applications/Xcode_16.1.app/Contents/Developer/usr/bin/xcodebuild test -scheme App
+
+xcodebuild: error: Unable to find a destination matching the provided destination specifier:
+		{ platform:iOS Simulator, OS:17.0, name:iPhone 14 Pro }
+
+	Available destinations for the "App" scheme:
+		{ platform:iOS Simulator, id:0A1B2C3D-4E5F-6789-ABCD-EF0123456789, OS:18.1, name:iPhone 16 }
+		{ platform:iOS Simulator, id:1B2C3D4E-5F67-89AB-CDEF-0123456789AB, OS:18.1, name:iPhone 16 Pro }

@@ -1,0 +1,11 @@
+Run python -m app.import_users
+Traceback (most recent call last):
+  File "/home/runner/work/app/app/import_users.py", line 63, in <module>
+    main()
+  File "/home/runner/work/app/app/import_users.py", line 51, in main
+    normalized = normalize(row.get("email"))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/app/app/import_users.py", line 22, in normalize
+    return value.strip().lower()
+           ^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'strip'

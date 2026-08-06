@@ -1,0 +1,10 @@
+Run xcodebuild test -scheme App -destination 'platform=iOS Simulator,name=iPhone 15'
+Test Suite 'All tests' started at 2026-08-06 09:41:02.113
+Test Suite 'AppTests.xctest' started at 2026-08-06 09:41:02.114
+Test Case '-[MoneyTests testRoundsToTwoDecimals]' started.
+/Users/runner/work/App/AppTests/MoneyTests.swift:23: error: -[MoneyTests testRoundsToTwoDecimals] : XCTAssertEqual failed: ("1.235") is not equal to ("1.24")
+Test Case '-[MoneyTests testRoundsToTwoDecimals]' failed (0.003 seconds).
+Test Suite 'AppTests.xctest' failed at 2026-08-06 09:41:02.190.
+	 Executed 48 tests, with 1 failure (0 unexpected) in 0.061 (0.064) seconds
+
+** TEST FAILED **

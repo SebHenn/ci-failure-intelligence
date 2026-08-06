@@ -1,0 +1,29 @@
+Run pip install -r requirements.txt
+Collecting psycopg2==2.9.9 (from -r requirements.txt (line 4))
+  Downloading psycopg2-2.9.9.tar.gz (384 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+Building wheels for collected packages: psycopg2
+  Building wheel for psycopg2 (pyproject.toml): started
+  Building wheel for psycopg2 (pyproject.toml): finished with status 'error'
+  error: subprocess-exited-with-error
+
+  × Building wheel for psycopg2 (pyproject.toml) did not run successfully.
+  │ exit code: 1
+  ╰─> [24 lines of output]
+      running bdist_wheel
+      running build_ext
+      building 'psycopg2._psycopg' extension
+      gcc -pthread -Wno-unused-result -DNDEBUG -fPIC -I/usr/include/python3.11 -c psycopg/psycopgmodule.c -o build/psycopg/psycopgmodule.o
+      psycopg/psycopgmodule.c:20:10: fatal error: libpq-fe.h: No such file or directory
+         20 | #include <libpq-fe.h>
+            |          ^~~~~~~~~~~~
+      compilation terminated.
+      error: command '/usr/bin/gcc' failed with exit code 1
+      [end of output]
+
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+  ERROR: Failed building wheel for psycopg2
+ERROR: Could not build wheels for psycopg2, which is required to install pyproject.toml-based projects
