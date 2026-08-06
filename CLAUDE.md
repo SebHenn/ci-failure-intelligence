@@ -64,6 +64,14 @@ docker compose -f docker-compose.test.yml up -d   # manual DBs for --db-* runs
 `install.sh` has installed the real assets on Linux *and* macOS; `finalize` un-drafts it and
 force-moves the `v1` tag that `uses: SebHenn/ci-failure-intelligence@v1` resolves to.
 
+**`main` is a protected branch.** PRs require the three `ci.yml` checks (`build-test`,
+`docker-smoke`, `db-integration`) and must be **up to date with `main`** before merging; force
+pushes and deletion are blocked. **Admins are exempt** (`enforce_admins: false`), so a direct
+`git push origin main` by the owner still works — protection is a floor for contributors and
+dependabot, not a workflow change for the maintainer. It does **not** constrain the release
+chain: `release.yml`'s only force-push targets the `v1` *tag*, and tags aren't branch-protected.
+Don't add a workflow that commits to `main` without revisiting this.
+
 **NuGet publishing uses trusted publishing (OIDC) — there is no `NUGET_API_KEY` secret.** The
 `nuget` job declares `id-token: write`, and `NuGet/login@v1` exchanges a GitHub-signed token for
 an API key valid one hour. nuget.org matches the token's claims against a policy naming the repo

@@ -161,4 +161,25 @@ short version:
 - Anything user-visible gets an entry under `## [Unreleased]` in
   [`CHANGELOG.md`](./CHANGELOG.md).
 
+### What the branch protection on `main` means for you
+
+`main` takes changes through pull requests only, and it can't be force-pushed or deleted.
+Three checks must pass before a PR can merge:
+
+| Check | What it does | Typical |
+|---|---|---|
+| `build-test` | version consistency, `shellcheck`, packaging templates, build, rule-pack lint, full test suite, `dotnet pack` | ~1 min |
+| `docker-smoke` | builds the full image **and runs it** (`--version`, `serve --help`, an analyze) | ~2 min |
+| `db-integration` | the external-DB contract tests against real Postgres/MySQL/SQL Server/MongoDB | ~5 min |
+
+**Your branch must also be up to date with `main` before it can merge.** If `main` moves
+while your PR is open, GitHub will ask you to update the branch and re-run the checks. That
+isn't ceremony: a PR that went green against a three-commit-old base has proven something
+about a commit that will never exist. We shipped a bug that way once — a crash in
+`cifail serve --help` reached `main` because nothing built the Docker image, and the PRs open
+at the time were still reporting green against the base from before the fix.
+
+No approving review is required, so a green PR is mergeable as soon as the checks finish. You
+don't need write access to contribute — fork, branch, and open the PR from your fork.
+
 Thank you! 🛠️
