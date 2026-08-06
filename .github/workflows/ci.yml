@@ -55,6 +55,39 @@ jobs:
       - name: Pack (global tool)
         run: dotnet pack src/CiFail.Cli/CiFail.Cli.csproj --configuration Release --no-build --output ./nupkg
 
+  # Build the image AND RUN IT. Building alone proves almost nothing here: the Dockerfile's
+  # two base images are independent, so a runtime base that can't host the app still builds
+  # clean and only fails when someone runs it. That is not hypothetical — a dependabot PR
+  # proposing aspnet 8.0 -> 10.0 (which cannot host a net8.0 app; .NET rolls forward across
+  # minors, not majors) would have merged green without this job.
+  #
+  # Single-arch on purpose: the release workflow does the multi-arch build, and QEMU'd arm64
+  # would triple the time on every push for no extra signal about the app itself.
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the full image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: cifail:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run it
+        run: |
+          docker run --rm cifail:ci --version
+          # `serve` only exists in the full build, so this also proves IncludeExternalDb
+          # actually took effect in the image rather than silently producing a slim binary.
+          docker run --rm cifail:ci serve --help
+          # Exactly the command the README gives (the image's WORKDIR is already /work).
+          docker run --rm -v "$PWD:/work" cifail:ci analyze samples/nuget-nu1101.log
+
   # Real external databases (Postgres/MySQL/SQL Server/MongoDB) via Testcontainers. Kept in
   # a separate job so the heavier, container-pulling tests don't slow the core pipeline.
   db-integration:

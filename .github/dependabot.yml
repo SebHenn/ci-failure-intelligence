@@ -62,8 +62,14 @@ updates:
       interval: weekly
       day: monday
     ignore:
-      # The runtime image must match the app's TFM: aspnet:9.0 cannot run a net8.0 app
-      # without the 8.0 runtime installed alongside it. The SDK image is allowed to move
-      # ahead (a newer SDK builds net8.0 fine) — that is why only major bumps are held.
-      - dependency-name: mcr.microsoft.com/dotnet/aspnet
+      # The runtime image must match the app's TFM. A net8.0 app needs the 8.0 shared
+      # framework, and .NET's default roll-forward crosses minors, not majors — so
+      # aspnet:10.0 would BUILD fine and then fail at `docker run` with "You must install
+      # .NET". The docker-smoke job in ci.yml exists to catch that; this holds the bump.
+      # The SDK image may move ahead: a newer SDK targets net8.0 fine.
+      #
+      # NOTE: dependabot identifies the image WITHOUT its registry prefix — `dotnet/aspnet`,
+      # not `mcr.microsoft.com/dotnet/aspnet`. The prefixed form silently matches nothing,
+      # which is how PR #3 (aspnet 8.0 -> 10.0) got opened past this rule.
+      - dependency-name: dotnet/aspnet
         update-types: ["version-update:semver-major"]
