@@ -1,4 +1,7 @@
+using System.ComponentModel;
+using System.Reflection;
 using FluentAssertions;
+using Spectre.Console;
 
 namespace CiFail.Cli.Tests;
 
@@ -84,6 +87,62 @@ public sealed class HelpTests
 
         result.StdoutFlat.Should().Be(CliApp.Version);
         result.Stderr.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Spectre renders every <c>[Description]</c> as <b>markup</b>, so one unescaped <c>[</c>
+    /// opens a style tag and <c>--help</c> dies with "Could not find color or style 'x'".
+    ///
+    /// <para>
+    /// The per-command tests above only reach the commands compiled into this build, and
+    /// <c>serve</c> is gated out of it — which is exactly how a literal <c>[name]</c> in
+    /// <c>serve --tokens-file</c>'s description shipped, crashing <c>cifail serve --help</c>
+    /// in the Docker image. Reflecting over the descriptions catches the whole class at once,
+    /// in whichever build flavour the suite is compiled for.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Every_description_is_valid_markup()
+    {
+        var offenders = new List<string>();
+
+        foreach (var type in typeof(CliApp).Assembly.GetTypes())
+        {
+            foreach (var (owner, text) in DescriptionsOn(type))
+            {
+                try
+                {
+                    _ = new Markup(text);
+                }
+                catch (Exception ex)
+                {
+                    offenders.Add($"{owner}: {ex.Message} — escape '[' as '[[' in: {text}");
+                }
+            }
+        }
+
+        offenders.Should().BeEmpty();
+    }
+
+    /// <summary>Proves the check above can actually fail — otherwise it asserts nothing.</summary>
+    [Fact]
+    public void An_unescaped_bracket_is_what_that_check_catches()
+    {
+        var parse = () => new Markup("one '<token> [name]' per line");
+        parse.Should().Throw<Exception>("an unescaped '[' opens a style tag");
+
+        var escaped = () => new Markup("one '<token> [[name]]' per line");
+        escaped.Should().NotThrow();
+    }
+
+    private static IEnumerable<(string Owner, string Text)> DescriptionsOn(Type type)
+    {
+        if (type.GetCustomAttribute<DescriptionAttribute>() is { } onType)
+            yield return (type.Name, onType.Description);
+
+        foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            if (property.GetCustomAttribute<DescriptionAttribute>() is { } onProperty)
+                yield return ($"{type.Name}.{property.Name}", onProperty.Description);
     }
 
     [Fact]

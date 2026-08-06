@@ -9,6 +9,13 @@ after 1.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`cifail serve --help` crashed** (`Could not find color or style 'name'`, exit 70) in the
+  Docker/full build. Spectre renders option descriptions as markup, and `--tokens-file`'s
+  description contained a literal `[name]`. CI now builds the image and *runs* it, since a
+  runtime base that cannot host the app still builds perfectly clean.
+
 ### Documentation
 
 - The README now covers `cifail rules list|test|validate|explain` and `cifail suggest-rule`

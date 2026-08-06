@@ -35,7 +35,10 @@ public sealed class ServeCommand : Command<ServeCommand.Settings>
         public string? Token { get; init; }
 
         [CommandOption("--tokens-file <PATH>")]
-        [Description("File of per-client tokens (one '<token> [name]' per line). Combined with --token and CIFAIL_SERVER_TOKENS.")]
+        // Spectre renders option descriptions as MARKUP, so a literal '[' opens a style tag:
+        // the unescaped "[name]" here made `cifail serve --help` die with "Could not find
+        // color or style 'name'". '[[' is the escape and renders as a single '['.
+        [Description("File of per-client tokens (one '<token> [[name]]' per line). Combined with --token and CIFAIL_SERVER_TOKENS.")]
         public string? TokensFile { get; init; }
 
         [CommandOption("--client-ca <PEM>")]
