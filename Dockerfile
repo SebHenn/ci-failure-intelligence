@@ -29,7 +29,7 @@ RUN dotnet publish src/CiFail.Cli/CiFail.Cli.csproj \
 # ---- runtime --------------------------------------------------------------
 # ASP.NET Core runtime (not the plain runtime) so `cifail serve` has the shared framework.
 # CLI-only commands run on it just the same.
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
 # git powers R3 (correlating failures with the commit that fixed them). safe.directory '*'
 # avoids "dubious ownership" errors when the mounted repo is owned by a different user.
