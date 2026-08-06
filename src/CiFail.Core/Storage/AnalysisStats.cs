@@ -14,6 +14,9 @@ public sealed record StatsQuery
 
     /// <summary>Max rows a fallback may scan when a store can't aggregate in the DB.</summary>
     public int ScanLimit { get; init; } = 5000;
+
+    /// <summary>How many trailing days <see cref="StatsSnapshot.Daily"/> covers (0 = none).</summary>
+    public int DailyDays { get; init; } = 30;
 }
 
 /// <summary>Aggregated counts and signals over stored history.</summary>
@@ -43,10 +46,20 @@ public sealed record StatsSnapshot
 
     /// <summary>Fingerprints that were resolved and then recurred (the fix didn't stick).</summary>
     public required IReadOnlyList<FingerprintStat> Flaky { get; init; }
+
+    /// <summary>
+    /// Failures per UTC day over the trailing window, oldest first, <b>including days with
+    /// none</b> — a sparkline that skipped the quiet days would hide the gaps. Empty when the
+    /// query asked for no window.
+    /// </summary>
+    public IReadOnlyList<CountByDay> Daily { get; init; } = Array.Empty<CountByDay>();
 }
 
 /// <summary>A (key, count) pair, e.g. an ecosystem and how many analyses it has.</summary>
 public sealed record CountByKey(string Key, int Count);
+
+/// <summary>Failures recorded on one UTC day.</summary>
+public sealed record CountByDay(DateOnly Day, int Count);
 
 /// <summary>Per-fingerprint aggregation.</summary>
 public sealed record FingerprintStat

@@ -103,6 +103,30 @@ internal static class Dash
     .card.wide li { display: flex; justify-content: space-between; gap: 10px; }
     .card.wide li + li { margin-top: 2px; }
     .card.wide li span { color: var(--muted); }
+    .card.wide li code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Failures-over-time sparkline (R32). Inline SVG, no script: the viewBox is fixed and
+       preserveAspectRatio=none stretches it to whatever width the card gets. */
+    .card.spark { min-width: 260px; }
+    .sparkline { display: block; width: 100%; height: 40px; margin-top: 6px; }
+    .sparkline polyline {
+      fill: none; stroke: var(--accent); stroke-width: 1;
+      /* The viewBox is stretched non-uniformly, which would smear the stroke width with it. */
+      vector-effect: non-scaling-stroke;
+      stroke-linejoin: round; stroke-linecap: round;
+    }
+    .spark-axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+
+    /* Cluster drill-down (R32): <details>/<summary>, so it works with scripting disabled. */
+    .cluster details summary {
+      display: flex; justify-content: space-between; gap: 10px;
+      cursor: pointer; list-style: none;
+    }
+    .cluster details summary::-webkit-details-marker { display: none; }
+    .cluster details summary::before { content: "▸ "; color: var(--muted); }
+    .cluster details[open] summary::before { content: "▾ "; }
+    .cluster-body { margin: 4px 0 8px 14px; font-size: 12px; }
+    .cluster-members { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
     .login { max-width: 360px; margin: 12vh auto; padding: 0 16px; }
     .login h1 { font-size: 18px; font-weight: 600; }
     .login h1 span { color: var(--accent); }

@@ -306,6 +306,22 @@ binary with no content directory); a test walks its paths and asserts each still
 nothing else stops it drifting. **Both routes are authenticated** — `/metrics` leaks rule ids
 and failure counts, and Prometheus supports a bearer token in the scrape config.
 
+### Dashboard panels (R32, `Server/Dashboard/Trends.razor`)
+
+Three additions, all **static SSR — the dashboard must keep shipping zero `<script>`** (a test
+asserts it): a failures-per-day **sparkline** (inline `<svg>` + `<polyline>`), the **noisiest
+tests** card (`TestStatsService`, R26), and **cluster drill-down** via `<details>`/`<summary>`
+with `/?sel={id}` links into the detail pane — no JS, no extra round trip. The data comes from
+`StatsComputer.DailyBuckets` → `StatsSnapshot.Daily` (`IReadOnlyList<CountByDay>`, window size
+`StatsQuery.DailyDays` = 30, mapped in `StatsJson.DayCountDto` as `yyyy-MM-dd`). **Every day in
+the window is emitted, including the empty ones** — a chart built only from days that had
+failures hides exactly the gaps it exists to show. `SparkPoints` scales y to the *window's own
+peak* (a fixed ceiling flattens every quiet repo into a line along the bottom) and formats
+coordinates with `CultureInfo.InvariantCulture` — a decimal comma silently turns `"12,3 45,6"`
+into four coordinates. The `<svg>` carries `role="img"` + an `aria-label` summary, since a
+sparkline is nothing to a screen reader. Cards that would be empty hide themselves (`Tests is
+{ DistinctTests: > 0 }`) rather than sitting blank on every repo that only analyzes raw logs.
+
 ### Rule authoring tooling (R15, `Core/Rules/RulePackValidator.cs` + `Cli/Commands/Rules*.cs`)
 
 `cifail rules` has `list`, plus `test <regex>` (try a regex against a log, show captures),

@@ -1,8 +1,12 @@
 @*
-    The stats/insights strip (R16/R25), rendered from Core services in-process. Mirrors the old
-    JS `loadStats()` card layout — Total/Open/Resolved/Unmatched, recurrence, mean-resolve, the
-    top-recurring + flaky lists, and the failure clusters card when any exist.
+    The stats/insights strip (R16/R25/R26/R32), rendered from Core services in-process:
+    Total/Open/Resolved/Unmatched, recurrence, mean-resolve, a failures-over-time sparkline,
+    the top-recurring + flaky lists, per-test flakiness, and expandable failure clusters.
+
+    Everything here is static SSR — no JS. The sparkline is inline SVG and the cluster
+    drill-down is <details>/<summary>, both of which work with scripting disabled.
 *@
+@using System.Globalization
 @if (Stats is { } s)
 {
     <div class="trends">
@@ -12,6 +16,26 @@
         <div class="card"><div class="n @(s.Unmatched > 0 ? "warn" : "")">@s.Unmatched</div><div class="l">unmatched</div></div>
         <div class="card"><div class="n">@Dash.Pct(s.RecurrenceRate)</div><div class="l">recurrence</div></div>
         <div class="card"><div class="n">@Dash.Dur(s.MeanTimeToResolution)</div><div class="l">mean resolve</div></div>
+
+        @if (s.Daily.Count > 1)
+        {
+            <div class="card wide spark">
+                <div class="l">failures per day · last @s.Daily.Count days (peak @s.Daily.Max(d => d.Count))</div>
+                @*
+                    preserveAspectRatio=none lets one viewBox stretch to whatever width the card
+                    gets, so the chart is responsive without measuring anything in script.
+                    role/aria-label because a bare <svg> is invisible to a screen reader.
+                *@
+                <svg class="sparkline" viewBox="0 0 100 24" preserveAspectRatio="none"
+                     role="img" aria-label="@SparkSummary(s.Daily)">
+                    <polyline points="@SparkPoints(s.Daily)" />
+                </svg>
+                <div class="spark-axis">
+                    <span>@s.Daily[0].Day.ToString("MMM d", CultureInfo.InvariantCulture)</span>
+                    <span>@s.Daily[^1].Day.ToString("MMM d", CultureInfo.InvariantCulture)</span>
+                </div>
+            </div>
+        }
 
         <div class="card wide">
             <div class="l">top recurring</div>
@@ -47,6 +71,29 @@
             </ul>
         </div>
 
+        @*
+            Only shown once a structured test report has been analyzed — a repo that only ever
+            pipes raw logs would otherwise get a permanently empty panel.
+        *@
+        @if (Tests is { DistinctTests: > 0 } t)
+        {
+            <div class="card wide">
+                <div class="l">
+                    noisiest tests
+                    <span class="muted" title="cifail records failures, not passes — this is recurrence, not a pass rate.">· failures only</span>
+                </div>
+                <ul>
+                    @foreach (var test in t.Tests)
+                    {
+                        <li>
+                            <code title="@test.FullName">@Short(test.FullName)</code>
+                            <span>@test.FailureCount× over @test.DistinctDays d@(test.Flaky ? " ⚠" : "")</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
+
         @if (Clusters.Count > 0)
         {
             <div class="card wide">
@@ -54,7 +101,27 @@
                 <ul>
                     @foreach (var c in Clusters)
                     {
-                        <li><code>@c.Label</code><span>@c.Count×</span></li>
+                        <li class="cluster">
+                            @* <details> gives drill-down with no script and no extra round trip. *@
+                            <details>
+                                <summary><code>@c.Label</code><span>@c.Count×</span></summary>
+                                <div class="cluster-body">
+                                    <div class="muted">
+                                        @string.Join(", ", c.Ecosystems) · last seen @Dash.When(c.LastSeen)
+                                    </div>
+                                    <div class="cluster-members">
+                                        @foreach (var id in c.MemberIds.Take(12))
+                                        {
+                                            <a href="@($"/?sel={id}")">#@id</a>
+                                        }
+                                        @if (c.MemberIds.Count > 12)
+                                        {
+                                            <span class="muted">+@(c.MemberIds.Count - 12) more</span>
+                                        }
+                                    </div>
+                                </div>
+                            </details>
+                        </li>
                     }
                 </ul>
             </div>
@@ -65,4 +132,48 @@
 @code {
     [Parameter] public StatsSnapshot? Stats { get; set; }
     [Parameter] public IReadOnlyList<FailureCluster> Clusters { get; set; } = Array.Empty<FailureCluster>();
+    [Parameter] public TestStatsSnapshot? Tests { get; set; }
+
+    /// <summary>
+    /// The polyline for the sparkline, in a fixed 100×24 viewBox.
+    ///
+    /// <para>
+    /// The y-axis is scaled to the window's own peak, not to a fixed maximum: what matters in a
+    /// sparkline is the shape of the trend, and a fixed ceiling would flatten every quiet repo
+    /// into an unreadable line along the bottom. An all-zero window draws along the baseline
+    /// rather than dividing by zero.
+    /// </para>
+    /// </summary>
+    private static string SparkPoints(IReadOnlyList<CountByDay> daily)
+    {
+        var peak = Math.Max(1, daily.Max(d => d.Count));
+        var stepX = daily.Count > 1 ? 100.0 / (daily.Count - 1) : 0;
+
+        return string.Join(' ', daily.Select((d, i) =>
+        {
+            var x = (i * stepX).ToString("0.##", CultureInfo.InvariantCulture);
+            // SVG y grows downward, and 1px of headroom keeps the peak's stroke from clipping.
+            var y = (23.0 - (d.Count / (double)peak * 22.0)).ToString("0.##", CultureInfo.InvariantCulture);
+            return $"{x},{y}";
+        }));
+    }
+
+    /// <summary>The alt text for the chart — a sparkline is meaningless to a screen reader.</summary>
+    private static string SparkSummary(IReadOnlyList<CountByDay> daily)
+    {
+        var total = daily.Sum(d => d.Count);
+        var peak = daily.OrderByDescending(d => d.Count).First();
+        return $"{total} failures over {daily.Count} days; " +
+               $"busiest was {peak.Day.ToString("MMM d", CultureInfo.InvariantCulture)} with {peak.Count}.";
+    }
+
+    /// <summary>
+    /// Test names are fully qualified and long. Keep the tail (class + method), which is the
+    /// part that identifies the test; the full name stays in the title attribute.
+    /// </summary>
+    private static string Short(string fullName)
+    {
+        var parts = fullName.Split('.');
+        return parts.Length <= 2 ? fullName : string.Join('.', parts[^2..]);
+    }
 }

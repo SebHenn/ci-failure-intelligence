@@ -68,7 +68,43 @@ public static class StatsComputer
             MeanTimeToResolution = mttr,
             ResolvedWithTiming = durations.Count,
             Flaky = flaky,
+            Daily = DailyBuckets(filtered, query.DailyDays),
         };
+    }
+
+    /// <summary>
+    /// Failures per day over the trailing window, oldest first.
+    ///
+    /// <para>
+    /// Every day in the window is present, including the empty ones. A sparkline drawn from
+    /// only the days that had failures is a lie: a quiet week would render as a flat line at
+    /// whatever the neighbouring days were, hiding exactly the gap you wanted to see.
+    /// </para>
+    ///
+    /// <para>
+    /// Bucketed by UTC date. The alternative — the viewer's local date — would make the same
+    /// history produce different numbers per browser, and these have to agree with what the
+    /// CLI prints.
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<CountByDay> DailyBuckets(IReadOnlyList<StoredAnalysis> rows, int days)
+    {
+        if (days <= 0) return Array.Empty<CountByDay>();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var first = today.AddDays(-(days - 1));
+
+        var counts = rows
+            .Select(r => DateOnly.FromDateTime(r.AnalyzedAt.UtcDateTime))
+            .Where(d => d >= first && d <= today)
+            .GroupBy(d => d)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var buckets = new List<CountByDay>(days);
+        for (var day = first; day <= today; day = day.AddDays(1))
+            buckets.Add(new CountByDay(day, counts.TryGetValue(day, out var n) ? n : 0));
+
+        return buckets;
     }
 
     private static FingerprintStat ToStat(string fingerprint, IReadOnlyList<StoredAnalysis> rows)

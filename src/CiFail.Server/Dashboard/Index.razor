@@ -30,7 +30,7 @@
     <span class="grow"></span>
 </header>
 
-<Trends Stats="_stats" Clusters="_clusters" />
+<Trends Stats="_stats" Clusters="_clusters" Tests="_tests" />
 
 <div class="layout">
     <div class="list">
@@ -124,6 +124,7 @@
     private IReadOnlyList<string> _ecosystems = Array.Empty<string>();
     private StatsSnapshot? _stats;
     private IReadOnlyList<FailureCluster> _clusters = Array.Empty<FailureCluster>();
+    private TestStatsSnapshot? _tests;
     private StoredAnalysisJson.StoredAnalysisDto? _detail;
 
     protected override void OnParametersSet()
@@ -138,6 +139,11 @@
         _stats = StatsService.Compute(store, new StatsQuery { Top = 5 });
         try { _clusters = ClusterService.Compute(store, new ClusterQuery { Top = 5 }).Clusters; }
         catch { _clusters = Array.Empty<FailureCluster>(); }
+
+        // Per-test flakiness (R26). Only meaningful once someone has fed in a JUnit/TRX report,
+        // so the card hides itself when there's nothing to show rather than rendering an empty
+        // panel on every dashboard that only analyzes raw logs.
+        _tests = TestStatsService.Compute(store, new TestStatsQuery { Top = 5 });
 
         _detail = Sel is long id && store.GetById(id) is { } rec
             ? StoredAnalysisJson.ToDto(rec)

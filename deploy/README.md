@@ -91,6 +91,10 @@ the `R<n>` markers are this repo's internal milestone ids, cross-referenced from
   the server assembly, no separate deploy) — browse/filter failures and resolve them. Browsers
   sign in once at `/login`; an HttpOnly `cifail_auth` cookie (SameSite=Strict, Secure over
   https) then authorizes the dashboard, while API clients keep using the Bearer token.
+  **R32** adds a failures-per-day sparkline (last 30 days, quiet days included), a noisiest-tests
+  card fed by the per-test flakiness data, and cluster drill-down that expands to the failures in
+  each group. It still ships **no JavaScript** — the chart is inline SVG and the drill-down is
+  `<details>` — so the dashboard works behind a strict CSP and with scripting disabled.
 - **Similarity at scale**: ✅ (**R10**, opt-in) the default is still in-app TF-IDF, but a
   vector-capable store can do nearest-neighbour search in the database. Use the `pgvector`
   provider (`CIFAIL_DB_PROVIDER=pgvector`, PostgreSQL + the `vector` extension) and enable

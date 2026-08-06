@@ -123,4 +123,48 @@ public class StatsComputerTests
         s.Total.Should().Be(1);
         s.TopFailures.Should().ContainSingle().Which.RuleId.Should().Be("a");
     }
+
+    // --- daily buckets (R32, the sparkline's data) -------------------------------------
+
+    [Fact]
+    public void Daily_buckets_include_the_days_with_no_failures()
+    {
+        // The load-bearing property. A sparkline drawn only from days that had failures is a
+        // lie: a quiet week renders as a flat line at the neighbouring values, hiding exactly
+        // the gap you wanted to see.
+        var now = DateTimeOffset.UtcNow;
+        var rows = new[] { Row(1, "a:1", now), Row(2, "a:1", now.AddDays(-3)) };
+
+        var daily = StatsComputer.Compute(rows, new StatsQuery { DailyDays = 5 }).Daily;
+
+        daily.Should().HaveCount(5);
+        daily.Select(d => d.Count).Should().Equal(0, 1, 0, 0, 1);
+    }
+
+    [Fact]
+    public void Daily_buckets_run_oldest_first()
+    {
+        var daily = StatsComputer.Compute(Array.Empty<StoredAnalysis>(), new StatsQuery { DailyDays = 7 }).Daily;
+
+        daily.Should().HaveCount(7);
+        daily.Should().BeInAscendingOrder(d => d.Day);
+        daily[^1].Day.Should().Be(DateOnly.FromDateTime(DateTime.UtcNow), "the window ends today");
+    }
+
+    [Fact]
+    public void Rows_older_than_the_window_are_not_counted()
+    {
+        var rows = new[] { Row(1, "a:1", DateTimeOffset.UtcNow.AddDays(-40)) };
+
+        var daily = StatsComputer.Compute(rows, new StatsQuery { DailyDays = 7 }).Daily;
+
+        daily.Sum(d => d.Count).Should().Be(0);
+    }
+
+    [Fact]
+    public void Asking_for_no_window_produces_no_buckets()
+    {
+        StatsComputer.Compute(Array.Empty<StoredAnalysis>(), new StatsQuery { DailyDays = 0 })
+            .Daily.Should().BeEmpty();
+    }
 }

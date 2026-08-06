@@ -22,6 +22,11 @@ public static class StatsJson
         MeanTimeToResolutionSeconds = s.MeanTimeToResolution?.TotalSeconds,
         ResolvedWithTiming = s.ResolvedWithTiming,
         Flaky = s.Flaky.Select(ToFpDto).ToList(),
+        Daily = s.Daily.Select(d => new DayCountDto
+        {
+            Day = d.Day.ToString("yyyy-MM-dd"),
+            Count = d.Count,
+        }).ToList(),
     };
 
     public static StatsSnapshot FromDto(StatsDto d) => new()
@@ -38,6 +43,9 @@ public static class StatsJson
             : null,
         ResolvedWithTiming = d.ResolvedWithTiming,
         Flaky = d.Flaky.Select(FromFpDto).ToList(),
+        Daily = d.Daily
+            .Select(x => new CountByDay(DateOnly.ParseExact(x.Day, "yyyy-MM-dd"), x.Count))
+            .ToList(),
     };
 
     private static FingerprintDto ToFpDto(FingerprintStat f) => new()
@@ -72,6 +80,16 @@ public static class StatsJson
         public double? MeanTimeToResolutionSeconds { get; init; }
         public int ResolvedWithTiming { get; init; }
         public List<FingerprintDto> Flaky { get; init; } = new();
+
+        /// <summary>Failures per UTC day, oldest first, including days with none.</summary>
+        public List<DayCountDto> Daily { get; init; } = new();
+    }
+
+    public sealed class DayCountDto
+    {
+        /// <summary>ISO date (yyyy-MM-dd), UTC.</summary>
+        public string Day { get; init; } = "";
+        public int Count { get; init; }
     }
 
     public sealed class CountDto

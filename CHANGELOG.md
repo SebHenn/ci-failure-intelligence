@@ -28,6 +28,12 @@ after 1.0.
   route; see `deploy/README.md` for the scrape config.
 - **`GET /openapi.json`** — a static OpenAPI 3.0 description of the API, with a test asserting
   every documented route still answers.
+- **The dashboard gained three panels**: a failures-per-day sparkline over the last 30 days
+  (drawn including the quiet days — a chart built only from the days that had failures hides
+  exactly the gaps you want to see), the noisiest tests from the per-test flakiness data, and
+  cluster drill-down that expands to the failures in each group and links straight to them.
+  All of it is still server-rendered with no JavaScript: the chart is inline SVG and the
+  drill-down is `<details>`, so both work with scripting disabled.
 - **Scala/sbt and Elixir/Mix are now recognized ecosystems**, with 6 rules each: Scala type
   mismatch (Scala 2 *and* 3 wording), unresolved symbol, sbt dependency resolution,
   conflicting cross-versions, ScalaTest; Elixir compile errors, undefined/private functions,
