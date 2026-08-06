@@ -9,6 +9,17 @@ after 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`cifail gate`** — fail CI on a *new* failure while tolerating the known backlog, the way
+  a linter baseline does. `cifail gate --update <logs>` accepts everything currently failing
+  into a committed `.cifail/baseline.txt`; after that `cifail gate <logs>` exits 1 only for a
+  fingerprint that isn't in it. The baseline is one fingerprint per line with the rule title
+  as a comment, so it reads in review and deleting a line re-arms the gate. `gate` opens no
+  store, reads no git, and makes no network call — its entire memory is that file, so it
+  gives the same verdict on a laptop and in a scratch container. `--json`, `--format` and
+  `--type` work as they do on `analyze`.
+
 ### Fixed
 
 - **`cifail serve --help` crashed** (`Could not find color or style 'name'`, exit 70) in the

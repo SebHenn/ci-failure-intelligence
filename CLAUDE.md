@@ -224,6 +224,25 @@ run per test. A clean report with no failures exits 0. `--annotations` emits Git
 `::error title=…::…` lines per failing test (only under `GITHUB_ACTIONS=true`; escaped per the
 workflow-command rules). Unit-building + annotation logic live in `AnalyzeCommand`; the parser is in Core.
 
+### The new-failure gate (R29, `Core/Analysis/GateComputer.cs` + `GateBaseline.cs`)
+
+`cifail gate <logs>` fails CI only on a fingerprint absent from a committed
+`.cifail/baseline.txt`; `--update` rewrites the file. `GateComputer.Evaluate(observed, baseline)`
+is a **pure** function (mirrors `StatsComputer`/`FailureClusterer`) returning
+`{New, Known, Stale}` — it groups duplicate fingerprints into one `GateFinding` listing every
+source, keeps findings in **first-seen** order (so the report reads like the log), and sorts
+`Stale` (advisory only; it can never fail the gate). `GateBaseline` is the file format:
+`Parse` skips comments/blank lines/junk (**an unparseable line must mean "not accepted", never
+a crash**), `Render` sorts entries so a regenerated file diffs cleanly and flattens rule titles
+so a newline in one can't forge a baseline line. JSON: `Output/GateJson.cs` (PascalCase).
+
+**`gate` is deliberately storeless** — no `IAnalysisStore`, no git, no network, just
+`AnalysisService.CreateDefault()`. Its memory is the committed file, so the verdict is identical
+on a laptop and in a scratch container with a read-only home. Don't add store flags to it.
+Unmatched failures are gated too (`unknown:<hash>`), which is the point. Input handling is
+shared with `analyze` via `Cli/Commands/AnalysisInputs.cs` (`Read` + `BuildUnits`) so the two
+can never disagree about what one failure is.
+
 ### Insights / stats (R16, `Core/Analysis/StatsComputer.cs` + `Storage/IAnalysisStats`)
 
 `cifail stats` turns history into signal: open/resolved/unmatched counts, by-ecosystem

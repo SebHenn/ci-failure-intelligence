@@ -27,6 +27,7 @@ public sealed class HelpTests
     public static TheoryData<string[]> Commands => new()
     {
         new[] { "analyze" },
+        new[] { "gate" },
         new[] { "history" },
         new[] { "stats" },
         new[] { "clusters" },
@@ -75,7 +76,7 @@ public sealed class HelpTests
         var result = cli.Run("--help");
 
         result.ExitCode.Should().Be(ExitCodes.Ok);
-        foreach (var name in new[] { "analyze", "history", "stats", "clusters", "resolve", "reconcile", "init", "config", "rules" })
+        foreach (var name in new[] { "analyze", "gate", "history", "stats", "clusters", "resolve", "reconcile", "init", "config", "rules" })
             result.StdoutFlat.Should().Contain(name);
     }
 

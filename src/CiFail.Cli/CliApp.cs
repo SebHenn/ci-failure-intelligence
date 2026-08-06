@@ -95,6 +95,11 @@ public static class CliApp
                 .WithExample("analyze", "--json", "test.log")
                 .WithExample("analyze", "--type", "dotnet", "build.log");
 
+            config.AddCommand<GateCommand>("gate")
+                .WithDescription("Fail CI on a new failure only, ignoring the backlog in .cifail/baseline.txt.")
+                .WithExample("gate", "build.log")
+                .WithExample("gate", "--update", "build.log");
+
             config.AddCommand<HistoryCommand>("history")
                 .WithDescription("List the failures you've analyzed before (or show one by its number).")
                 .WithExample("history")

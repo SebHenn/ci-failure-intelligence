@@ -94,7 +94,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         List<(string source, string text)> inputs;
         try
         {
-            inputs = ReadInputs(settings.Paths);
+            inputs = AnalysisInputs.Read(settings.Paths);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -119,7 +119,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         List<AnalysisUnit> units;
         try
         {
-            units = BuildUnits(inputs, format);
+            units = AnalysisInputs.BuildUnits(inputs, format);
         }
         catch (XmlException ex)
         {
@@ -270,30 +270,6 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
     }
 
     /// <summary>One thing to analyze: a raw log, or a single failing test from a report.</summary>
-    private readonly record struct AnalysisUnit(string Source, string Text, TestFailure? Test);
-
-    /// <summary>
-    /// Expand raw inputs into analysis units. A log becomes one unit; a JUnit/TRX report becomes
-    /// one unit per failing test. In <c>auto</c> the format is sniffed per input.
-    /// </summary>
-    private static List<AnalysisUnit> BuildUnits(IReadOnlyList<(string source, string text)> inputs, ReportFormat requested)
-    {
-        var units = new List<AnalysisUnit>();
-        foreach (var (source, text) in inputs)
-        {
-            var fmt = requested == ReportFormat.Auto ? TestReportParser.Detect(source, text) : requested;
-            if (fmt is ReportFormat.Log or ReportFormat.Auto)
-            {
-                units.Add(new AnalysisUnit(source, text, null));
-                continue;
-            }
-
-            foreach (var failure in TestReportParser.ParseFailures(fmt, text))
-                units.Add(new AnalysisUnit($"{source}::{failure.FullName}", failure.ToLogText(), failure));
-        }
-        return units;
-    }
-
     /// <summary>
     /// Emit a GitHub Actions <c>::error::</c> annotation per failing test, so failures show
     /// inline on the PR. Only fires under Actions (GITHUB_ACTIONS=true); a no-op elsewhere.
@@ -417,30 +393,6 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         "markdown" or "md" => ReportKind.Markdown,
         _ => null,
     };
-
-    private static List<(string, string)> ReadInputs(IReadOnlyList<string> paths)
-    {
-        var inputs = new List<(string, string)>();
-
-        if (paths.Count == 0)
-        {
-            if (!Console.IsInputRedirected)
-                return inputs; // nothing piped; caller reports the usage error
-            var stdin = Console.In.ReadToEnd();
-            if (!string.IsNullOrWhiteSpace(stdin))
-                inputs.Add(("stdin", stdin));
-            return inputs;
-        }
-
-        foreach (var path in paths)
-        {
-            if (!File.Exists(path))
-                throw new FileNotFoundException($"file not found: {path}");
-            inputs.Add((path, File.ReadAllText(path)));
-        }
-
-        return inputs;
-    }
 
     private static void EmitJson(IReadOnlyList<Analysis> results)
     {

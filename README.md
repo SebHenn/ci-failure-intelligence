@@ -49,6 +49,7 @@ Saved as #1. Once you've fixed it, record how so future-you remembers:
   - [Handy options for `analyze`](#handy-options-for-analyze)
 - [Teach it a new failure](#teach-it-a-new-failure)
 - [Use cifail in CI](#use-cifail-in-ci) — [GitHub Actions](#github-actions-the-ready-made-action) · [GitLab CI](#gitlab-ci) · [Exit codes](#exit-codes)
+- [Fail CI on *new* failures only: `cifail gate`](#fail-ci-on-new-failures-only-cifail-gate)
 - [What do the words mean?](#what-do-the-words-mean)
 - [Check your setup: `cifail config`](#check-your-setup-cifail-config)
 - [Where your data is kept](#where-your-data-is-kept)
@@ -411,6 +412,81 @@ Scripts can branch on *why* something failed, not just whether it did:
   errors and hints all go to **stderr**, so `cifail analyze --json build.log | jq` never breaks,
   even when cifail has something to complain about.
 - **cifail never prints a stack trace** for a problem it understands. If you see one, it's a bug.
+
+---
+
+## Fail CI on *new* failures only: `cifail gate`
+
+Most repos that would benefit from a build gate can't turn one on, because turning it on
+means fixing everything first. `cifail gate` solves that the way linters do — with a
+baseline.
+
+Adopt it in one command, however broken things are today:
+
+```console
+cifail gate --update build.log     # accept everything that's failing right now
+git add .cifail/baseline.txt && git commit -m "Baseline current failures"
+```
+
+From then on, the backlog is tolerated and **only a new failure breaks the build**:
+
+```console
+cifail gate build.log       # exit 0 — nothing new
+                            # exit 1 — a failure that isn't in the baseline
+```
+
+```
+✗ 1 new failure not in the baseline:
+
+  • npm dependency resolution conflict (ERESOLVE)
+    npm-eresolve:43053880ea27
+    in build.log
+```
+
+Fixed something? `cifail gate` tells you which baseline entries no longer occur, and
+`--update` drops them, so the file shrinks as you clean up.
+
+**The baseline is a plain text file you commit** — one fingerprint per line with the rule
+title as a comment. It's meant to be read in review, and **deleting a line re-arms the gate**
+for that failure. No database, no hidden state:
+
+```
+nuget-nu1101:3f95e732e609  # NuGet package not found
+```
+
+In CI, run it on the failure path — the same place you'd run `analyze`:
+
+```yaml
+- name: Build
+  id: build
+  run: dotnet build 2>&1 | tee build.log
+
+- name: Gate on new failures
+  if: failure()
+  run: cifail gate build.log     # non-zero fails the job
+```
+
+It also takes test reports, so you can gate per failing test:
+
+```console
+cifail gate --format trx TestResults/*.trx
+```
+
+Two deliberate properties worth knowing:
+
+- **`gate` never touches your history database, git, or the network.** Its entire memory is
+  the committed baseline, so it gives the same verdict on your laptop and in a scratch
+  container with a read-only home. A gate that can fail for unrelated reasons is a gate
+  people switch off.
+- **A failure no rule recognizes is gated too**, under an `unknown:` fingerprint. A new
+  failure nobody has a pattern for yet is the one you most want to hear about.
+
+Point it at the log of a *failed* step (or at a test report, where "no failures" is
+well-defined) — given a clean build log, cifail has no way to tell success from an
+unexplained failure.
+
+Flags: `--baseline <file>` (default `.cifail/baseline.txt`), `--update`, `--json`,
+`--format`, `--type`.
 
 ---
 
