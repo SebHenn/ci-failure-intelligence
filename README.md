@@ -68,8 +68,8 @@ somewhere in the middle. Figuring out *which* line, and what to do about it, tak
 experience. cifail does that first pass for you:
 
 - It knows the common failure patterns for **.NET, Node/npm, Python/pip, Java, Go, Rust,
-  Ruby, PHP, C/C++, Swift, Android, and infra (Docker/Terraform)**, plus generic CI errors,
-  so it can point straight at the cause.
+  Ruby, PHP, C/C++, Swift, Android, Scala, Elixir, and infra (Docker/Terraform/Kubernetes)**,
+  plus generic CI errors, so it can point straight at the cause.
 - It **remembers** every failure you analyze. The next time a similar one shows up, it
   reminds you — including the fix you wrote down last time.
 
@@ -214,7 +214,7 @@ we fix this last time?" history fills itself in. In `cifail history` these show 
 
 - `--json` — print the result as JSON instead of a panel. Useful inside CI pipelines or
   other scripts.
-- `--type dotnet|node|python|java|go|rust|ruby|php|cpp|swift|android|infra|generic` — tell
+- `--type dotnet|node|python|java|go|rust|ruby|php|cpp|swift|android|scala|elixir|infra|generic` — tell
   cifail what kind of log this is, if it guesses wrong.
 - `--format auto|log|junit|trx` — feed cifail a **structured test report** instead of a raw
   log. `auto` (the default) sniffs JUnit XML and .NET TRX by their extension/root element;
@@ -716,7 +716,8 @@ fixes, optional AI, a shared team server, and CI integration all work now.
 What's in the box:
 
 - **Offline failure analysis** for .NET, Node, Python, Java, Go, Rust, Ruby, PHP, C/C++,
-  Swift, Android, and infra (Docker/Terraform), plus generic CI errors — human-readable or `--json`.
+  Swift, Android, Scala, Elixir, and infra (Docker/Terraform/Kubernetes), plus generic CI
+  errors — human-readable or `--json`.
 - **Memory** — past failures and your fixes, with similar-failure recall and git-linked
   auto-resolution.
 - **One-command install** as a native binary on macOS / Linux / Windows — no .NET needed.

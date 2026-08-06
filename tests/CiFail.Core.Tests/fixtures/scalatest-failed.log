@@ -1,0 +1,10 @@
+Run sbt test
+[info] welcome to sbt 1.10.1 (Eclipse Adoptium Java 21.0.4)
+[info] compiling 4 Scala sources to /home/runner/work/app/target/scala-3.4.2/test-classes ...
+[info] BillingSpec:
+[info] - should add tax to the subtotal *** FAILED ***
+[info]   121.0 did not equal 100.0 (BillingSpec.scala:28)
+[info] Run completed in 1 second, 402 milliseconds.
+[info] Total number of tests run: 34
+[error] Tests: succeeded 33, failed 1, canceled 0, ignored 0, pending 0
+[error] *** 1 TEST FAILED ***

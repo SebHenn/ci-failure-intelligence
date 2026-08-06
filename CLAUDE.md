@@ -158,7 +158,7 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
    timestamps. Also exposes `Scrub()`, which collapses volatile tokens (paths,
    numbers, GUIDs) — used for fingerprints and similarity so cosmetic differences
    don't matter.
-2. `Ingest/EcosystemDetector.Detect` — weighted-marker heuristic over the 12 ecosystems in
+2. `Ingest/EcosystemDetector.Detect` — weighted-marker heuristic over the 14 ecosystems in
    `SupportedNamesText`; falls back to `generic`; overridable via `--type` (which now
    **rejects** an unknown value instead of silently auto-detecting). **Scoring counts markers,
    not occurrences**: each marker adds its weight at most once, because summing total match
@@ -173,6 +173,11 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
    confidence. Rules whose `ecosystem` is `generic` always apply; ecosystem-specific
    rules only apply when detected (or when ecosystem is undetected). Named regex
    capture groups are interpolated into the rule's `fix` template via `{name}`.
+   **Ecosystem inheritance (`RuleEngine.Inherits`):** `Android` and `Scala` also get the
+   `java` rules, because those builds *are* JVM builds — an Android job that OOM'd used to
+   get the vague `generic-oom` while `gradle-daemon-disappeared` sat unused in `java.yaml`,
+   and the Kotlin rules (which live in that pack) never applied on the platform where most
+   Kotlin is written. One-directional: Java must not pick up Android's aapt2 rules.
 4. `Analysis/FingerprintBuilder` — `ruleId:hash` identity from scrubbed signature.
 5. Similarity + persistence (only when an `IAnalysisStore` is supplied): TF-IDF cosine
    over scrubbed bag-of-terms vs. stored history; then persists the run unless

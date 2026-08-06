@@ -1,0 +1,12 @@
+Run sbt compile
+[info] welcome to sbt 1.10.1 (Eclipse Adoptium Java 21.0.4)
+[info] loading settings for project app-build from plugins.sbt ...
+[info] compiling 14 Scala sources to /home/runner/work/app/target/scala-3.4.2/classes ...
+[error] -- [E007] Type Mismatch Error: /home/runner/work/app/src/main/scala/Billing.scala:42:24
+[error] 42 |  val total: BigDecimal = subtotal
+[error]    |                          ^^^^^^^^
+[error]    |                          Found:    (subtotal : Double)
+[error]    |                          Required: BigDecimal
+[error] one error found
+[error] (Compile / compileIncremental) Compilation failed
+[error] Total time: 9 s, completed Aug 6, 2026, 9:52:14 AM

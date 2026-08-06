@@ -19,5 +19,7 @@ public enum Ecosystem
     Infra,
     Swift,
     Android,
+    Scala,
+    Elixir,
     Generic,
 }

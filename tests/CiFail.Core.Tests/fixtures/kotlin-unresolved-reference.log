@@ -1,0 +1,12 @@
+Run ./gradlew :core:compileKotlin
+> Task :core:compileKotlin FAILED
+e: file:///home/runner/work/service/core/src/main/kotlin/com/example/Billing.kt:18:23 Unresolved reference: BigDecmial
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':core:compileKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+BUILD FAILED in 21s

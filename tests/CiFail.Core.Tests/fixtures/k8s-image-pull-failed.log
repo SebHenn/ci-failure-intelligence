@@ -1,0 +1,11 @@
+Run kubectl rollout status deployment/api -n production
+Waiting for deployment "api" rollout to finish: 1 old replicas are pending termination...
+$ kubectl get pods -n production
+NAME                   READY   STATUS             RESTARTS   AGE
+api-7d9f5c8b4d-2xk9p   0/1     ImagePullBackOff   0          92s
+$ kubectl describe pod api-7d9f5c8b4d-2xk9p -n production
+Events:
+  Type     Reason     Age                From               Message
+  ----     ------     ----               ----               -------
+  Normal   Pulling    31s (x3 over 90s)  kubelet            Pulling image "ghcr.io/example/api:v2.4.1"
+  Warning  Failed     29s (x3 over 88s)  kubelet            Failed to pull image "ghcr.io/example/api:v2.4.1": rpc error: code = NotFound desc = failed to pull and unpack image: not found

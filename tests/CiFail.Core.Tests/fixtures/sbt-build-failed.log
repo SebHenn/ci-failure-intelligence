@@ -1,0 +1,8 @@
+Run sbt assembly
+[info] welcome to sbt 1.10.1 (Eclipse Adoptium Java 21.0.4)
+[info] loading settings for project app from build.sbt ...
+[info] compiling 21 Scala sources to /home/runner/work/app/target/scala-3.4.2/classes ...
+[error] deduplicate: different file contents found in the following:
+[error] /home/runner/.cache/coursier/v1/https/repo1.maven.org/maven2/org/slf4j/slf4j-api/2.0.13/slf4j-api-2.0.13.jar:module-info.class
+[error] (Compile / assembly) Compilation failed
+[error] Total time: 41 s, completed Aug 6, 2026, 10:02:55 AM

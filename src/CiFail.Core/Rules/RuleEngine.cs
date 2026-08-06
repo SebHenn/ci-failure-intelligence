@@ -62,13 +62,36 @@ public sealed class RuleEngine
             .ToList();
     }
 
+    /// <summary>
+    /// Ecosystems that also inherit another's rules, because a build in the first genuinely
+    /// <i>is</i> a build in the second.
+    ///
+    /// <para>
+    /// An Android build is a Gradle/JVM build — which is why the detector ranks Android above
+    /// Java in the first place. Without this, an Android job that ran out of memory got the
+    /// vague <c>generic-oom</c> instead of <c>gradle-daemon-disappeared</c>, and Kotlin
+    /// compile errors went unexplained on the platform where most Kotlin is written, purely
+    /// because those rules live in java.yaml. The alternative — copying every JVM rule into
+    /// android.yaml — is two copies to keep in step, which is how rules rot.
+    /// </para>
+    /// </summary>
+    private static readonly Dictionary<Ecosystem, Ecosystem[]> Inherits = new()
+    {
+        [Ecosystem.Android] = new[] { Ecosystem.Java },
+        [Ecosystem.Scala] = new[] { Ecosystem.Java },
+    };
+
     private static bool AppliesTo(RuleDefinition rule, Ecosystem ecosystem)
     {
         if (string.Equals(rule.Ecosystem, "generic", StringComparison.OrdinalIgnoreCase))
             return true;
         if (ecosystem is Ecosystem.Generic or Ecosystem.Unknown)
             return true; // when undetected, try everything
-        return string.Equals(rule.Ecosystem, ecosystem.ToString(), StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(rule.Ecosystem, ecosystem.ToString(), StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return Inherits.TryGetValue(ecosystem, out var parents)
+            && parents.Any(p => string.Equals(rule.Ecosystem, p.ToString(), StringComparison.OrdinalIgnoreCase));
     }
 
     private static IReadOnlyDictionary<string, string> ExtractCaptures(Regex regex, Match m)

@@ -70,6 +70,50 @@ public class RuleEngineTests
         matches[0].MatchedLine.Should().Be("boom happened here");
     }
 
+    /// <summary>
+    /// Android and Scala builds inherit the JVM rules, because they genuinely are JVM builds.
+    /// Before this, an Android job that ran out of memory got the vague `generic-oom` while
+    /// `gradle-daemon-disappeared` sat unused in java.yaml — and Kotlin rules, which live in
+    /// that same pack, went unapplied on the platform where most Kotlin is written.
+    /// </summary>
+    [Theory]
+    [InlineData(Ecosystem.Android)]
+    [InlineData(Ecosystem.Scala)]
+    public void A_jvm_ecosystem_inherits_the_java_rules(Ecosystem ecosystem)
+    {
+        var engine = new RuleEngine(new[]
+        {
+            new RuleDefinition
+            {
+                Id = "java-only", Ecosystem = "java", Title = "Java only",
+                Match = "OutOfMemoryError", Confidence = 0.8, Fix = "x",
+            },
+        });
+        var log = LogNormalizer.Build("t", "java.lang.OutOfMemoryError: Java heap space");
+
+        engine.Match(log, ecosystem).Should().ContainSingle()
+            .Which.Rule.Id.Should().Be("java-only");
+    }
+
+    [Fact]
+    public void Inheritance_does_not_run_in_the_other_direction()
+    {
+        // Java must not pick up Android's rules: an ordinary Maven build has nothing to do
+        // with aapt2 or a manifest merger, and matching those would be pure noise.
+        var engine = new RuleEngine(new[]
+        {
+            new RuleDefinition
+            {
+                Id = "android-only", Ecosystem = "android", Title = "Android only",
+                Match = "boom", Confidence = 0.8, Fix = "x",
+            },
+        });
+        var log = LogNormalizer.Build("t", "boom");
+
+        engine.Match(log, Ecosystem.Java).Should().BeEmpty();
+        engine.Match(log, Ecosystem.Android).Should().ContainSingle();
+    }
+
     [Fact]
     public void Embedded_rules_have_unique_ids_and_valid_fields()
     {

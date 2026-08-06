@@ -77,3 +77,71 @@
     renamed, removed, or is required. Check the provider docs for the resource and the
     provider version you pinned; `terraform validate` reports the exact file and line.
   docs: https://developer.hashicorp.com/terraform/language
+
+- id: k8s-image-pull-failed
+  ecosystem: infra
+  category: deploy
+  title: Kubernetes cannot pull the container image
+  match: "\\b(?<reason>ImagePullBackOff|ErrImagePull|ErrImageNeverPull)\\b|Failed to pull image \"(?<image>[^\"]+)\""
+  confidence: 0.88
+  fix: |
+    The kubelet could not fetch {image}. Three things to check, in order: the tag really
+    exists in the registry (a deploy racing the image push is the classic one), the node
+    can reach the registry, and — for a private registry — the ServiceAccount has an
+    `imagePullSecrets` entry. `kubectl describe pod <pod>` prints the underlying registry
+    error, which is more specific than this status.
+  docs: https://kubernetes.io/docs/concepts/containers/images/
+
+- id: k8s-crashloop
+  ecosystem: infra
+  category: deploy
+  title: Pod is crash-looping
+  match: "\\bCrashLoopBackOff\\b|Back-off restarting failed container"
+  confidence: 0.85
+  fix: |
+    The container starts and then exits, repeatedly. The status is a symptom — the cause is
+    in the container's own output: `kubectl logs <pod> --previous` shows the run that
+    crashed (without `--previous` you get the one that hasn't failed yet). Most often a
+    missing environment variable or config, a failing dependency at startup, or a command
+    that runs to completion when Kubernetes expects a long-running process.
+  docs: https://kubernetes.io/docs/tasks/debug/debug-application/debug-pods/
+
+- id: k8s-rollout-timeout
+  ecosystem: infra
+  category: deploy
+  title: Deployment rollout did not complete
+  match: "error: timed out waiting for the condition|Waiting for (?:deployment|rollout) \"(?<name>[^\"]+)\" rollout to finish|deployment \"[^\"]+\" exceeded its progress deadline"
+  confidence: 0.8
+  fix: |
+    `kubectl rollout status` gave up waiting. The new pods never became Ready — check them
+    with `kubectl get pods` and `kubectl describe`. Common causes: a failing readiness
+    probe, unschedulable pods (no node with enough CPU/memory, or a taint), or an image
+    that won't pull. `kubectl rollout undo deployment/{name}` reverts while you look.
+  docs: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+
+- id: helm-release-failed
+  ecosystem: infra
+  category: deploy
+  title: Helm install or upgrade failed
+  match: "Error: (?:UPGRADE|INSTALL) FAILED: (?<message>.+)|Error: release (?<release>\\S+) failed|has no deployed releases"
+  confidence: 0.85
+  fix: |
+    {message}
+    "has no deployed releases" means a previous install failed and left the release in a
+    broken state — `helm uninstall <release>` and reinstall, or `helm rollback`. If the
+    error mentions a field being immutable, the resource has to be deleted rather than
+    patched. `helm upgrade --atomic` rolls back automatically instead of leaving this mess.
+  docs: https://helm.sh/docs/helm/helm_upgrade/
+
+- id: helm-template-error
+  ecosystem: infra
+  category: build
+  title: Helm chart template failed to render
+  match: "Error: (?:template|parse error|YAML parse error|failed to parse)[^\\n]*: (?<message>.+)|executing \"(?<template>[^\"]+)\" at <(?<expression>[^>]+)>"
+  confidence: 0.85
+  fix: |
+    The chart didn't render, so nothing was sent to the cluster. `<{expression}>` in
+    template '{template}' is where it broke — usually a value that isn't set (guard it with
+    `default` or `required`), or indentation that produced invalid YAML. Reproduce without
+    a cluster: `helm template . -f values.yaml`, and `--debug` prints the rendered output.
+  docs: https://helm.sh/docs/chart_template_guide/debugging/

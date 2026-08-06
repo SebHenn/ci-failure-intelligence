@@ -1,0 +1,8 @@
+Run mix compile --warnings-as-errors
+==> app
+Compiling 42 files (.ex)
+
+== Compilation error in file lib/app/invoice.ex ==
+** (CompileError) lib/app/invoice.ex:31: undefined variable "subtotl"
+    (elixir 1.17.2) expanding macro: Kernel.if/2
+    lib/app/invoice.ex:31: App.Invoice.total/1

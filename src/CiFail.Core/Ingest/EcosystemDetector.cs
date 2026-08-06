@@ -36,7 +36,7 @@ public static class EcosystemDetector
     /// </para>
     /// </summary>
     public const string SupportedNamesText =
-        "dotnet|node|python|java|go|rust|ruby|php|cpp|infra|swift|android|generic";
+        "dotnet|node|python|java|go|rust|ruby|php|cpp|infra|swift|android|scala|elixir|generic";
 
     /// <summary>The same canonical names as a list, split from <see cref="SupportedNamesText"/>.</summary>
     public static readonly IReadOnlyList<string> SupportedNames = SupportedNamesText.Split('|');
@@ -78,8 +78,13 @@ public static class EcosystemDetector
         Ecosystem.Dotnet,
         Ecosystem.Php,
         Ecosystem.Ruby,
+        Ecosystem.Elixir,
         Ecosystem.Python,
         Ecosystem.Node,
+        // Above Java, for the same reason Android is: sbt prefixes every line with `[error] `,
+        // and the detector matches case-insensitively, so Maven's `[ERROR] ` weak marker fires
+        // on every Scala build. A Scala log is a JVM log; a Java log is not a Scala one.
+        Ecosystem.Scala,
         Ecosystem.Java,
         Ecosystem.Cpp,
         Ecosystem.Infra,
@@ -122,13 +127,18 @@ public static class EcosystemDetector
             "dotnet" or "net" or ".net" or "csharp" or "nuget" or "msbuild" => Ecosystem.Dotnet,
             "node" or "npm" or "js" or "javascript" or "yarn" or "pnpm" => Ecosystem.Node,
             "python" or "py" or "pip" => Ecosystem.Python,
-            "java" or "maven" or "mvn" or "gradle" or "kotlin" => Ecosystem.Java,
+            // Kotlin resolves to Java on purpose: a Kotlin CI log is a Gradle log, and
+            // java.yaml carries the Kotlin compiler rules.
+            "java" or "maven" or "mvn" or "gradle" or "kotlin" or "kt" or "jvm" => Ecosystem.Java,
             "go" or "golang" => Ecosystem.Go,
             "rust" or "cargo" or "rs" => Ecosystem.Rust,
             "ruby" or "rb" or "bundler" or "gem" or "rails" => Ecosystem.Ruby,
             "php" or "composer" or "phpunit" => Ecosystem.Php,
             "cpp" or "c++" or "c" or "gcc" or "clang" or "g++" or "cmake" or "make" => Ecosystem.Cpp,
-            "infra" or "docker" or "dockerfile" or "terraform" or "tf" or "tofu" or "opentofu" => Ecosystem.Infra,
+            "infra" or "docker" or "dockerfile" or "terraform" or "tf" or "tofu" or "opentofu"
+                or "k8s" or "kubernetes" or "kubectl" or "helm" => Ecosystem.Infra,
+            "scala" or "sbt" => Ecosystem.Scala,
+            "elixir" or "ex" or "mix" or "erlang" => Ecosystem.Elixir,
             "swift" or "xcode" or "xcodebuild" or "ios" => Ecosystem.Swift,
             "android" or "aapt" => Ecosystem.Android,
             "generic" or "ci" => Ecosystem.Generic,
@@ -232,6 +242,15 @@ public static class EcosystemDetector
             Strong(@"\bmaven\b"),
             Strong(@"\.java:"),
             Strong(@"Exception in thread ""[^""]*"" java\."),
+            // Maven says BUILD FAILURE, Gradle says BUILD FAILED — only the first was here, so
+            // a Gradle-only log had nothing strong in it at all. Anchored and without the
+            // asterisks so it can't match Swift's `** BUILD FAILED **`.
+            Strong(@"^BUILD (?:FAILED|SUCCESSFUL) in \d"),
+            // Kotlin: the compiler's `e:` diagnostic prefix and .kt/.kts source references.
+            // Kotlin rules live in java.yaml (see the pack), so they must resolve here.
+            Strong(@"^e: (?:file://)?\S+\.kts?:"),
+            Strong(@"\.kts?:\d+:\d+"),
+            Weak(@"\bkotlin\b"),
             // Deliberately weak: `[ERROR] ` is a Maven convention that a dozen unrelated tools
             // also use, and gradlew is just as likely to be an Android build.
             Weak(@"\[ERROR\] "),
@@ -315,6 +334,15 @@ public static class EcosystemDetector
             Strong(@"Error acquiring the state lock"),
             Strong(@"\bbuildkit\b"),
             Strong(@"Step \d+/\d+"),
+            // Kubernetes/Helm belong here with Docker and Terraform: it is the deploy bucket,
+            // and a `kubectl rollout` or `helm upgrade` failure previously scored 0.
+            Strong(@"\bkubectl\b"),
+            Strong(@"\bkubelet\b"),
+            Strong(@"\bkubernetes\b"),
+            Strong(@"\bhelm (?:upgrade|install|template|uninstall|rollback|lint|dependency)\b"),
+            Strong(@"\b(?:CrashLoopBackOff|ImagePullBackOff|ErrImagePull|ErrImageNeverPull)\b"),
+            Weak(@"\bhelm\b"),
+            Weak(@"\bk8s\b"),
             // `denied: ` used to live here and matched every "permission denied:" in every log.
             Weak(@"\bunauthorized: "),
             Weak(@"^denied: "),
@@ -337,6 +365,31 @@ public static class EcosystemDetector
             Strong(@"\bxcrun\b"),
             Weak(@"\bXcode\b"),
             Weak(@"Code Sign(?:ing)?"),
+        },
+
+        [Ecosystem.Scala] = new[]
+        {
+            Strong(@"\bbuild\.sbt\b"),
+            Strong(@"\bsbt (?:compile|test|run|clean|assembly|publish)\b"),
+            Strong(@"\bproject/build\.properties\b"),
+            Strong(@"\.scala:\d+"),
+            Strong(@"\bscalac\b"),
+            Strong(@"\bScalaTest\b"),
+            Strong(@"\bcrossScalaVersions\b"),
+            Weak(@"\bsbt\b"),
+            Weak(@"\bscala\b"),
+        },
+
+        [Ecosystem.Elixir] = new[]
+        {
+            Strong(@"\bmix\.exs\b"),
+            Strong(@"\bmix (?:compile|test|deps\.get|deps\.compile|release|format)\b"),
+            Strong(@"\.exs?:\d+"),
+            Strong(@"\bmix\.lock\b"),
+            Strong(@"\*\* \((?:CompileError|SyntaxError|UndefinedFunctionError|Mix\.Error)\)"),
+            Strong(@"\bExUnit\b"),
+            Weak(@"\belixir\b"),
+            Weak(@"\bhex\b"),
         },
 
         [Ecosystem.Android] = new[]

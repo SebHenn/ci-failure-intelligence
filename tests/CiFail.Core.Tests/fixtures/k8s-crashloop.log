@@ -1,0 +1,9 @@
+Run kubectl get pods -n staging
+NAME                        READY   STATUS             RESTARTS      AGE
+worker-6c5f9d7b88-lm4qt     0/1     CrashLoopBackOff   5 (48s ago)   4m12s
+$ kubectl describe pod worker-6c5f9d7b88-lm4qt -n staging
+Events:
+  Type     Reason     Age                   From     Message
+  ----     ------     ----                  ----     -------
+  Normal   Pulled     2m3s (x4 over 4m10s)  kubelet  Container image "ghcr.io/example/worker:v1.9.0" already present on machine
+  Warning  BackOff    45s (x12 over 3m40s)  kubelet  Back-off restarting failed container worker in pod worker-6c5f9d7b88-lm4qt_staging

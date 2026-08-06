@@ -1,0 +1,83 @@
+# Scala / sbt rule pack
+#
+# Note on confidences: sbt prefixes *every* line with `[error] `, including lines that are
+# just context. Rules here key off the message, never the prefix.
+
+- id: scala-type-mismatch
+  ecosystem: scala
+  category: compile
+  title: Scala type mismatch
+  # Scala 3 and Scala 2 report this completely differently, so all three forms are here:
+  # the Scala 3 `-- [E007] Type Mismatch Error:` header, the Scala 2 `type mismatch;` line,
+  # and the Found:/Required: pair (whose second line carries sbt's `[error]  |` gutter).
+  match: "\\[E\\d+\\] Type Mismatch Error: (?<file>[^\\s:]+):(?<line>\\d+)|(?<file2>\\S+\\.scala):(?<line2>\\d+):(?:\\d+:)? (?:error: )?type mismatch;|Found:\\s+(?<found>[^\\n]+)\\n[^\\n]*Required:\\s*(?<required>[^\\n]+)"
+  confidence: 0.85
+  fix: |
+    The compiler got a different type than it needed at {file}:{line}. The `Found:` /
+    `Required:` pair below names both. Scala 3 prints the two on separate lines; Scala 2
+    prints `found:`/`required:`. Convert explicitly, or widen the expected type.
+  docs: https://docs.scala-lang.org/scala3/book/types-inferred.html
+
+- id: scala-not-found
+  ecosystem: scala
+  category: compile
+  title: Scala symbol not found
+  match: "(?:error: )?not found: (?:value|type|object) (?<symbol>\\w+)|Not found: (?<symbol2>[\\w.]+)"
+  confidence: 0.85
+  fix: |
+    '{symbol}' isn't in scope at that point. Usually a missing import, a typo, or a name
+    that only exists in a different Scala version of the library. `sbt compile` reproduces
+    it; `sbt "show dependencyTree"` helps when you expected it from a dependency.
+  docs: https://docs.scala-lang.org/tour/packages-and-imports.html
+
+- id: sbt-unresolved-dependency
+  ecosystem: scala
+  category: dependency
+  title: sbt could not resolve a dependency
+  match: "(?:error: )?(?:sbt\\.librarymanagement\\.ResolveException|unresolved dependency: (?<dependency>[^\\s:]+))|not found: https?://\\S+\\.pom"
+  confidence: 0.88
+  fix: |
+    sbt could not download {dependency}. The most common cause in Scala is a
+    **cross-version mismatch**: an artifact published for 2.13 pulled into a 3.x build (or
+    vice versa). Check you're using `%%` (which appends the Scala version) rather than `%`,
+    and that the version exists for your `scalaVersion`. Otherwise the resolver may simply
+    be unreachable or missing a credential.
+  docs: https://www.scala-sbt.org/1.x/docs/Library-Management.html
+
+- id: scala-version-conflict
+  ecosystem: scala
+  category: dependency
+  title: Conflicting cross-versions of a Scala library
+  match: "Conflicting cross-version suffixes in: (?<library>\\S+)|is not a valid cross-version suffix"
+  confidence: 0.9
+  fix: |
+    Two dependencies bring in {library} built for different Scala versions, which cannot
+    coexist on one classpath. Run `sbt evicted` to see which dependency drags in the odd
+    one, then align it — usually by bumping the older library or excluding its transitive
+    dependency.
+  docs: https://www.scala-sbt.org/1.x/docs/Cross-Build.html
+
+- id: scalatest-failed
+  ecosystem: scala
+  category: test
+  title: ScalaTest test failed
+  match: "\\*\\*\\* FAILED \\*\\*\\*|Tests: succeeded \\d+, failed (?<failed>[1-9]\\d*)"
+  confidence: 0.75
+  fix: |
+    A ScalaTest suite failed. The assertion and its diff are printed directly under the
+    `*** FAILED ***` marker, along with the source line. Re-run one suite with
+    `sbt "testOnly *SuiteName"`, or a single test with
+    `sbt "testOnly *SuiteName -- -z \"part of the test name\""`.
+  docs: https://www.scalatest.org/user_guide/using_the_runner
+
+- id: sbt-build-failed
+  ecosystem: scala
+  category: build
+  title: sbt build failed
+  match: "\\[error\\] \\(.+\\) (?:Compilation failed|sbt\\.\\w+)|error\\] Total time: .+, completed"
+  confidence: 0.5
+  fix: |
+    sbt reported the build as failed. This is the summary line, not the cause — scroll up
+    to the first `[error]` that names a file and line. A more specific rule wins when one
+    applies.
+  docs: https://www.scala-sbt.org/1.x/docs/Running.html

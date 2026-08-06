@@ -1,0 +1,79 @@
+# Elixir / Mix / Hex rule pack
+
+- id: elixir-compile-error
+  ecosystem: elixir
+  category: compile
+  title: Elixir compile error
+  match: "\\*\\* \\(CompileError\\) (?<file>[^\\s:]+):(?<line>\\d+):?(?:\\d+:)? (?<message>.+)|error: (?<message2>.+)\\n\\s+└─ (?<file2>\\S+):(?<line2>\\d+)"
+  confidence: 0.85
+  fix: |
+    The compiler rejected {file}:{line} — {message}
+    `mix compile --force` reproduces it. Elixir compiles modules in dependency order, so a
+    compile error can surface in a file that merely *uses* the broken module; the location
+    printed here is where the compiler noticed it, not always where the mistake is.
+  docs: https://hexdocs.pm/elixir/compatibility-and-deprecations.html
+
+- id: elixir-undefined-function
+  ecosystem: elixir
+  category: compile
+  title: Undefined or private function
+  match: "\\*\\* \\(UndefinedFunctionError\\) function (?<function>[\\w.]+/\\d+) is undefined|(?:warning|error): (?<function2>[\\w.]+/\\d+) is undefined or private"
+  confidence: 0.88
+  fix: |
+    {function} doesn't exist with that arity, or isn't public. Elixir treats arity as part
+    of the name, so `foo/2` and `foo/3` are different functions — check the argument count
+    first. If the module is from a dependency, confirm it's listed in mix.exs and that the
+    function still exists in the version you resolved.
+  docs: https://hexdocs.pm/elixir/Kernel.html#defp/2
+
+- id: mix-deps-unavailable
+  ecosystem: elixir
+  category: dependency
+  title: Mix dependencies are missing or out of date
+  match: "\\*\\* \\(Mix\\) Can't continue due to errors on dependencies|Dependencies have diverged|the dependency (?<dependency>\\w+) is not available|Run \"mix deps\\.get\""
+  confidence: 0.88
+  fix: |
+    Mix can't build with the dependencies as they stand. Run `mix deps.get` (and commit
+    mix.lock). "Dependencies have diverged" means mix.exs and mix.lock disagree — usually a
+    version bump committed without the lock, fixed by `mix deps.get` or
+    `mix deps.update <dep>`.
+  docs: https://hexdocs.pm/mix/Mix.Tasks.Deps.Get.html
+
+- id: hex-package-not-found
+  ecosystem: elixir
+  category: dependency
+  title: Hex package or version not found
+  match: "No package with name (?<package>\\w+)|Failed to fetch record for '(?<package2>[^']+)' from registry|no matching version for (?<requirement>[^\\s]+)"
+  confidence: 0.85
+  fix: |
+    Hex has no such package or no version matching your requirement. Check the spelling
+    against hex.pm, and remember `~> 1.2` means ">= 1.2.0 and < 2.0.0" — a requirement like
+    `~> 2.0` will not accept a 1.x release. For a private organisation package, the runner
+    also needs `mix hex.organization auth`.
+  docs: https://hexdocs.pm/elixir/Version.html#module-requirements
+
+- id: exunit-test-failed
+  ecosystem: elixir
+  category: test
+  title: ExUnit test failed
+  match: "\\d+ (?:doctests?, )?tests?, (?<failed>[1-9]\\d*) failures?|^\\s*\\d+\\) test (?<test>.+) \\((?<module>[\\w.]+)\\)"
+  confidence: 0.75
+  fix: |
+    An ExUnit test failed. The numbered block above shows the assertion with `left` and
+    `right` values and the file:line. Re-run just that one by line number:
+    `mix test test/my_test.exs:42`. Add `--seed 0` if you suspect ordering — ExUnit
+    randomises test order by default, which is a common source of "only fails in CI".
+  docs: https://hexdocs.pm/ex_unit/ExUnit.html
+
+- id: elixir-version-mismatch
+  ecosystem: elixir
+  category: environment
+  title: Elixir or OTP version does not satisfy the project
+  match: "You're trying to run :\\w+ on Elixir (?<actual>[\\d.]+) but it has declared in its mix\\.exs file it supports only Elixir (?<required>[^\\n]+)|Elixir (?<actual2>[\\d.]+) is not compatible"
+  confidence: 0.9
+  fix: |
+    The runner has Elixir {actual}, but the project requires {required}. Pin the CI image
+    or setup action (for example erlef/setup-beam's `elixir-version` and `otp-version`) to
+    a matching pair, or relax `elixir:` in mix.exs. Elixir and OTP versions are coupled —
+    check the compatibility table before bumping just one.
+  docs: https://hexdocs.pm/elixir/compatibility-and-deprecations.html

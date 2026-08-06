@@ -87,3 +87,60 @@
     memory-starved runner. Lower org.gradle.jvmargs (-Xmx), give the runner more
     memory, or disable the daemon in CI with `--no-daemon`.
   docs: https://docs.gradle.org/current/userguide/gradle_daemon.html
+
+# --- Kotlin -----------------------------------------------------------------------------
+# Kotlin lives in the java pack rather than its own ecosystem: a Kotlin CI log *is* a Gradle
+# log, and splitting them would make the detector arbitrate between two marker sets that
+# always fire together. `--type kotlin` resolves here.
+
+- id: kotlin-unresolved-reference
+  ecosystem: java
+  category: compile
+  title: Kotlin unresolved reference
+  match: "e: (?:file://)?(?<file>\\S+\\.kts?):(?<line>\\d+):\\d+ Unresolved reference:? (?<symbol>.+)"
+  confidence: 0.88
+  fix: |
+    '{symbol}' isn't visible at {file}:{line} — a missing import, a typo, or a dependency
+    that isn't on this source set's classpath. In a multi-module Gradle build, check the
+    dependency is declared for *this* module and with the right configuration
+    (`implementation` is not visible to consumers; `api` is).
+  docs: https://kotlinlang.org/docs/packages.html
+
+- id: kotlin-type-mismatch
+  ecosystem: java
+  category: compile
+  title: Kotlin type mismatch
+  match: "e: (?:file://)?(?<file>\\S+\\.kts?):(?<line>\\d+):\\d+ (?<message>Type mismatch: inferred type is .+|Null can not be a value of a non-null type .+)"
+  confidence: 0.88
+  fix: |
+    {file}:{line} — {message}
+    If this is about nullability, the fix is usually at the *source* of the value, not
+    here: Kotlin is telling you something can be null that the signature says can't. `?.`,
+    `?:` or an explicit check are all better than `!!`, which just moves the failure to
+    runtime.
+  docs: https://kotlinlang.org/docs/null-safety.html
+
+- id: kotlin-compile-error
+  ecosystem: java
+  category: compile
+  title: Kotlin compile error
+  match: "e: (?:file://)?(?<file>\\S+\\.kts?):(?<line>\\d+):\\d+ (?!Unresolved reference|Type mismatch|Null can not be)(?<message>.+)"
+  confidence: 0.6
+  fix: |
+    The Kotlin compiler rejected {file}:{line}: {message}
+    A generic compile error — a more specific rule (unresolved reference, type mismatch)
+    wins when it applies. `./gradlew compileKotlin` reproduces it.
+  docs: https://kotlinlang.org/docs/command-line.html
+
+- id: kotlin-jvm-target-mismatch
+  ecosystem: java
+  category: build
+  title: Kotlin and Java JVM targets disagree
+  match: "Inconsistent JVM-target compatibility detected|'compileJava' task \\(current target is (?<java>[\\d.]+)\\) and 'compileKotlin' task \\(current target is (?<kotlin>[\\d.]+)\\)"
+  confidence: 0.9
+  fix: |
+    The Java and Kotlin compile tasks target different bytecode versions ({java} vs
+    {kotlin}), which Gradle refuses to mix. Set both from one place — a `java.toolchain`
+    block in build.gradle.kts is the modern fix, and it also stops the build depending on
+    whichever JDK the runner happens to have.
+  docs: https://kotlinlang.org/docs/gradle-configure-project.html#check-for-jvm-target-compatibility-of-related-compile-tasks

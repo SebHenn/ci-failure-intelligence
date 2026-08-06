@@ -1,0 +1,2 @@
+Run mix deps.get
+** (Mix) You're trying to run :app on Elixir 1.15.7 but it has declared in its mix.exs file it supports only Elixir ~> 1.17

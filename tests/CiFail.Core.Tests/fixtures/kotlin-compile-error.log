@@ -1,0 +1,11 @@
+Run ./gradlew :app:compileKotlin
+> Task :app:compileKotlin FAILED
+e: file:///home/runner/work/app/app/src/main/kotlin/com/example/Report.kt:62:9 'when' expression must be exhaustive, add necessary 'ARCHIVED' branch or 'else' branch instead
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileKotlin'.
+   > Compilation error. See log for more details
+
+BUILD FAILED in 16s

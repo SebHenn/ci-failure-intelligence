@@ -1,0 +1,12 @@
+Run ./gradlew build
+> Task :app:compileKotlin FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileKotlin'.
+> Inconsistent JVM-target compatibility detected for tasks 'compileJava' (current target is 17) and 'compileKotlin' (current target is 21).
+
+  Consider using JVM Toolchain: https://kotl.in/gradle/jvm/toolchain
+
+BUILD FAILED in 12s

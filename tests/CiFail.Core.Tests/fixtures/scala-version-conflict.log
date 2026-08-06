@@ -1,0 +1,7 @@
+Run sbt compile
+[info] welcome to sbt 1.10.1 (Eclipse Adoptium Java 21.0.4)
+[info] loading settings for project app from build.sbt ...
+[error] Modules were resolved with conflicting cross-version suffixes in ProjectRef(uri("file:/home/runner/work/app/"), "app"):
+[error]    org.typelevel:cats-core _3, _2.13
+[error] stack trace is suppressed; run last update for the full output
+[error] (update) Conflicting cross-version suffixes in: org.typelevel:cats-core

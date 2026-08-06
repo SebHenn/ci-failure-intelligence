@@ -1,0 +1,16 @@
+Run mix test
+Compiling 3 files (.ex)
+    warning: App.Mailer.deliver_later/1 is undefined or private. Did you mean:
+
+          * deliver_now/1
+          * deliver_now/2
+
+    │
+ 22 │     App.Mailer.deliver_later(email)
+    │                ~
+    │
+    └─ lib/app/notifications.ex:22:16: App.Notifications.notify/1
+
+** (UndefinedFunctionError) function App.Mailer.deliver_later/1 is undefined or private
+    (app 0.1.0) App.Mailer.deliver_later(%Bamboo.Email{})
+    test/app/notifications_test.exs:14: (test)

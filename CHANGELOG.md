@@ -20,8 +20,16 @@ after 1.0.
   gives the same verdict on a laptop and in a scratch container. `--json`, `--format` and
   `--type` work as they do on `analyze`.
 
-- **24 new rules** across the four thinnest packs, each with a fixture proving it matches
-  real tool output and wins the ranking:
+- **Scala/sbt and Elixir/Mix are now recognized ecosystems**, with 6 rules each: Scala type
+  mismatch (Scala 2 *and* 3 wording), unresolved symbol, sbt dependency resolution,
+  conflicting cross-versions, ScalaTest; Elixir compile errors, undefined/private functions,
+  Mix dependency drift, Hex package resolution, ExUnit, and Elixir/OTP version mismatch.
+- **Kubernetes and Helm** join Docker and Terraform in the `infra` pack: `ImagePullBackOff`,
+  `CrashLoopBackOff`, rollout timeouts, failed Helm releases and template render errors.
+- **Kotlin** rules in the `java` pack: unresolved reference, type mismatch (including
+  nullability), and the Gradle JVM-target mismatch between `compileJava` and `compileKotlin`.
+- **45 new rules in total** (91 → 136), each with a fixture proving it matches real tool
+  output and wins the ranking:
   - **node** (6 → 14): `npm ci` lockfile mismatch, `EBADENGINE`, `EINTEGRITY`, yarn
     `--frozen-lockfile`, pnpm `ERR_PNPM_OUTDATED_LOCKFILE`, TypeScript `TS####`, Vitest and
     Playwright failures.
@@ -41,6 +49,12 @@ after 1.0.
   and fell back to `generic`. Tool invocations (`yarn install`, `npm run`, `npx`, `swift
   build`) and modern config files (`pyproject.toml`, `Package.swift`, `Podfile`) are now
   markers, alongside `mypy`/`ruff`/`poetry`/`flake8`/`pylint`.
+- **Android and Scala builds now inherit the JVM rules**, because they are JVM builds. An
+  Android job killed by the OOM killer used to get the vague `generic-oom` while
+  `gradle-daemon-disappeared` sat unused in `java.yaml`. Inheritance is one-directional —
+  a Maven build does not pick up Android's aapt2 rules.
+- Gradle's `BUILD FAILED` was never a detection marker (only Maven's `BUILD FAILURE` was),
+  so a Gradle-only log had nothing strong in it at all.
 - `swift-compile-error` no longer restates every XCTest failure.
 - **`cifail serve --help` crashed** (`Could not find color or style 'name'`, exit 70) in the
   Docker/full build. Spectre renders option descriptions as markup, and `--tokens-file`'s

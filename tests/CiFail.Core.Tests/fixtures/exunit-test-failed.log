@@ -1,0 +1,17 @@
+Run mix test
+Compiling 42 files (.ex)
+Generated app app
+
+  1) test total/1 adds tax to the subtotal (App.InvoiceTest)
+     test/app/invoice_test.exs:23
+     Assertion with == failed
+     code:  assert Invoice.total(order) == Decimal.new("121.00")
+     left:  #Decimal<100.00>
+     right: #Decimal<121.00>
+     stacktrace:
+       test/app/invoice_test.exs:26: (test)
+
+Finished in 0.4 seconds (0.2s async, 0.2s sync)
+3 doctests, 87 tests, 1 failure
+
+Randomized with seed 481203

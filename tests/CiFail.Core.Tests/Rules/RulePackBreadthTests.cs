@@ -135,6 +135,11 @@ public class RulePackBreadthTests
         { "terraform-error.log", Ecosystem.Infra, "terraform-error" },
         { "dockerfile-parse-error.log", Ecosystem.Infra, "dockerfile-parse-error" },
         { "terraform-unsupported-argument.log", Ecosystem.Infra, "terraform-unsupported-argument" },
+        { "k8s-image-pull-failed.log", Ecosystem.Infra, "k8s-image-pull-failed" },
+        { "k8s-crashloop.log", Ecosystem.Infra, "k8s-crashloop" },
+        { "k8s-rollout-timeout.log", Ecosystem.Infra, "k8s-rollout-timeout" },
+        { "helm-release-failed.log", Ecosystem.Infra, "helm-release-failed" },
+        { "helm-template-error.log", Ecosystem.Infra, "helm-template-error" },
 
         // swift
         { "swift-no-such-module.log", Ecosystem.Swift, "swift-no-such-module" },
@@ -147,6 +152,31 @@ public class RulePackBreadthTests
         { "swift-missing-product.log", Ecosystem.Swift, "swift-missing-product" },
         { "xcodebuild-no-destination.log", Ecosystem.Swift, "xcodebuild-no-destination" },
         { "cocoapods-sandbox-out-of-sync.log", Ecosystem.Swift, "cocoapods-sandbox-out-of-sync" },
+
+        // scala / sbt
+        { "scala-type-mismatch.log", Ecosystem.Scala, "scala-type-mismatch" },
+        { "scala-not-found.log", Ecosystem.Scala, "scala-not-found" },
+        { "sbt-unresolved-dependency.log", Ecosystem.Scala, "sbt-unresolved-dependency" },
+        { "scala-version-conflict.log", Ecosystem.Scala, "scala-version-conflict" },
+        { "scalatest-failed.log", Ecosystem.Scala, "scalatest-failed" },
+        { "sbt-build-failed.log", Ecosystem.Scala, "sbt-build-failed" },
+
+        // elixir / mix
+        { "elixir-compile-error.log", Ecosystem.Elixir, "elixir-compile-error" },
+        { "elixir-undefined-function.log", Ecosystem.Elixir, "elixir-undefined-function" },
+        { "mix-deps-unavailable.log", Ecosystem.Elixir, "mix-deps-unavailable" },
+        { "hex-package-not-found.log", Ecosystem.Elixir, "hex-package-not-found" },
+        { "exunit-test-failed.log", Ecosystem.Elixir, "exunit-test-failed" },
+        { "elixir-version-mismatch.log", Ecosystem.Elixir, "elixir-version-mismatch" },
+
+        // kotlin — rules live in java.yaml, so a plain JVM Kotlin build resolves to Java...
+        { "kotlin-unresolved-reference.log", Ecosystem.Java, "kotlin-unresolved-reference" },
+        { "kotlin-type-mismatch.log", Ecosystem.Java, "kotlin-type-mismatch" },
+        { "kotlin-compile-error.log", Ecosystem.Java, "kotlin-compile-error" },
+        // ...and this one detects as ANDROID and still wins with a java-pack rule, which is
+        // the whole point of RuleEngine's ecosystem inheritance. Most Kotlin is Android
+        // Kotlin; without inheritance it would go unexplained there.
+        { "kotlin-jvm-target-mismatch.log", Ecosystem.Android, "kotlin-jvm-target-mismatch" },
 
         // android
         { "android-resource.log", Ecosystem.Android, "android-resource-not-found" },

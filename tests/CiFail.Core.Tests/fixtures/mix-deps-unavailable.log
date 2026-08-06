@@ -1,0 +1,7 @@
+Run mix compile
+Unchecked dependencies for environment prod:
+* ecto_sql (Hex package)
+  the dependency is not available, run "mix deps.get"
+* jason (Hex package)
+  the dependency build is outdated, please run "mix deps.compile jason"
+** (Mix) Can't continue due to errors on dependencies

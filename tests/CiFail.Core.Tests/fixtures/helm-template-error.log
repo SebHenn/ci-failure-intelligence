@@ -1,0 +1,4 @@
+Run helm upgrade --install api ./charts/api -n production -f values.prod.yaml
+Error: template: api/templates/deployment.yaml:24:28: executing "api/templates/deployment.yaml" at <.Values.image.repository>: nil pointer evaluating interface {}.repository
+
+Use --debug flag to render out invalid YAML

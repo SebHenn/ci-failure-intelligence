@@ -1,0 +1,6 @@
+Run mix deps.get
+Resolving Hex dependencies...
+Failed to fetch record for 'hexpm/phoenix_liveviw' from registry (using cache instead)
+This could be because the package does not exist, it was spelled incorrectly or you don't have permissions to it
+
+** (Mix) No package with name phoenix_liveviw (from: mix.exs)

@@ -1,0 +1,8 @@
+Run sbt compile
+[info] welcome to sbt 1.10.1 (Eclipse Adoptium Java 21.0.4)
+[info] loading settings for project app from build.sbt ...
+[warn] 	Note: Unresolved dependencies path:
+[error] sbt.librarymanagement.ResolveException: Error downloading org.typelevel:cats-effect_3:3.6.99
+[error]   not found: https://repo1.maven.org/maven2/org/typelevel/cats-effect_3/3.6.99/cats-effect_3-3.6.99.pom
+[error]   not found: /home/runner/.ivy2/localorg.typelevel/cats-effect_3/3.6.99/ivys/ivy.xml
+[error] Total time: 6 s, completed Aug 6, 2026, 9:55:02 AM
