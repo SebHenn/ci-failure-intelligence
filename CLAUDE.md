@@ -291,6 +291,21 @@ SQLite/EF/Mongo don't, so `ClusterService.Compute(store, query)` falls back to `
 (R21-cached) + `FailureClusterer`. JSON: `Output/ClustersJson.cs` (PascalCase). Server exposes
 `GET /clusters?threshold=&since=&repo=&top=&all=`; the dashboard renders a clusters card.
 
+### Server observability (R31, `Core/Output/PrometheusOutput.cs` + `Server/openapi.json`)
+
+`GET /metrics` renders a `StatsSnapshot` as Prometheus **text exposition** — hand-rolled in
+Core (like `SarifOutput`) rather than via a client library: it's a one-way export of an
+already-computed snapshot, and Core has no ASP.NET packages. Everything is a **gauge**
+(aggregates recomputed per scrape, not monotonic counters — calling them counters would
+licence `rate()` over nonsense). Values format with `CultureInfo.InvariantCulture` (a decimal
+comma makes the document unparseable) and label values are escaped. The per-fingerprint series
+is capped at `MetricsTopFailures` = 10: a `fingerprint` label is unbounded and cardinality is
+what kills a Prometheus server. `GET /openapi.json` serves an **embedded** hand-written
+document (`EmbeddedResource` in the csproj — the CLI hosts this assembly from a single-file
+binary with no content directory); a test walks its paths and asserts each still answers, since
+nothing else stops it drifting. **Both routes are authenticated** — `/metrics` leaks rule ids
+and failure counts, and Prometheus supports a bearer token in the scrape config.
+
 ### Rule authoring tooling (R15, `Core/Rules/RulePackValidator.cs` + `Cli/Commands/Rules*.cs`)
 
 `cifail rules` has `list`, plus `test <regex>` (try a regex against a log, show captures),

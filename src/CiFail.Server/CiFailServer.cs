@@ -354,6 +354,26 @@ public static class CiFailServer
             return Json(JsonSerializer.Serialize(StatsJson.ToDto(stats), AnalysisJson.Options));
         });
 
+        // Prometheus scrape target (R31). Same StatsService the /stats endpoint uses, rendered
+        // as text exposition — so the dashboard, `cifail stats` and your Grafana board can
+        // never disagree about a number.
+        //
+        // Authenticated like everything else. Prometheus supports a bearer token in the scrape
+        // config, and the alternative (a public /metrics) would leak rule ids, ecosystems and
+        // failure counts to anyone who can reach the pod.
+        app.MapGet("/metrics", (Func<IAnalysisStore> stores) =>
+        {
+            using var store = stores();
+            var stats = StatsService.Compute(store, new StatsQuery { Top = MetricsTopFailures });
+            return Results.Text(PrometheusOutput.Build(stats, MetricsTopFailures),
+                PrometheusOutput.ContentType);
+        });
+
+        // A static description of this API (R31). Embedded, not generated: the routes are
+        // hand-written minimal-API lambdas with no metadata to reflect over, and a generator
+        // would pull Swashbuckle into an assembly that deliberately has no NuGet dependencies.
+        app.MapGet("/openapi.json", () => Json(OpenApiDocument.Value));
+
         // Failure clusters over history (R25). Filters: ?threshold=0.5&since=<ISO-8601>&repo=<id>&top=N&all=1.
         // Uses the store's IClusterer when available, else an in-app fallback — identical either way
         // (see ClusterService / FailureClusterer).
@@ -431,6 +451,26 @@ public static class CiFailServer
     }
 
     private static IResult Json(string json) => Results.Text(json, "application/json");
+
+    /// <summary>
+    /// How many per-fingerprint series <c>/metrics</c> exposes. Small on purpose: a
+    /// fingerprint label is unbounded, and cardinality is what kills a Prometheus server.
+    /// </summary>
+    private const int MetricsTopFailures = 10;
+
+    /// <summary>
+    /// The embedded OpenAPI description, read once. A missing resource would mean a broken
+    /// build rather than a runtime condition worth handling gracefully, so it throws.
+    /// </summary>
+    private static readonly Lazy<string> OpenApiDocument = new(() =>
+    {
+        var assembly = typeof(CiFailServer).Assembly;
+        var name = assembly.GetManifestResourceNames()
+            .Single(n => n.EndsWith("openapi.json", StringComparison.Ordinal));
+        using var stream = assembly.GetManifestResourceStream(name)!;
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    });
 
     private static bool ParseBool(string? v) =>
         v is not null && (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));

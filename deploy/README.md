@@ -40,6 +40,33 @@ started with a token (see **Auth** below).
 | `GET /history/{id}`  | —                                     | one analysis, or `404`               |
 | `GET /repos/{repoId}/open` | —                               | open failures for one repo (R11)     |
 | `POST /resolve/{id}` | `{ "note": "..." }`; `?source=auto&commit=<sha>` for auto | the updated record |
+| `GET /stats`         | `?since=&repo=&top=`                  | aggregated stats (R16)               |
+| `GET /clusters`      | `?threshold=&since=&repo=&top=&all=`  | near-duplicate failure groups (R25)  |
+| `GET /metrics`       | —                                     | Prometheus text exposition (R31)     |
+| `GET /openapi.json`  | —                                     | OpenAPI 3.0 description of this API  |
+
+### Scraping `/metrics`
+
+The metrics are **gauges**, not counters: they're aggregates recomputed from history on each
+scrape (`cifail_failures_total`, `_open`, `_resolved`, `_unmatched`, `_by_ecosystem`,
+`cifail_recurrence_rate`, `cifail_mean_time_to_resolution_seconds`, `cifail_flaky_failures`,
+and the top recurring `cifail_failure_occurrences`). They come from the same `StatsService`
+as `GET /stats` and `cifail stats`, so a Grafana board and the CLI can't disagree.
+
+`/metrics` is **authenticated like every other route** — it exposes rule ids, ecosystems and
+failure counts. Prometheus supports a bearer token directly:
+
+```yaml
+scrape_configs:
+  - job_name: cifail
+    authorization:
+      credentials: <your CIFAIL_SERVER_TOKEN>
+    static_configs:
+      - targets: ['cifail:8080']
+```
+
+Only the top 10 fingerprints get a per-failure series. A `fingerprint` label is unbounded,
+and cardinality is what kills a Prometheus server.
 
 What the server does today (release history lives in [CHANGELOG.md](../CHANGELOG.md);
 the `R<n>` markers are this repo's internal milestone ids, cross-referenced from `CLAUDE.md`):

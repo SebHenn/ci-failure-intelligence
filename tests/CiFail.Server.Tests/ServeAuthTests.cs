@@ -36,6 +36,20 @@ public sealed class ServeAuthTests : IClassFixture<AuthServeFixture>
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    /// <summary>
+    /// Neither observability route is public. `/metrics` would otherwise leak rule ids,
+    /// ecosystems and failure counts to anyone who can reach the pod — Prometheus supports a
+    /// bearer token in the scrape config, so there is no reason to open it.
+    /// </summary>
+    [Theory]
+    [InlineData("metrics")]
+    [InlineData("openapi.json")]
+    public async Task Observability_routes_require_a_token(string route)
+    {
+        var response = await _client.GetAsync(route);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
     [Fact]
     public async Task Dashboard_requires_auth_when_a_token_is_set()
     {

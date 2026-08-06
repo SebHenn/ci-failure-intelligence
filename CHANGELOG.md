@@ -20,6 +20,14 @@ after 1.0.
   gives the same verdict on a laptop and in a scratch container. `--json`, `--format` and
   `--type` work as they do on `analyze`.
 
+- **`cifail serve` exposes `GET /metrics`** in Prometheus text exposition format, computed by
+  the same `StatsService` behind `GET /stats` and `cifail stats` — so a Grafana board and the
+  CLI cannot disagree about a number. Gauges rather than counters (these are aggregates
+  recomputed per scrape, not monotonic process counters), and the per-fingerprint series is
+  capped at 10 because a fingerprint label is unbounded. Authenticated like every other
+  route; see `deploy/README.md` for the scrape config.
+- **`GET /openapi.json`** — a static OpenAPI 3.0 description of the API, with a test asserting
+  every documented route still answers.
 - **Scala/sbt and Elixir/Mix are now recognized ecosystems**, with 6 rules each: Scala type
   mismatch (Scala 2 *and* 3 wording), unresolved symbol, sbt dependency resolution,
   conflicting cross-versions, ScalaTest; Elixir compile errors, undefined/private functions,

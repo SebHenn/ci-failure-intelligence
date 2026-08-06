@@ -23,4 +23,10 @@
     <ProjectReference Include="..\CiFail.Core\CiFail.Core.csproj" />
   </ItemGroup>
 
+  <!-- Served verbatim by GET /openapi.json. Embedded rather than copied to disk because this
+       assembly is hosted by the CLI's single-file binary, which has no content directory. -->
+  <ItemGroup>
+    <EmbeddedResource Include="openapi.json" />
+  </ItemGroup>
+
 </Project>

@@ -1,0 +1,202 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "cifail server",
+    "description": "HTTP API for cifail — analyze CI/build/test logs, browse history, and resolve failures. Served by `cifail serve`.\n\nEvery route except /healthz, /login and /ui/login requires `Authorization: Bearer <token>` when the server was started with a token. Started without one, the server runs open and logs a warning.",
+    "license": { "name": "MIT", "url": "https://github.com/SebHenn/ci-failure-intelligence/blob/main/LICENSE" }
+  },
+  "servers": [{ "url": "/", "description": "This server" }],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer" }
+    },
+    "schemas": {
+      "Analysis": {
+        "type": "object",
+        "description": "One analyzed log. PascalCase, identical to the CLI's `--json` contract.",
+        "properties": {
+          "Source": { "type": "string" },
+          "Ecosystem": { "type": "string" },
+          "Fingerprint": { "type": "string", "description": "Stable `ruleId:hash` identity for this failure." },
+          "HistoryId": { "type": "integer", "format": "int64", "nullable": true },
+          "AnalyzedAt": { "type": "string", "format": "date-time" },
+          "Matches": { "type": "array", "items": { "$ref": "#/components/schemas/Match" } },
+          "SimilarFailures": { "type": "array", "items": { "type": "object" } }
+        }
+      },
+      "Match": {
+        "type": "object",
+        "properties": {
+          "RuleId": { "type": "string" },
+          "Title": { "type": "string" },
+          "Category": { "type": "string" },
+          "Confidence": { "type": "number", "format": "double" },
+          "Fix": { "type": "string" },
+          "Docs": { "type": "string", "nullable": true },
+          "MatchedLine": { "type": "string" }
+        }
+      },
+      "StoredAnalysis": {
+        "type": "object",
+        "properties": {
+          "Id": { "type": "integer", "format": "int64" },
+          "AnalyzedAt": { "type": "string", "format": "date-time" },
+          "Source": { "type": "string" },
+          "Ecosystem": { "type": "string" },
+          "RuleId": { "type": "string" },
+          "Matched": { "type": "boolean" },
+          "Fingerprint": { "type": "string" },
+          "Excerpt": { "type": "string", "description": "A slice of the matched log region. May contain secrets that were in the log." },
+          "Status": { "type": "string", "enum": ["open", "resolved"] },
+          "Resolution": { "type": "string", "nullable": true },
+          "ResolvedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "ResolutionSource": { "type": "string", "nullable": true, "enum": ["manual", "auto", null] },
+          "RepoId": { "type": "string", "nullable": true },
+          "GitCommit": { "type": "string", "nullable": true },
+          "GitBranch": { "type": "string", "nullable": true }
+        }
+      },
+      "Stats": {
+        "type": "object",
+        "properties": {
+          "Total": { "type": "integer" },
+          "Open": { "type": "integer" },
+          "Resolved": { "type": "integer" },
+          "Unmatched": { "type": "integer" },
+          "RecurrenceRate": { "type": "number", "format": "double" },
+          "MeanTimeToResolutionSeconds": { "type": "number", "format": "double", "nullable": true },
+          "ByEcosystem": { "type": "array", "items": { "type": "object" } },
+          "TopFailures": { "type": "array", "items": { "type": "object" } },
+          "Flaky": { "type": "array", "items": { "type": "object" } }
+        }
+      },
+      "Clusters": {
+        "type": "object",
+        "properties": {
+          "TotalAnalyzed": { "type": "integer" },
+          "Clusters": { "type": "array", "items": { "type": "object" } }
+        }
+      }
+    }
+  },
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "Liveness/readiness probe",
+        "description": "Always public — the Helm chart's probes hit this.",
+        "security": [],
+        "responses": { "200": { "description": "ok" } }
+      }
+    },
+    "/analyze": {
+      "post": {
+        "summary": "Analyze a log",
+        "description": "Runs the full pipeline server-side: rules, similarity, persistence and notifications. Used by `cifail analyze --server`.",
+        "parameters": [
+          { "name": "type", "in": "query", "schema": { "type": "string" }, "description": "Force an ecosystem instead of auto-detecting." },
+          { "name": "source", "in": "query", "schema": { "type": "string" }, "description": "Label recorded with the analysis (a path, or `stdin`)." },
+          { "name": "noHistory", "in": "query", "schema": { "type": "boolean" }, "description": "Analyze without persisting the run." }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "text/plain": { "schema": { "type": "string", "description": "The raw log text." } } }
+        },
+        "responses": {
+          "200": { "description": "The analysis", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Analysis" } } } },
+          "401": { "description": "Missing or invalid bearer token" }
+        }
+      }
+    },
+    "/history": {
+      "get": {
+        "summary": "List recent analyses",
+        "parameters": [{ "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20 } }],
+        "responses": {
+          "200": { "description": "Newest first", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/StoredAnalysis" } } } } }
+        }
+      }
+    },
+    "/history/{id}": {
+      "get": {
+        "summary": "Get one analysis",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
+        "responses": {
+          "200": { "description": "The analysis", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StoredAnalysis" } } } },
+          "404": { "description": "No analysis with that id" }
+        }
+      }
+    },
+    "/resolve/{id}": {
+      "post": {
+        "summary": "Record how a failure was fixed",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } },
+          { "name": "source", "in": "query", "schema": { "type": "string", "enum": ["manual", "auto"] }, "description": "`auto` only updates rows that are still open, so a manual resolution always wins." },
+          { "name": "commit", "in": "query", "schema": { "type": "string" }, "description": "The commit credited with the fix (auto-resolution)." }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "note": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "The updated record", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StoredAnalysis" } } } },
+          "404": { "description": "No analysis with that id" }
+        }
+      }
+    },
+    "/repos/{repoId}/open": {
+      "get": {
+        "summary": "Open failures for one repository",
+        "description": "Drives `cifail reconcile --server`. The git context is always detected client-side; the server has no working tree.",
+        "parameters": [{ "name": "repoId", "in": "path", "required": true, "schema": { "type": "string" }, "description": "The repository's root-commit id." }],
+        "responses": {
+          "200": { "description": "Open failures", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/StoredAnalysis" } } } } }
+        }
+      }
+    },
+    "/stats": {
+      "get": {
+        "summary": "Aggregated statistics over history",
+        "parameters": [
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "repo", "in": "query", "schema": { "type": "string" } },
+          { "name": "top", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { "description": "Snapshot", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Stats" } } } }
+        }
+      }
+    },
+    "/clusters": {
+      "get": {
+        "summary": "Group near-duplicate failures",
+        "parameters": [
+          { "name": "threshold", "in": "query", "schema": { "type": "number", "default": 0.5 }, "description": "Similarity required to share a cluster." },
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "repo", "in": "query", "schema": { "type": "string" } },
+          { "name": "top", "in": "query", "schema": { "type": "integer", "default": 10 } },
+          { "name": "all", "in": "query", "schema": { "type": "boolean" }, "description": "Include singleton clusters." }
+        ],
+        "responses": {
+          "200": { "description": "Clusters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Clusters" } } } }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Prometheus metrics",
+        "description": "Text exposition format. Gauges, not counters: these are aggregates recomputed from history on each scrape, not monotonic process counters. Authenticated like every other route — set `authorization` in your Prometheus scrape config.",
+        "responses": {
+          "200": { "description": "Metrics", "content": { "text/plain": { "schema": { "type": "string" } } } },
+          "401": { "description": "Missing or invalid bearer token" }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "This document",
+        "responses": { "200": { "description": "OpenAPI 3.0 description of this API" } }
+      }
+    }
+  }
+}
