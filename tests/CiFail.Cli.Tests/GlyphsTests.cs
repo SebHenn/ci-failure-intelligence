@@ -10,11 +10,27 @@ namespace CiFail.Cli.Tests;
 /// </summary>
 public sealed class GlyphsTests
 {
-    public static TheoryData<string> All => new()
+    /// <summary>
+    /// The glyphs themselves, as plain strings. Both the theory data and the round-trip test read
+    /// from here rather than the latter enumerating <see cref="TheoryData{T}"/>: the element type
+    /// you get back from that is an xUnit implementation detail (it stopped being
+    /// <c>object[]</c>), and a compile error in a test is a silly way to find that out.
+    /// </summary>
+    private static readonly string[] Every =
     {
         Glyphs.Check, Glyphs.Cross, Glyphs.Warning, Glyphs.Bullet,
         Glyphs.Ellipsis, Glyphs.Dash, Glyphs.Times, Glyphs.Dot,
     };
+
+    public static TheoryData<string> All
+    {
+        get
+        {
+            var data = new TheoryData<string>();
+            foreach (var glyph in Every) data.Add(glyph);
+            return data;
+        }
+    }
 
     [Theory]
     [MemberData(nameof(All))]
@@ -39,7 +55,7 @@ public sealed class GlyphsTests
         // The contract in both directions: if Unicode was chosen, the encoding must survive a
         // round-trip; if it wasn't, the ASCII fallbacks always do.
         var encoding = Console.OutputEncoding;
-        var line = string.Concat(All.Select(row => (string)row[0]!));
+        var line = string.Concat(Every);
 
         encoding.GetString(encoding.GetBytes(line)).Should().Be(line);
     }
