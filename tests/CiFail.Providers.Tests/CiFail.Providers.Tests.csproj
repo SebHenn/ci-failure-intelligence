@@ -5,22 +5,22 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="coverlet.collector" Version="10.0.1" />
     <PackageReference Include="FluentAssertions" Version="7.2.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
-    <PackageReference Include="xunit" Version="2.5.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
-    <PackageReference Include="Xunit.SkippableFact" Version="1.4.13" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.61" />
 
     <!-- EF Core SQLite (in-memory connection) lets the shared store contract run locally
          with no Docker, validating EfAnalysisStore end to end. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.18" />
 
     <!-- Real-engine integration tests use Testcontainers; they skip when Docker is absent. -->
-    <PackageReference Include="Testcontainers.PostgreSql" Version="4.0.0" />
-    <PackageReference Include="Testcontainers.MySql" Version="4.0.0" />
-    <PackageReference Include="Testcontainers.MsSql" Version="4.0.0" />
-    <PackageReference Include="Testcontainers.MongoDb" Version="4.0.0" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
+    <PackageReference Include="Testcontainers.MySql" Version="4.13.0" />
+    <PackageReference Include="Testcontainers.MsSql" Version="4.13.0" />
+    <PackageReference Include="Testcontainers.MongoDb" Version="4.13.0" />
   </ItemGroup>
 
   <ItemGroup>
