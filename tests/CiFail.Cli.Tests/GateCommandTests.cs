@@ -17,18 +17,9 @@ namespace CiFail.Cli.Tests;
 [Collection(CliCollection.Name)]
 public sealed class GateCommandTests
 {
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "CiFail.sln")))
-            dir = dir.Parent;
-        return dir?.FullName ?? throw new InvalidOperationException("could not locate the repository root");
-    }
+    private static string Sample(string name) => TestPaths.Sample(name);
 
-    private static string Sample(string name) => Path.Combine(RepoRoot(), "samples", name);
-
-    private static string Fixture(string name) =>
-        Path.Combine(RepoRoot(), "tests", "CiFail.Core.Tests", "fixtures", name);
+    private static string Fixture(string name) => TestPaths.Fixture(name);
 
     private static string BaselineIn(CliHarness cli) => Path.Combine(cli.Home, "baseline.txt");
 

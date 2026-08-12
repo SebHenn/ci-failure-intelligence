@@ -1,0 +1,6 @@
+Run ./scripts/determinism-check.sh
+climate  A=9710fa5e1f07  B=1da3adcc727b
+::error::climate.png differs between two runs of the same seed - the determinism contract is broken
+biome  A=1da3adcc727b  B=88ff01ce9a42
+::error::biome.png differs between two runs of the same seed - the determinism contract is broken
+Error: Process completed with exit code 1.

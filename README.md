@@ -262,6 +262,33 @@ Drop your own `*.yaml` into `~/.cifail/rules/` and it loads next run. Reuse a sh
 `id` to override it. `cifail rules validate` exits non-zero on a real error, so it works as a
 CI step for a repo that maintains its own packs.
 
+**Rules that belong to one repository go in the repository.** Commit them to `.cifail/rules/`
+— next to the gate's baseline — and cifail finds them with no configuration at all, from any
+directory inside the checkout:
+
+```
+your-repo/
+  .cifail/
+    baseline.txt        # cifail gate's memory
+    rules/
+      your-rules.yaml   # loaded automatically
+```
+
+That is the natural home for a rule that means nothing anywhere else ("two runs of the same
+seed produced different bytes"), and it gets versioned and reviewed with the workflow that can
+trigger it. Packs load in this order, and a later one overrides an earlier rule with the same id:
+
+| Location | How to set it |
+| --- | --- |
+| `~/.cifail/rules/` | always |
+| `<repo>/.cifail/rules/` | commit it; found by walking up from the working directory |
+| extra directories | `rules: { paths: [...] }` in `config.yaml` |
+| extra directories | `CIFAIL_RULES` (`PATH`-style list) |
+| extra directories | `--rules <dir>` on `analyze`, `gate` and `rules list` (repeatable) |
+
+`cifail config` prints the resolved list, with the pack count for each — including the ones
+that aren't there, which is the usual reason a rule "didn't load".
+
 Stuck on the regex? **`cifail suggest-rule <log>`** drafts one with an AI model — and then
 cifail's own validators gate the draft: the regex has to compile inside a one-second timeout,
 it has to *actually match the log you gave it*, and it can't be something as broad as `.*`.

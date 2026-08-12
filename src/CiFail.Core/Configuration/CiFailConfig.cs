@@ -6,6 +6,18 @@ public sealed class CiFailConfig
     public DatabaseConfig Database { get; set; } = new();
     public AiConfig Ai { get; set; } = new();
     public NotificationsConfig Notifications { get; set; } = new();
+    public RulesConfig Rules { get; set; } = new();
+}
+
+/// <summary>Where to look for user rule packs, on top of the built-in locations.</summary>
+public sealed class RulesConfig
+{
+    /// <summary>
+    /// Extra directories of <c>*.yaml</c> packs, searched after <c>~/.cifail/rules</c> and the
+    /// repository's own <c>.cifail/rules</c>. Relative paths resolve against the working
+    /// directory. A rule here overrides an earlier one with the same id.
+    /// </summary>
+    public List<string> Paths { get; set; } = new();
 }
 
 /// <summary>Outbound notifications (R13), fired server-side. All channels are opt-in.</summary>
