@@ -54,8 +54,14 @@ public class PathDisplayTests
     {
         PathDisplay.Elide("build.log", 0).Should().BeEmpty();
         PathDisplay.Elide("build.log", -5).Should().BeEmpty();
-        PathDisplay.Elide("build.log", 2).Should().Be("og");
         PathDisplay.Elide("", 20).Should().BeEmpty();
+
+        // Glyphs.Ellipsis is one character on a UTF-8 console and three in the ASCII fallback,
+        // so whether two columns have room for it at all differs by console. What must hold on
+        // either branch is the budget and the tail — assert those, not one branch's spelling.
+        var squeezed = PathDisplay.Elide("build.log", 2);
+        squeezed.Should().HaveLength(2);
+        squeezed.Should().EndWith("g");
     }
 
     [Fact]
