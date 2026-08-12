@@ -11,6 +11,20 @@ after 1.0.
 
 ### Added
 
+- **A repository can ship its own rule packs.** Rules are most useful when they are specific to
+  one repo ("two runs of the same seed produced different bytes"), and until now the only place
+  cifail looked was `~/.cifail/rules` — so shipping a pack with a repo meant pointing
+  `CIFAIL_HOME` at the checkout, which also moves `history.db` and gives you a different
+  history depending on which directory you run from. Packs committed to **`.cifail/rules/`**
+  (beside `cifail gate`'s baseline) are now found automatically by walking up from the working
+  directory, and three explicit routes stack on top: `rules: { paths: [...] }` in `config.yaml`,
+  the `CIFAIL_RULES` environment variable (a `PATH`-style list), and `--rules <dir>` on
+  `analyze`, `gate` and `rules list`. Later locations override earlier rules with the same id.
+  `cifail config` and `cifail rules list` print the resolved search path with each directory's
+  pack count, `rules validate` lints all of them, and a pack that cifail merely *found* can no
+  longer break analysis — an unparseable one is skipped and named by `rules validate`. The
+  GitHub Action gains a matching `rules:` input.
+
 - **`cifail gate`** — fail CI on a *new* failure while tolerating the known backlog, the way
   a linter baseline does. `cifail gate --update <logs>` accepts everything currently failing
   into a committed `.cifail/baseline.txt`; after that `cifail gate <logs>` exits 1 only for a
@@ -57,6 +71,20 @@ after 1.0.
 
 ### Fixed
 
+- **`github-actions-error` now recognizes the `::error::` form**, not just the `##[error]`
+  one. They are two spellings of the same annotation — `::error::msg` is what a script
+  *writes*, `##[error]msg` is how the runner *renders* it in the log you download from the
+  Actions UI. A workflow that tees its own output, which is how this README and `action.yml`
+  say to capture a log, keeps the `::` form, so cifail was missing the highest-signal line in
+  exactly the logs it tells you to produce and falling through to the vague non-zero-exit rule.
+  The annotation-properties spelling (`::error file=a.cs,line=12::msg`) matches too, without
+  the properties leaking into the reported message.
+- **A long absolute log path no longer vanishes from the report header.** Spectre word-wraps a
+  rule title and keeps only the first line, so an absolute path — one long word — collapsed to
+  `cifail ·…` and every report in a job that analyzed several logs looked identical. The label
+  is now shortened from the left, keeping the file name (and, for an expanded test report, the
+  test name), which is the part that says which log this is. CI passes absolute paths, so this
+  was the common case rather than the rare one.
 - **Ecosystem detection only knew each ecosystem's oldest tool.** A yarn or pnpm failure
   need never mention its own lockfile, a mypy or Ruff run has nothing but a `.py` suffix,
   and a SwiftPM build never says "xcodebuild" — so all of those scored below the threshold

@@ -9,9 +9,21 @@ namespace CiFail.Cli.Output;
 /// </summary>
 public static class ConsoleRenderer
 {
+    /// <summary>
+    /// What the header spends on things that aren't the source: "cifail" + the separator dot
+    /// and its spaces, plus the rule's own border and padding.
+    /// </summary>
+    private const int HeaderChrome = 14;
+
+    /// <summary>Never shrink the source below this, however narrow the console claims to be.</summary>
+    private const int MinSourceWidth = 12;
+
     public static void Render(IAnsiConsole console, Analysis analysis)
     {
-        console.Write(new Rule($"[bold]cifail[/] {Glyphs.Dot} {Markup.Escape(analysis.Source)}").LeftJustified());
+        // Shorten before handing it to Spectre: its own truncation drops the whole path
+        // (see PathDisplay), and the path is what says which log this report is about.
+        var source = PathDisplay.Elide(analysis.Source, Math.Max(MinSourceWidth, console.Profile.Width - HeaderChrome));
+        console.Write(new Rule($"[bold]cifail[/] {Glyphs.Dot} {Markup.Escape(source)}").LeftJustified());
 
         if (analysis.RootCause is { } rc)
             RenderRootCause(console, analysis, rc);

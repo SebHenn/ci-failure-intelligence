@@ -33,6 +33,10 @@ inputs:
     description: 'Also write a SARIF 2.1.0 report to this path (relative to the workspace), e.g. "cifail.sarif". Upload it with github/codeql-action/upload-sarif to show findings in Code Scanning.'
     required: false
     default: ''
+  rules:
+    description: 'Extra directory of rule packs shipped by this repo (relative to the workspace). A pack committed at .cifail/rules is loaded automatically and needs no input.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -46,6 +50,7 @@ runs:
         INPUT_FAIL: ${{ inputs.fail }}
         INPUT_COMMENT: ${{ inputs.comment }}
         INPUT_SARIF: ${{ inputs.sarif }}
+        INPUT_RULES: ${{ inputs.rules }}
       run: |
         set -uo pipefail
 
@@ -63,6 +68,9 @@ runs:
         [ -n "$INPUT_ARGS" ] && cifail_args+=($INPUT_ARGS)
         # Write a SARIF report alongside the normal output (still shown on stdout/summary).
         [ -n "$INPUT_SARIF" ] && cifail_args+=(--report sarif --report-out "$INPUT_SARIF")
+        # Rule packs this repo ships. .cifail/rules is found without this, since the workspace
+        # is the container's working directory.
+        [ -n "$INPUT_RULES" ] && cifail_args+=(--rules "$INPUT_RULES")
 
         out="$(docker run "${run_args[@]}" "$INPUT_IMAGE" "${cifail_args[@]}" 2>&1)"
         code=$?

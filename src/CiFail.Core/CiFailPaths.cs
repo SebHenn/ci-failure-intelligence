@@ -9,6 +9,13 @@ public static class CiFailPaths
 {
     public const string HomeEnvVar = "CIFAIL_HOME";
 
+    /// <summary>
+    /// The directory a <em>repository</em> keeps its cifail files in, relative to its root:
+    /// the committed gate baseline, and rule packs the repo ships itself. Distinct from
+    /// <see cref="Home"/>, which is where this machine's history and config live.
+    /// </summary>
+    public const string RepoDirectoryName = ".cifail";
+
     /// <summary>The base directory for all cifail data (history db, user rule packs).</summary>
     public static string Home
     {

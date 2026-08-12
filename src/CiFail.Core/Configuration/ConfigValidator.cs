@@ -172,6 +172,16 @@ public static class ConfigValidator
         if (config.Ai.Limits.MaxRequestChars < 0)
             Error("ai.limits.maxRequestChars", "cannot be negative (use 0 for no cap).");
 
+        // Rules. A directory that isn't there is the whole reason this check exists: a pack that
+        // never loads looks identical to a rule that doesn't match.
+        foreach (var path in config.Rules.Paths)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                Warn("rules.paths", "contains an empty entry, which is ignored.");
+            else if (!Directory.Exists(path))
+                Warn("rules.paths", $"'{path}' does not exist, so no packs are loaded from it.");
+        }
+
         // Notifications.
         var n = config.Notifications;
         if (n.DedupeSeconds < 0)

@@ -16,7 +16,7 @@ namespace CiFail.Core.Analysis;
 public static class GateBaseline
 {
     /// <summary>Directory the baseline lives in, relative to the repo root.</summary>
-    public const string DirectoryName = ".cifail";
+    public const string DirectoryName = CiFailPaths.RepoDirectoryName;
 
     /// <summary>File name of the baseline.</summary>
     public const string FileName = "baseline.txt";

@@ -48,13 +48,15 @@ public sealed class AnalysisService
     }
 
     /// <summary>Factory that loads embedded + user rule packs, with no history store.</summary>
-    public static AnalysisService CreateDefault() =>
-        new(new RuleEngine(RulePackLoader.LoadAll()));
+    /// <param name="ruleDirs">Extra rule-pack directories (<c>--rules</c>), on top of the search path.</param>
+    public static AnalysisService CreateDefault(IReadOnlyList<string>? ruleDirs = null) =>
+        new(new RuleEngine(RulePackLoader.LoadFrom(RuleSearchPath.Resolve(ruleDirs))));
 
     /// <summary>Factory that also wires the given history store (similarity + persistence).</summary>
     public static AnalysisService CreateWithStore(
-        IAnalysisStore store, IGitRepo? git = null, IAiAnalyzer? ai = null, IAiEmbedder? embedder = null) =>
-        new(new RuleEngine(RulePackLoader.LoadAll()), store, git, ai, embedder);
+        IAnalysisStore store, IGitRepo? git = null, IAiAnalyzer? ai = null, IAiEmbedder? embedder = null,
+        IReadOnlyList<string>? ruleDirs = null) =>
+        new(new RuleEngine(RulePackLoader.LoadFrom(RuleSearchPath.Resolve(ruleDirs))), store, git, ai, embedder);
 
     public Models.Analysis Analyze(string source, string rawText, AnalysisOptions? options = null)
     {

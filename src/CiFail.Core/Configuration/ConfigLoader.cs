@@ -1,3 +1,4 @@
+using CiFail.Core.Rules;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -26,6 +27,9 @@ public static class ConfigLoader
     public const string NotifyWebhookUrlEnvVar = "CIFAIL_NOTIFY_WEBHOOK_URL";
     public const string NotifyDiscordUrlEnvVar = "CIFAIL_NOTIFY_DISCORD_URL";
     public const string NotifyTeamsUrlEnvVar = "CIFAIL_NOTIFY_TEAMS_URL";
+
+    /// <summary>Extra rule-pack directories, separated like <c>PATH</c> (<c>;</c> on Windows, <c>:</c> elsewhere).</summary>
+    public const string RulesEnvVar = "CIFAIL_RULES";
 
     /// <summary>Default embedding size — matches Ollama <c>nomic-embed-text</c>.</summary>
     public const int DefaultEmbeddingDimensions = 768;
@@ -90,6 +94,11 @@ public static class ConfigLoader
         if (!string.IsNullOrWhiteSpace(webhookUrl)) config.Notifications.WebhookUrl = webhookUrl;
         if (!string.IsNullOrWhiteSpace(discordUrl)) config.Notifications.DiscordWebhookUrl = discordUrl;
         if (!string.IsNullOrWhiteSpace(teamsUrl)) config.Notifications.TeamsWebhookUrl = teamsUrl;
+
+        // Rule packs: env directories are *appended* to the file's, not substituted for them —
+        // these are search locations, and a CI job adding one shouldn't silently drop the rest.
+        config.Rules.Paths.AddRange(
+            RuleSearchPath.SplitList(Environment.GetEnvironmentVariable(RulesEnvVar)));
 
         return config;
     }

@@ -33,27 +33,59 @@ public static class RulePackLoader
     public static string DefaultUserRulesDir => CiFailPaths.UserRulesDir;
 
     /// <summary>
-    /// Load all rules: embedded defaults first, then any user packs (which override
-    /// embedded rules sharing the same id).
+    /// Load all rules: embedded defaults first, then user packs (which override embedded rules
+    /// sharing the same id). With no directory given, every location on the
+    /// <see cref="RuleSearchPath"/> is used — this machine's, the repository's, and any
+    /// configured through <c>config.yaml</c> or <c>CIFAIL_RULES</c>.
     /// </summary>
-    public static IReadOnlyList<RuleDefinition> LoadAll(string? userRulesDir = null)
+    /// <param name="userRulesDir">A single directory to use <em>instead of</em> the search path.</param>
+    public static IReadOnlyList<RuleDefinition> LoadAll(string? userRulesDir = null) =>
+        LoadFrom(userRulesDir is null ? RuleSearchPath.Resolve() : new[] { userRulesDir });
+
+    /// <summary>
+    /// Load the embedded defaults plus the given user-pack directories, in order. Later
+    /// directories override earlier ones on a duplicate rule id, as user packs override embedded.
+    /// </summary>
+    public static IReadOnlyList<RuleDefinition> LoadFrom(IReadOnlyList<string> userRulesDirs)
     {
         var byId = new Dictionary<string, RuleDefinition>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var rule in LoadEmbedded())
             byId[rule.Id] = rule;
 
-        userRulesDir ??= DefaultUserRulesDir;
-        if (Directory.Exists(userRulesDir))
+        foreach (var dir in userRulesDirs)
         {
-            foreach (var file in Directory.EnumerateFiles(userRulesDir, "*.yaml", SearchOption.AllDirectories))
+            if (!Directory.Exists(dir)) continue;
+
+            // Ordered so that two packs in one directory resolve the same way on every machine;
+            // the enumeration order of a directory is not guaranteed.
+            foreach (var file in Directory.EnumerateFiles(dir, "*.yaml", SearchOption.AllDirectories)
+                         .OrderBy(f => f, StringComparer.Ordinal))
             {
-                foreach (var rule in ParseDocument(File.ReadAllText(file)))
+                foreach (var rule in ParseUserPack(file))
                     byId[rule.Id] = rule;
             }
         }
 
         return byId.Values.ToList();
+    }
+
+    /// <summary>
+    /// One user pack, or nothing if it can't be read or parsed. A pack cifail merely
+    /// <em>found</em> — a repository's, say — must not be able to take analysis down: the same
+    /// stance the loader already takes on a malformed regex. <c>cifail rules validate</c> is
+    /// where a broken pack gets named.
+    /// </summary>
+    private static IReadOnlyList<RuleDefinition> ParseUserPack(string file)
+    {
+        try
+        {
+            return ParseDocument(File.ReadAllText(file));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or YamlDotNet.Core.YamlException)
+        {
+            return Array.Empty<RuleDefinition>();
+        }
     }
 
     /// <summary>Load only the rule packs embedded in the assembly.</summary>
