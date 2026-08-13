@@ -356,10 +356,24 @@ Offline-degrades (no model → friendly message, exit 1).
 Rules are **data, not code** — this is the primary extension point. Each pack is a
 YAML list of `{ id, ecosystem, category, title, match (regex), confidence, fix, docs }`.
 Packs are **embedded resources** (see `EmbeddedResource` glob in `CiFail.Core.csproj`),
-loaded by `RulePackLoader` from the assembly; users can add `~/.cifail/rules/*.yaml`,
-and a user rule with a duplicate `id` overrides the embedded one. A malformed regex is
-skipped, never fatal. To add coverage for a new failure, add a rule + a fixture +
-a row in `RulePackBreadthTests` — usually no C# changes needed.
+loaded by `RulePackLoader` from the assembly; users can add their own, and a user rule with a
+duplicate `id` overrides the embedded one. A malformed regex is skipped, never fatal. To add
+coverage for a new failure, add a rule + a fixture + a row in `RulePackBreadthTests` — usually
+no C# changes needed.
+
+**Where user packs come from (`Core/Rules/RuleSearchPath.cs`):** `Resolve()` returns the load
+order, most general → most explicit, and **later wins on a duplicate id**: `~/.cifail/rules` →
+the nearest `.cifail/rules` walking up from the cwd → `config.yaml` `rules.paths` → `CIFAIL_RULES`
+(a `PATH`-style list, appended to the file's by `ConfigLoader`) → `--rules <dir>` (`analyze`,
+`gate`, `rules list`). The repo case is the reason it exists: a rule like "the determinism
+contract is broken" belongs in the repo, and the old workaround (`CIFAIL_HOME=$PWD/.cifail`)
+also relocated `history.db`. `RulePackLoader.LoadFrom(dirs)` is the multi-directory load;
+`LoadAll()` (no argument) resolves the search path, `LoadAll(dir)` still means *only* that
+directory, which is what keeps tests hermetic. Because cifail now loads packs it merely
+**found**, `ParseUserPack` swallows an unparseable user pack (`rules validate` names it) —
+a broken file in a checkout must not break analysis for everyone working in it.
+`.cifail/` is the repo-side directory (`CiFailPaths.RepoDirectoryName`, shared with
+`GateBaseline`); `CIFAIL_HOME` is the machine-side one.
 
 **Every rule needs a fixture and a `docs:` URL, and both are enforced.**
 `RulePackBreadthTests.Every_shipped_rule_has_a_fixture` fails the build for a rule with no
@@ -509,6 +523,11 @@ answer; warnings, errors, and "nothing recorded yet" notes are not. Two delibera
 where the diagnostics *are* the answer: `rules validate`'s lint output and `rules test`'s
 `no match.` stay on stdout. `--annotations` writes `::error::` to **stderr** (the Actions runner
 scans both streams) so `--json --annotations` can't corrupt the JSON document.
+
+**`Cli/Output/PathDisplay.cs`** — the report header's source label is elided **from the left**
+(`Elide`), because the file/test name at the end is what identifies it. Spectre's own
+truncation can't do this: a `Rule` title is word-wrapped and only the first line survives, so an
+absolute path (one long word, and what every CI system passes) rendered as a bare ellipsis.
 
 **`Cli/Output/Glyphs.cs`** — use `Glyphs.Check/Cross/Warning/Bullet/Ellipsis/Dash/Times/Dot`
 instead of literal `✓✗⚠•…—×·` in console output; they degrade to ASCII when the console encoding

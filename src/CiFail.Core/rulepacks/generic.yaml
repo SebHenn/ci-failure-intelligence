@@ -26,7 +26,15 @@
   ecosystem: generic
   category: ci
   title: GitHub Actions step error
-  match: "##\\[error\\](?<message>.+)"
+  # Two spellings of the same annotation, and which one you get depends on where the log
+  # came from: `::error::msg` is what a script *writes*, `##[error]msg` is how the runner
+  # *renders* it in the log you download from the Actions UI. A workflow that tees its own
+  # output — which is how cifail's README and action.yml say to capture a log — keeps the
+  # `::` form, so matching only `##[error]` missed the highest-signal line in exactly the
+  # logs cifail tells you to produce.
+  # The optional middle part is the annotation's properties (`::error file=a.cs,line=12::`),
+  # which carry no colon of their own, so `[^:]*` stops at the closing `::`.
+  match: "(?:##\\[error\\]|::error(?:\\s[^:]*)?::)(?<message>.+)"
   confidence: 0.5
   fix: |
     A GitHub Actions step reported an error: {message}

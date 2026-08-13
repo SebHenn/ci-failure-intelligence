@@ -54,6 +54,10 @@ public sealed class GateCommand : Command<GateCommand.Settings>
         [Description("Input format: auto (default), log, junit, trx.")]
         public string? Format { get; init; }
 
+        [CommandOption("--rules <DIR>")]
+        [Description("Extra directory of rule packs (repeatable). Adds to ~/.cifail/rules and .cifail/rules.")]
+        public string[] Rules { get; init; } = Array.Empty<string>();
+
         [CommandOption("--json")]
         [Description("Emit the verdict as JSON instead of a human report.")]
         public bool Json { get; init; }
@@ -95,7 +99,7 @@ public sealed class GateCommand : Command<GateCommand.Settings>
             return ExitCodes.Usage;
         }
 
-        var observed = Observe(units, settings.Type);
+        var observed = Observe(units, settings.Type, settings.Rules);
 
         if (settings.Update)
             return WriteBaseline(settings, baselinePath, observed);
@@ -136,6 +140,10 @@ public sealed class GateCommand : Command<GateCommand.Settings>
             return ExitCodes.Usage;
         }
 
+        // A missing pack changes the fingerprints, and so the verdict — worth saying out loud.
+        foreach (var dir in settings.Rules.Where(d => !Directory.Exists(d)))
+            CliConsole.Warn($"rules directory not found: {Markup.Escape(dir)}");
+
         return null;
     }
 
@@ -143,9 +151,10 @@ public sealed class GateCommand : Command<GateCommand.Settings>
     /// Run the rules over every unit and reduce each result to its fingerprint. Rules only —
     /// see the class remarks for why the gate never opens a store.
     /// </summary>
-    private static List<ObservedFailure> Observe(IReadOnlyList<AnalysisUnit> units, string? ecosystemOverride)
+    private static List<ObservedFailure> Observe(IReadOnlyList<AnalysisUnit> units, string? ecosystemOverride,
+        IReadOnlyList<string> ruleDirs)
     {
-        var service = AnalysisService.CreateDefault();
+        var service = AnalysisService.CreateDefault(ruleDirs);
         var options = new AnalysisOptions { EcosystemOverride = ecosystemOverride };
 
         var observed = new List<ObservedFailure>(units.Count);

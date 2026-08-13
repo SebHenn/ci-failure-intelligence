@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using CiFail.Cli.Output;
+using CiFail.Core;
 using CiFail.Core.Rules;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -8,11 +10,17 @@ namespace CiFail.Cli.Commands;
 /// <summary>`cifail rules list` — show all loaded rule packs (embedded + user).</summary>
 public sealed class RulesListCommand : Command<RulesListCommand.Settings>
 {
-    public sealed class Settings : CommandSettings { }
+    public sealed class Settings : CommandSettings
+    {
+        [CommandOption("--rules <DIR>")]
+        [Description("Extra directory of rule packs (repeatable). Adds to ~/.cifail/rules and .cifail/rules.")]
+        public string[] Rules { get; init; } = Array.Empty<string>();
+    }
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
-        var rules = RulePackLoader.LoadAll();
+        var searchPath = RuleSearchPath.Resolve(settings.Rules);
+        var rules = RulePackLoader.LoadFrom(searchPath);
 
         var table = new Table().Border(TableBorder.Rounded)
             .Title($"[bold]rules[/] [grey]({rules.Count} loaded)[/]");
@@ -33,7 +41,36 @@ public sealed class RulesListCommand : Command<RulesListCommand.Settings>
         }
 
         CliConsole.Out.Write(table);
-        CliConsole.Hint($"[grey]user rule packs: {Markup.Escape(RulePackLoader.DefaultUserRulesDir)}[/]");
+
+        // Which directories were consulted, and which of them actually held packs — "my rule
+        // isn't listed" is nearly always a path question, and this answers it without guessing.
+        CliConsole.Hint("[grey]user rule packs are loaded from, in order:[/]");
+        foreach (var dir in searchPath)
+            CliConsole.Hint($"[grey]  {Markup.Escape(dir)} ({Markup.Escape(PackNote(dir))})[/]");
+
         return ExitCodes.Ok;
+    }
+
+    /// <summary>
+    /// How many packs a search-path directory holds, in words, for the reader who is asking
+    /// why their rule isn't listed. A missing home directory is normal (cifail creates it when
+    /// something writes there); a missing directory you asked for is not.
+    /// </summary>
+    internal static string PackNote(string dir)
+    {
+        if (!Directory.Exists(dir))
+            return string.Equals(dir, CiFailPaths.UserRulesDir, StringComparison.OrdinalIgnoreCase)
+                ? "none yet"
+                : "not there";
+
+        try
+        {
+            var count = Directory.EnumerateFiles(dir, "*.yaml", SearchOption.AllDirectories).Count();
+            return count == 0 ? "no packs" : $"{count} pack{(count == 1 ? "" : "s")}";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return "unreadable";
+        }
     }
 }

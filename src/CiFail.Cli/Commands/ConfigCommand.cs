@@ -125,6 +125,10 @@ public sealed class ConfigCommand : Command<ConfigCommand.Settings>
             Database = BuildDatabase(file, effective);
             Ai = BuildAi(file, effective);
             Notifications = BuildNotifications(file, effective);
+
+            // Resolved from the same config object that was just reported, so the listed
+            // directories are the ones this run would actually load from.
+            RuleDirs = RuleSearchPath.Resolve(config: effective);
         }
 
         public string ConfigPath { get; }
@@ -134,6 +138,7 @@ public sealed class ConfigCommand : Command<ConfigCommand.Settings>
         public IReadOnlyList<Setting> Database { get; }
         public IReadOnlyList<Setting> Ai { get; }
         public IReadOnlyList<Setting> Notifications { get; }
+        public IReadOnlyList<string> RuleDirs { get; }
 
         public static string Flavor =>
 #if CIFAIL_EXTERNAL_DB
@@ -162,6 +167,7 @@ public sealed class ConfigCommand : Command<ConfigCommand.Settings>
                 Config = ConfigPath,
                 ConfigExists,
                 UserRules = CiFailPaths.UserRulesDir,
+                RuleDirs = RuleDirs,
             },
             StoreProviders = StoreRegistry.AvailableNames,
             AiProviders = AiRegistry.AvailableNames,
@@ -315,7 +321,12 @@ public sealed class ConfigCommand : Command<ConfigCommand.Settings>
         Path("home", CiFailPaths.Home, homeOverridden ? CiFailPaths.HomeEnvVar : null);
         Path("history db", CiFailPaths.HistoryDbPath, File.Exists(CiFailPaths.HistoryDbPath) ? null : "not created yet");
         Path("config", report.ConfigPath, report.ConfigExists ? null : "not found — using defaults");
-        Path("user rules", CiFailPaths.UserRulesDir, UserPackNote());
+
+        // Every directory rules load from, in load order — a repo's own .cifail/rules and
+        // anything added via config.yaml, CIFAIL_RULES or --rules, not just the home one.
+        for (int i = 0; i < report.RuleDirs.Count; i++)
+            Path(i == 0 ? "rule packs" : "", report.RuleDirs[i], RulesListCommand.PackNote(report.RuleDirs[i]));
+
         console.Write(new Panel(paths).Header(" paths ").Border(BoxBorder.Rounded));
 
         Section(console, "database", report.Database);
@@ -366,10 +377,4 @@ public sealed class ConfigCommand : Command<ConfigCommand.Settings>
         }
     }
 
-    private static string? UserPackNote()
-    {
-        if (!Directory.Exists(CiFailPaths.UserRulesDir)) return "none yet";
-        var count = Directory.EnumerateFiles(CiFailPaths.UserRulesDir, "*.yaml", SearchOption.AllDirectories).Count();
-        return count == 0 ? "none yet" : $"{count} pack{(count == 1 ? "" : "s")}";
-    }
 }

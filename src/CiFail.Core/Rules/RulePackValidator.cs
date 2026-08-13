@@ -51,7 +51,10 @@ public static class RulePackValidator
         public bool HasErrors => ErrorCount > 0;
     }
 
-    /// <summary>Validate the embedded packs plus the default (or a given) user rules directory.</summary>
+    /// <summary>
+    /// Validate the embedded packs plus the user packs: a single given directory, or — with none
+    /// given — every location on the <see cref="RuleSearchPath"/>, which is what actually loads.
+    /// </summary>
     public static Result ValidateAll(string? userRulesDir = null)
     {
         var docs = new List<RulePackDocument>();
@@ -59,7 +62,15 @@ public static class RulePackValidator
         foreach (var (source, yaml) in RulePackLoader.EmbeddedDocuments())
             docs.Add(new RulePackDocument(source, RulePackTier.Embedded, yaml));
 
-        docs.AddRange(ReadDirectory(userRulesDir ?? RulePackLoader.DefaultUserRulesDir, RulePackTier.User));
+        var dirs = userRulesDir is null
+            ? RuleSearchPath.Resolve()
+            : new[] { userRulesDir };
+
+        // With more than one directory in play, a bare file name no longer identifies a pack —
+        // two repos can both ship `rules.yaml`, and "duplicate id in rules.yaml, rules.yaml"
+        // helps nobody.
+        foreach (var dir in dirs)
+            docs.AddRange(ReadDirectory(dir, RulePackTier.User, qualify: dirs.Count > 1));
 
         return Validate(docs);
     }
@@ -168,13 +179,13 @@ public static class RulePackValidator
             Warn($"'docs' should be an absolute http(s) URL; got '{rule.Docs}'");
     }
 
-    private static IEnumerable<RulePackDocument> ReadDirectory(string dir, RulePackTier tier)
+    private static IEnumerable<RulePackDocument> ReadDirectory(string dir, RulePackTier tier, bool qualify = false)
     {
         if (!Directory.Exists(dir))
             yield break;
 
         foreach (var file in Directory.EnumerateFiles(dir, "*.yaml", SearchOption.AllDirectories)
                      .OrderBy(f => f, StringComparer.Ordinal))
-            yield return new RulePackDocument(Path.GetFileName(file), tier, File.ReadAllText(file));
+            yield return new RulePackDocument(qualify ? file : Path.GetFileName(file), tier, File.ReadAllText(file));
     }
 }

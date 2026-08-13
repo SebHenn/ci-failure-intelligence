@@ -212,6 +212,9 @@ public class RulePackBreadthTests
         { "generic-command-not-found.log", "generic-command-not-found" },
         { "generic-command-not-found-sh.log", "generic-command-not-found" },
         { "github-actions-error.log", "github-actions-error" },
+        // The `::error::` spelling a script writes, as opposed to the `##[error]` the runner
+        // renders — a tee'd log keeps the former, and it has to beat generic-nonzero-exit.
+        { "github-actions-annotation.log", "github-actions-error" },
         { "generic-permission-denied.log", "generic-permission-denied" },
         { "generic-nonzero-exit.log", "generic-nonzero-exit" },
         { "generic-timeout.log", "generic-timeout" },
@@ -286,6 +289,20 @@ public class RulePackBreadthTests
     {
         var analysis = Service.Analyze("g", Fixtures.Load("go-undefined.log"));
         analysis.RootCause!.Captures["symbol"].Should().Be("render.JSONResponse");
+    }
+
+    [Theory]
+    [InlineData("##[error]the build failed", "the build failed")]
+    [InlineData("::error::the build failed", "the build failed")]
+    [InlineData("::error file=a.cs,line=12,col=3::the build failed", "the build failed")]
+    public void Captures_the_message_from_either_spelling_of_an_actions_error(string line, string expected)
+    {
+        // The properties form is what `::error file=…::` produces; the message must not
+        // swallow them, or the report leads with "file=a.cs,line=12,col=3".
+        var analysis = Service.Analyze("gh", line);
+
+        analysis.RootCause!.Rule.Id.Should().Be("github-actions-error");
+        analysis.RootCause.Captures["message"].Should().Be(expected);
     }
 
     [Fact]

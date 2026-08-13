@@ -71,6 +71,10 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         [Description("Model name for the AI backend (overrides the provider default).")]
         public string? AiModel { get; init; }
 
+        [CommandOption("--rules <DIR>")]
+        [Description("Extra directory of rule packs (repeatable). Adds to ~/.cifail/rules and .cifail/rules.")]
+        public string[] Rules { get; init; } = Array.Empty<string>();
+
         [CommandOption("--no-history")]
         [Description("Do not persist this analysis to history.")]
         public bool NoHistory { get; init; }
@@ -182,6 +186,15 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             return ExitCodes.Usage;
         }
 
+        // A rules directory that isn't there loads nothing, and "no rule matched" looks exactly
+        // the same as "the pack never loaded" — so say so rather than letting it pass silently.
+        foreach (var dir in settings.Rules.Where(d => !Directory.Exists(d)))
+            CliConsole.Warn($"rules directory not found: {Markup.Escape(dir)}");
+
+        // --server runs the whole pipeline remotely, against the server's own packs.
+        if (settings.Rules.Length > 0 && !string.IsNullOrWhiteSpace(settings.Server))
+            CliConsole.Warn("--rules is ignored with --server; the server matches with its own rule packs.");
+
         return null;
     }
 
@@ -200,7 +213,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         var ai = settings.Ai ? BuildAiAnalyzer(aiConfig) : null;
         var embedder = BuildEmbedder(aiConfig);
 
-        var service = AnalysisService.CreateWithStore(store, git, ai, embedder);
+        var service = AnalysisService.CreateWithStore(store, git, ai, embedder, settings.Rules);
 
         bool allMatched = true;
         var results = new List<Analysis>(units.Count);
