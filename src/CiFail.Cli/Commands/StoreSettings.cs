@@ -14,7 +14,7 @@ namespace CiFail.Cli.Commands;
 /// loader): these CLI flags &gt; env (CIFAIL_DB_PROVIDER/CONNECTION) &gt; config.yaml &gt;
 /// the SQLite default.
 /// </summary>
-public class StoreSettings : CommandSettings
+public class StoreSettings : OutputSettings
 {
     [CommandOption("--db-provider <PROVIDER>")]
     [Description("Database backend: sqlite (default) or http. postgres/mysql/sqlserver/mongodb need the Docker/full build; `cifail config` lists what this binary has.")]

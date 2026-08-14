@@ -11,6 +11,41 @@ after 1.0.
 
 ### Added
 
+- **`analyze` and `gate` now accept a directory, a glob, or a gzipped log.** `cifail analyze
+  logs/` used to report `file not found: logs/`, which is actively misleading, and a glob only
+  worked when the shell had already expanded it — so the README's own
+  `cifail gate --format trx TestResults/*.trx` failed on PowerShell and cmd, on a project whose
+  author develops on Windows. A directory is walked for `.log/.txt/.out/.xml/.trx/.gz`, an
+  unexpanded glob is matched by cifail itself, `.gz` is decompressed (which is what CI providers
+  hand you when you download a job log), and `-` reads stdin.
+
+- **`cifail history` gained `--json` and filters** — `--since`, `--repo`, `--ecosystem`,
+  `--rule`, `--open`, `--resolved`, `--search`, `--offset`. It was the one data-bearing command
+  with no machine-readable output and no way to narrow the list, even though `stats` and
+  `clusters` already accepted `--since`/`--repo` and every stored record is fully structured.
+  `cifail history <id> --json` emits the single record.
+
+- **`--no-color`, `--quiet` and `--verbose`, and `NO_COLOR` is honoured.** There was no way to
+  turn colour off short of redirecting stdout, which also loses the human view — Spectre.Console
+  does not implement `NO_COLOR` and cifail did not either. `FORCE_COLOR` and `CLICOLOR=0` are
+  accepted too, with `NO_COLOR` winning. `--quiet` silences hints but never errors or warnings;
+  `--verbose` shows every secondary match with its rule id, and **why the ecosystem was chosen**
+  — `EcosystemDetector.Rank` was public and documented as the answer to "why did it think this
+  was Java?" while nothing but its own tests ever called it. Detection being wrong is a common
+  cause of "no rule matched", because the wrong ecosystem *narrows* the rule set.
+
+- **The GitHub Action gained outputs** (`matched`, `rule`, `fingerprint`, `title`, `count`,
+  `new-failures`, `exit-code`), so a later step can branch on the result instead of re-parsing
+  text, and a **`mode: gate`** input for failing a PR on new failures only.
+
+- **Documented snippets for Azure DevOps, Jenkins, Bitbucket Pipelines and CircleCI.** There was
+  nothing at all for any of them.
+
+- **CI now runs the build and tests on Windows as well as Linux.** Path handling, console
+  encoding, the ASCII glyph fallback, SQLite file locking and the new glob expansion are all
+  platform-sensitive, and cross-platform breakage could previously only surface in the release
+  workflow — i.e. after a tag was already cut.
+
 - **`cifail prune --older-than <duration>`** deletes old analyses. History had no delete path of
   any kind — no store method, no command, no retention setting — so `history.db` grew for the
   life of the install, holding a log excerpt and a term bag per failure. That is both unbounded
@@ -158,6 +193,11 @@ after 1.0.
   token.
 
 ### Fixed
+
+- **The GitHub Action's step summary and PR comment no longer paste box-drawing characters
+  inside a code fence.** It now renders `--report markdown`, which existed for exactly this and
+  went unused. It also stopped folding stderr into stdout with `2>&1`, which had been discarding
+  the stream separation the CLI works hard to maintain.
 
 - **The dashboard's filters only ever searched the newest 200 records.** It fetched
   `GetRecent(200)` and filtered that in memory, so "show me resolved failures" could not find one

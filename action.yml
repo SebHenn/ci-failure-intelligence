@@ -4,13 +4,21 @@ branding:
   icon: 'search'
   color: 'red'
 
+# NOTE: this action runs cifail through Docker, so it works on **Linux runners only**
+# (ubuntu-*). It will not run on windows-* or macos-* runners, which have no Docker daemon.
+# On those, install the CLI directly — see the README's install section.
+
 inputs:
   log:
-    description: 'Path to the log file to analyze (relative to the workspace).'
+    description: 'Path to the log file to analyze (relative to the workspace). Also accepts a directory or a glob.'
     required: false
     default: ''
+  mode:
+    description: 'What to run: "analyze" (explain the failure, informational) or "gate" (fail only on a failure absent from .cifail/baseline.txt).'
+    required: false
+    default: 'analyze'
   args:
-    description: 'Extra arguments passed to `cifail analyze` (e.g. "--type node").'
+    description: 'Extra arguments passed to the cifail command (e.g. "--type node", "--format trx").'
     required: false
     default: ''
   image:
@@ -38,12 +46,37 @@ inputs:
     required: false
     default: ''
 
+outputs:
+  matched:
+    description: 'true when cifail explained every input, false when at least one failure went unrecognized.'
+    value: ${{ steps.cifail.outputs.matched }}
+  rule:
+    description: 'Rule id of the first root cause (empty when nothing matched).'
+    value: ${{ steps.cifail.outputs.rule }}
+  fingerprint:
+    description: 'Fingerprint of the first failure — the same string cifail gate baselines on.'
+    value: ${{ steps.cifail.outputs.fingerprint }}
+  title:
+    description: 'Human-readable title of the first root cause.'
+    value: ${{ steps.cifail.outputs.title }}
+  count:
+    description: 'How many things were analyzed (a test report expands to one per failing test).'
+    value: ${{ steps.cifail.outputs.count }}
+  new-failures:
+    description: 'gate mode only: how many failures were absent from the baseline.'
+    value: ${{ steps.cifail.outputs.new-failures }}
+  exit-code:
+    description: "cifail's own exit code, whatever `fail` was set to. 0 ok, 1 negative result, 2 usage."
+    value: ${{ steps.cifail.outputs.exit-code }}
+
 runs:
   using: 'composite'
   steps:
-    - shell: bash
+    - id: cifail
+      shell: bash
       env:
         INPUT_LOG: ${{ inputs.log }}
+        INPUT_MODE: ${{ inputs.mode }}
         INPUT_ARGS: ${{ inputs.args }}
         INPUT_IMAGE: ${{ inputs.image }}
         INPUT_SUMMARY: ${{ inputs.summary }}
@@ -54,6 +87,11 @@ runs:
       run: |
         set -uo pipefail
 
+        case "$INPUT_MODE" in
+          analyze|gate) ;;
+          *) echo "cifail: unknown mode '$INPUT_MODE' (use analyze or gate)." >&2; exit 2 ;;
+        esac
+
         docker pull "$INPUT_IMAGE" >/dev/null 2>&1 || true
 
         run_args=(--rm -v "$PWD:/work" -w /work)
@@ -61,29 +99,71 @@ runs:
         [ -n "${CIFAIL_DB_PROVIDER:-}" ] && run_args+=(-e CIFAIL_DB_PROVIDER)
         [ -n "${CIFAIL_DB_CONNECTION:-}" ] && run_args+=(-e CIFAIL_DB_CONNECTION)
 
-        cifail_args=(analyze)
+        # A markdown report for humans, JSON on stdout for the outputs. Both come from one run:
+        # --report-out writes the file *and* leaves stdout to --json.
+        report=".cifail-report.md"
+
+        cifail_args=("$INPUT_MODE" --json)
         [ -n "$INPUT_LOG" ] && cifail_args+=("$INPUT_LOG")
         # word-split extra args intentionally
         # shellcheck disable=SC2206
         [ -n "$INPUT_ARGS" ] && cifail_args+=($INPUT_ARGS)
-        # Write a SARIF report alongside the normal output (still shown on stdout/summary).
-        [ -n "$INPUT_SARIF" ] && cifail_args+=(--report sarif --report-out "$INPUT_SARIF")
-        # Rule packs this repo ships. .cifail/rules is found without this, since the workspace
-        # is the container's working directory.
         [ -n "$INPUT_RULES" ] && cifail_args+=(--rules "$INPUT_RULES")
 
-        out="$(docker run "${run_args[@]}" "$INPUT_IMAGE" "${cifail_args[@]}" 2>&1)"
-        code=$?
+        # Reports are an analyze-only feature; gate's own --json carries the verdict.
+        if [ "$INPUT_MODE" = "analyze" ]; then
+          cifail_args+=(--report markdown --report-out "$report")
+          [ -n "$INPUT_SARIF" ] && cifail_args+=(--report sarif --report-out "$INPUT_SARIF")
+        fi
 
-        echo "$out"
+        # stderr is kept separate so warnings can't corrupt the JSON document (the CLI is careful
+        # about this; folding the streams with 2>&1 would throw that away).
+        json="$(docker run "${run_args[@]}" "$INPUT_IMAGE" "${cifail_args[@]}" 2>/tmp/cifail.err)"
+        code=$?
+        cat /tmp/cifail.err >&2 || true
+
+        # ---- outputs -------------------------------------------------------------------
+        # A step output is a single `key=value` line, so any newline in a value would corrupt the
+        # file and silently swallow the outputs after it — squash them. GITHUB_OUTPUT is defaulted
+        # so the script stays runnable outside Actions (`set -u` would otherwise abort here).
+        emit() {
+          printf '%s=%s\n' "$1" "$(printf '%s' "$2" | tr '\n\r' '  ')" \
+            >> "${GITHUB_OUTPUT:-/dev/null}"
+        }
+        emit "exit-code" "$code"
+
+        if [ "$INPUT_MODE" = "gate" ]; then
+          emit "matched" "$(printf '%s' "$json" | jq -r '.Passed // false' 2>/dev/null || echo false)"
+          emit "new-failures" "$(printf '%s' "$json" | jq -r '.NewCount // 0' 2>/dev/null || echo 0)"
+          emit "count" "$(printf '%s' "$json" | jq -r '(.NewCount // 0) + (.KnownCount // 0)' 2>/dev/null || echo 0)"
+          emit "rule" "$(printf '%s' "$json" | jq -r '(.New // [])[0].RuleId // empty' 2>/dev/null || true)"
+          emit "fingerprint" "$(printf '%s' "$json" | jq -r '(.New // [])[0].Fingerprint // empty' 2>/dev/null || true)"
+          emit "title" "$(printf '%s' "$json" | jq -r '(.New // [])[0].Title // empty' 2>/dev/null || true)"
+        else
+          emit "matched" "$(printf '%s' "$json" | jq -r 'if length == 0 then true else all(.[]; .Matched) end' 2>/dev/null || echo false)"
+          emit "count" "$(printf '%s' "$json" | jq -r 'length' 2>/dev/null || echo 0)"
+          emit "rule" "$(printf '%s' "$json" | jq -r '.[0].RootCause.RuleId // empty' 2>/dev/null || true)"
+          emit "fingerprint" "$(printf '%s' "$json" | jq -r '.[0].Fingerprint // empty' 2>/dev/null || true)"
+          emit "title" "$(printf '%s' "$json" | jq -r '.[0].RootCause.Title // empty' 2>/dev/null || true)"
+          emit "new-failures" ""
+        fi
+
+        # ---- human-readable rendering --------------------------------------------------
+        # The markdown report, not the console panels: box-drawing characters inside a code
+        # fence is what a step summary used to be, and it reads badly everywhere it lands.
+        if [ "$INPUT_MODE" = "analyze" ] && [ -s "$report" ]; then
+          body="$(cat "$report")"
+        else
+          body="$(printf '%s' "$json")"
+        fi
+
+        echo "$body"
 
         if [ "$INPUT_SUMMARY" = "true" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
           {
-            echo "## cifail analysis"
+            echo "## cifail"
             echo ""
-            echo '```'
-            echo "$out"
-            echo '```'
+            echo "$body"
           } >> "$GITHUB_STEP_SUMMARY"
         fi
 
@@ -96,22 +176,25 @@ runs:
             echo "cifail: comment=true but no pull request in this event — skipping PR comment." >&2
           else
             marker="<!-- cifail -->"
-            body="$(printf '%s\n## cifail analysis\n\n```\n%s\n```\n' "$marker" "$out")"
+            comment_body="$(printf '%s\n## cifail\n\n%s\n' "$marker" "$body")"
             repo="$GITHUB_REPOSITORY"
             # Find our existing comment (by marker) and update it; otherwise create one.
             id="$(gh api "repos/$repo/issues/$pr/comments" --paginate \
               --jq "map(select(.body | startswith(\"$marker\"))) | .[0].id // empty" 2>/dev/null)"
             if [ -n "$id" ]; then
-              gh api -X PATCH "repos/$repo/issues/comments/$id" -f body="$body" >/dev/null \
+              gh api -X PATCH "repos/$repo/issues/comments/$id" -f body="$comment_body" >/dev/null \
                 && echo "cifail: updated PR comment $id."
             else
-              gh api -X POST "repos/$repo/issues/$pr/comments" -f body="$body" >/dev/null \
+              gh api -X POST "repos/$repo/issues/$pr/comments" -f body="$comment_body" >/dev/null \
                 && echo "cifail: posted PR comment."
             fi
           fi
         fi
 
-        # cifail exit codes: 0 matched, 1 analyzed but no rule matched, 2 input error.
+        rm -f "$report"
+
+        # cifail exit codes: 0 ok, 1 negative result (no rule matched / gate found something
+        # new), 2 usage error.
         if [ "$INPUT_FAIL" = "true" ]; then
           exit $code
         fi

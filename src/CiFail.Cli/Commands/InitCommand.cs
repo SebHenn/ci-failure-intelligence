@@ -16,7 +16,7 @@ public sealed class InitCommand : Command<InitCommand.Settings>
     private const string Marker = "# installed by cifail init";
     private static readonly string[] Hooks = { "post-commit", "post-merge" };
 
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : OutputSettings
     {
     }
 

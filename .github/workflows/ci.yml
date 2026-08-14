@@ -55,6 +55,38 @@ jobs:
       - name: Pack (global tool)
         run: dotnet pack src/CiFail.Cli/CiFail.Cli.csproj --configuration Release --no-build --output ./nupkg
 
+  # The same build and tests on Windows. A separate job rather than a matrix on build-test,
+  # because that job's first four steps are shellcheck, bash and jq — Linux tooling that has
+  # nothing to do with the .NET build.
+  #
+  # This exists because the parts most likely to break are all platform-sensitive: path
+  # handling (PathDisplay, CiFailPaths), console encoding and the ASCII glyph fallback, SQLite
+  # file locking, and directory/glob expansion. Until now cross-platform breakage could only
+  # surface in the release workflow's smoke matrix — i.e. after a tag was already cut.
+  build-test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Validate rule packs
+        run: dotnet run --project src/CiFail.Cli --configuration Release --no-build -- rules validate src/CiFail.Core/rulepacks
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
   # Build the image AND RUN IT. Building alone proves almost nothing here: the Dockerfile's
   # two base images are independent, so a runtime base that can't host the app still builds
   # clean and only fails when someone runs it. That is not hypothetical — a dependabot PR

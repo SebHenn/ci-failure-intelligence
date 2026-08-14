@@ -642,6 +642,17 @@ notifications) keep the real characters. `CliApp.ConfigureConsole()` sets UTF-8 
 redirected** — via `UTF8Encoding(false)`, never `Encoding.UTF8`, whose preamble .NET would emit
 as a BOM at the head of a pipe.
 
+**Inputs (R39, `Cli/Commands/AnalysisInputs.cs`):** `Read` expands a path into files — a file, a
+directory walk (`.log/.txt/.out/.xml/.trx/.gz`), or a glob **cifail matches itself** because the
+shell may not have (the README's `TestResults/*.trx` failed on PowerShell). `.gz` is decompressed
+transparently; `-` is stdin. Only the final path segment may contain wildcards.
+
+**Verbosity/colour (R39, `Cli/Commands/OutputSettings.cs`):** every settings class derives from
+`OutputSettings`, and `config.SetInterceptor(new OutputSettingsInterceptor())` applies it — Spectre
+has no global options, and a call at the top of every `Execute` is a line someone will forget.
+`CliConsole.Hint` is silenced by `--quiet` (errors and warnings never are); `CliConsole.Detail`
+prints only under `--verbose`. `NO_COLOR` > `FORCE_COLOR` > `CLICOLOR=0`, in `CliApp.ColorPreference`.
+
 **Exit codes: `Cli/ExitCodes.cs` is the single taxonomy** (0 Ok · 1 Negative · 2 Usage ·
 3 NotFound · 4 Config · 5 StoreUnavailable · 6 DependencyUnavailable · 7 NotUsable · 70 Internal ·
 130 Canceled). `1` means "negative result", not "error" — that's what keeps `analyze`'s 0/1/2 and

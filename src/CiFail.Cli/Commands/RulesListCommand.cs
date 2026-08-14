@@ -10,7 +10,7 @@ namespace CiFail.Cli.Commands;
 /// <summary>`cifail rules list` — show all loaded rule packs (embedded + user).</summary>
 public sealed class RulesListCommand : Command<RulesListCommand.Settings>
 {
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : OutputSettings
     {
         [CommandOption("--rules <DIR>")]
         [Description("Extra directory of rule packs (repeatable). Adds to ~/.cifail/rules and .cifail/rules.")]

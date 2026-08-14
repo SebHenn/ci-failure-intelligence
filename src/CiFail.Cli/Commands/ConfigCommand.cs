@@ -34,7 +34,7 @@ namespace CiFail.Cli.Commands;
 /// </summary>
 public sealed class ConfigCommand : Command<ConfigCommand.Settings>
 {
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : OutputSettings
     {
         [CommandOption("--json")]
         [Description("Emit machine-readable JSON instead of a human report.")]

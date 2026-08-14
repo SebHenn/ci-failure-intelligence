@@ -16,7 +16,7 @@ public sealed class RulesTestCommand : Command<RulesTestCommand.Settings>
 {
     private const int MaxMatchesShown = 10;
 
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : OutputSettings
     {
         [CommandArgument(0, "<regex>")]
         [Description("The rule 'match' regex to try (use quotes).")]

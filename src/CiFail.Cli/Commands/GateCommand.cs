@@ -32,7 +32,7 @@ public sealed class GateCommand : Command<GateCommand.Settings>
     private const int ExitPassed = ExitCodes.Ok;
     private const int ExitNewFailures = ExitCodes.Negative;
 
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : OutputSettings
     {
         [CommandArgument(0, "[paths]")]
         [Description("Log file(s) or test report(s) to check. Reads stdin when omitted.")]

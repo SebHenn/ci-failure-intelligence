@@ -67,6 +67,44 @@ public static class CliApp
             // Every documented failure of these setters (no console attached, a platform that
             // fixes the encoding from the locale, a restricted host) is fine to ignore.
         }
+
+        ApplyColorPreference();
+    }
+
+    /// <summary>
+    /// Honour <c>NO_COLOR</c> (and its counterparts) before anything renders.
+    ///
+    /// <para>
+    /// Spectre.Console 0.57 does not implement <a href="https://no-color.org">no-color.org</a>
+    /// itself, and cifail had no reference to it either — so the only way to get plain output was
+    /// to redirect stdout, which also loses the human view. Precedence follows the conventions:
+    /// <c>NO_COLOR</c> (any non-empty value) disables colour, <c>FORCE_COLOR</c> re-enables it
+    /// even when redirected, and <c>CLICOLOR=0</c> is accepted as the older spelling.
+    /// </para>
+    /// </summary>
+    public static void ApplyColorPreference()
+    {
+        if (ColorPreference() is not { } enabled) return;
+
+        AnsiConsole.Console.Profile.Capabilities.Ansi = enabled;
+        AnsiConsole.Console.Profile.Capabilities.ColorSystem =
+            enabled ? ColorSystem.Standard : ColorSystem.NoColors;
+    }
+
+    /// <summary>
+    /// True to force colour, false to force it off, null to leave the terminal's own detection
+    /// alone. Exposed for tests: the env-var precedence is the part worth pinning down.
+    /// </summary>
+    internal static bool? ColorPreference(Func<string, string?>? readEnv = null)
+    {
+        readEnv ??= Environment.GetEnvironmentVariable;
+
+        // NO_COLOR wins: it is the one a user sets deliberately to stop colour everywhere.
+        if (!string.IsNullOrEmpty(readEnv("NO_COLOR"))) return false;
+        if (!string.IsNullOrEmpty(readEnv("FORCE_COLOR"))) return true;
+        if (readEnv("CLICOLOR") == "0") return false;
+
+        return null;
     }
 
     /// <summary>The configured <see cref="CommandApp"/>, ready to <c>Run</c>.</summary>
@@ -88,6 +126,11 @@ public static class CliApp
             // Without this, any exception escaping a command reaches the user as a Spectre
             // stack trace and an opaque exit code.
             config.SetExceptionHandler(HandleException);
+
+            // One place to apply --no-color/--quiet/--verbose. Spectre.Console.Cli has no global
+            // options, and the alternative — a call at the top of every Execute — is a line
+            // someone will forget on the next command.
+            config.SetInterceptor(new OutputSettingsInterceptor());
 
             config.AddCommand<AnalyzeCommand>("analyze")
                 .WithDescription("Read a build/test log and explain what broke and how to fix it.")

@@ -12,7 +12,7 @@ namespace CiFail.Cli.Commands;
 /// </summary>
 public sealed class RulesExplainCommand : Command<RulesExplainCommand.Settings>
 {
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : OutputSettings
     {
         [CommandArgument(0, "<id>")]
         [Description("The rule id to explain (e.g. nuget-nu1101).")]

@@ -30,7 +30,7 @@ public sealed class SuggestRuleCommand : Command<SuggestRuleCommand.Settings>
     private const int ExitNotUsable = ExitCodes.NotUsable;
     private const int ExitInputError = ExitCodes.Usage;
 
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : OutputSettings
     {
         [CommandArgument(0, "[paths]")]
         [Description("Log file to draft a rule for. Reads stdin when omitted.")]

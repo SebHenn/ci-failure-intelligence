@@ -335,12 +335,51 @@ the job's **step summary**. No install needed; it runs the Docker image for you.
     log: build.log
 ```
 
-Inputs: `log` (file to analyze), `args` (extra flags, e.g. `--type node`), `image` (pin a
-version instead of `:latest`), `summary` (write to the step summary, default `true`),
-`fail` (propagate cifail's exit code; off by default since it runs after a failed build),
-`comment` (post the analysis as a pull-request comment, default `false`), and `sarif`
-(also write a SARIF report to that path). For shared history, set `CIFAIL_DB_PROVIDER` /
-`CIFAIL_DB_CONNECTION` in the job env.
+> **The action runs on Linux runners only.** It works by running the cifail Docker image, and
+> `windows-*` / `macos-*` runners have no Docker daemon. On those, install the binary and call
+> it directly — see [Anywhere else](#anywhere-else-plain-pipe).
+
+Inputs: `log` (file, **directory or glob** to analyze), `mode` (`analyze`, the default, or
+`gate`), `args` (extra flags, e.g. `--type node`), `image` (pin a version instead of
+`:latest`), `summary` (write to the step summary, default `true`), `fail` (propagate cifail's
+exit code; off by default since it runs after a failed build), `comment` (post the analysis as
+a pull-request comment, default `false`), and `sarif` (also write a SARIF report to that path).
+For shared history, set `CIFAIL_DB_PROVIDER` / `CIFAIL_DB_CONNECTION` in the job env.
+
+**Outputs** let a later step branch on the result instead of re-parsing the text:
+
+| Output | Meaning |
+|---|---|
+| `matched` | `true` when everything was explained (in `gate` mode, when nothing new appeared) |
+| `rule` | rule id of the first root cause |
+| `fingerprint` | the same string `cifail gate` baselines on |
+| `title` | human-readable title of the first root cause |
+| `count` | how many things were analyzed |
+| `new-failures` | `gate` mode: how many failures weren't in the baseline |
+| `exit-code` | cifail's own exit code, whatever `fail` was set to |
+
+```yaml
+- name: Explain failures
+  id: cifail
+  if: failure()
+  uses: SebHenn/ci-failure-intelligence@v1
+  with:
+    log: build.log
+
+- name: Page the on-call for infrastructure failures
+  if: steps.cifail.outputs.rule == 'generic-disk-space'
+  run: ./notify-oncall.sh "${{ steps.cifail.outputs.title }}"
+```
+
+To gate a PR on *new* failures only, set `mode: gate` and `fail: true`:
+
+```yaml
+- uses: SebHenn/ci-failure-intelligence@v1
+  with:
+    mode: gate
+    log: build.log
+    fail: true
+```
 
 To comment on the PR, give the step a token with `pull-requests: write` and set
 `comment: true` — the comment is **idempotent** (updated in place on re-runs, not duplicated):
@@ -422,6 +461,54 @@ explain-failures:
 
 </details>
 
+### Azure DevOps
+
+```yaml
+- script: |
+    curl -fsSL https://raw.githubusercontent.com/SebHenn/ci-failure-intelligence/main/scripts/install.sh | sh
+    cifail analyze build.log
+  displayName: 'Explain the failure'
+  condition: failed()
+```
+
+Add `--report markdown --report-out $(Build.ArtifactStagingDirectory)/cifail.md` and publish it
+as an artifact if you want the analysis to outlive the log.
+
+### Jenkins
+
+```groovy
+post {
+  failure {
+    sh 'cifail analyze build.log || true'
+  }
+}
+```
+
+`|| true` keeps the analysis from changing the build result — the build has already failed and
+cifail is there to explain it. Drop it if you want `cifail gate` to be able to fail the stage.
+
+### Bitbucket Pipelines
+
+```yaml
+- step:
+    name: Explain the failure
+    condition: { changesets: { includePaths: ["**"] } }
+    script:
+      - curl -fsSL https://raw.githubusercontent.com/SebHenn/ci-failure-intelligence/main/scripts/install.sh | sh
+      - cifail analyze build.log
+```
+
+### CircleCI
+
+```yaml
+- run:
+    name: Explain the failure
+    when: on_fail
+    command: |
+      curl -fsSL https://raw.githubusercontent.com/SebHenn/ci-failure-intelligence/main/scripts/install.sh | sh
+      cifail analyze build.log
+```
+
 ### Anywhere else (plain pipe)
 
 If you've installed the binary (or are in a `cifail` container), just pipe into it:
@@ -431,6 +518,11 @@ If you've installed the binary (or are in a `cifail` container), just pipe into 
   if: failure()
   run: cifail analyze build.log
 ```
+
+Every one of these works because cifail is a single binary that reads a log and writes to
+stdout. There is nothing platform-specific to it — the GitHub Action and GitLab component exist
+only to save you the install step and to wire up the summary/comment plumbing those platforms
+offer.
 
 ### Exit codes
 

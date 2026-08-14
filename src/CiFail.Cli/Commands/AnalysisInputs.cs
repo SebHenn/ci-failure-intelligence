@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using CiFail.Cli.Output;
 using CiFail.Core.Ingest.Reports;
 using Spectre.Console;
@@ -58,12 +59,12 @@ internal static class AnalysisInputs
     /// piped and no path was passed; the caller reports that as a usage error, because the
     /// right message differs per command.
     /// </summary>
-    /// <exception cref="FileNotFoundException">A named path does not exist.</exception>
+    /// <exception cref="FileNotFoundException">A named path matched nothing.</exception>
     public static List<(string Source, string Text)> Read(IReadOnlyList<string> paths)
     {
         var inputs = new List<(string, string)>();
 
-        if (paths.Count == 0)
+        if (paths.Count == 0 || paths.All(p => p == StdinToken))
         {
             if (!Console.IsInputRedirected)
                 return inputs;
@@ -75,12 +76,108 @@ internal static class AnalysisInputs
 
         foreach (var path in paths)
         {
-            if (!File.Exists(path))
-                throw new FileNotFoundException($"file not found: {path}");
-            inputs.Add((path, File.ReadAllText(path)));
+            foreach (var file in Expand(path))
+                inputs.Add((file, ReadText(file)));
         }
 
         return inputs;
+    }
+
+    /// <summary>The conventional "read stdin" argument, so stdin can be mixed with real paths.</summary>
+    public const string StdinToken = "-";
+
+    /// <summary>Log extensions a directory walk will pick up. A directory of anything else is noise.</summary>
+    private static readonly string[] LogExtensions =
+        { ".log", ".txt", ".out", ".xml", ".trx", ".gz" };
+
+    /// <summary>
+    /// Turn one command-line path into the files it names: a file, every log in a directory, or
+    /// the matches of a glob.
+    ///
+    /// <para>
+    /// All three used to be one <c>File.Exists</c> check. <c>cifail analyze logs/</c> reported
+    /// "file not found: logs/", which is actively misleading, and a glob only worked when the
+    /// shell had already expanded it — so the README's own
+    /// <c>cifail gate --format trx TestResults/*.trx</c> failed on PowerShell and cmd, on a
+    /// project whose author develops on Windows.
+    /// </para>
+    /// </summary>
+    private static IEnumerable<string> Expand(string path)
+    {
+        if (File.Exists(path))
+            return new[] { path };
+
+        if (Directory.Exists(path))
+        {
+            var found = Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)
+                .Where(f => LogExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                .OrderBy(f => f, StringComparer.Ordinal)
+                .ToList();
+
+            if (found.Count == 0)
+                throw new FileNotFoundException(
+                    $"no logs found in directory: {path} " +
+                    $"(looking for {string.Join(", ", LogExtensions)})");
+
+            return found;
+        }
+
+        if (HasGlobCharacters(path))
+        {
+            var matches = ExpandGlob(path);
+            if (matches.Count == 0)
+                throw new FileNotFoundException($"no files match: {path}");
+            return matches;
+        }
+
+        throw new FileNotFoundException($"file not found: {path}");
+    }
+
+    private static bool HasGlobCharacters(string path) =>
+        path.Contains('*') || path.Contains('?');
+
+    /// <summary>
+    /// Expand a glob ourselves, because the shell may not have.
+    ///
+    /// <para>
+    /// Only the final segment may contain wildcards, which covers what people actually type
+    /// (<c>logs/*.log</c>, <c>**</c> is handled by pointing at the directory instead). The
+    /// directory part is resolved first so an unreadable or missing parent surfaces as "no files
+    /// match" rather than an exception from deep inside the enumerator.
+    /// </para>
+    /// </summary>
+    private static List<string> ExpandGlob(string pattern)
+    {
+        var directory = Path.GetDirectoryName(pattern);
+        var leaf = Path.GetFileName(pattern);
+
+        if (HasGlobCharacters(directory ?? string.Empty))
+            throw new FileNotFoundException(
+                $"only the file name may contain wildcards: {pattern}");
+
+        var searchIn = string.IsNullOrEmpty(directory) ? "." : directory;
+        if (!Directory.Exists(searchIn))
+            return new List<string>();
+
+        return Directory.EnumerateFiles(searchIn, leaf, SearchOption.TopDirectoryOnly)
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Read a log, transparently decompressing <c>.gz</c> — which is what CI providers hand you
+    /// when you download a job's log, and previously produced a screenful of mojibake analyzed as
+    /// though it were text.
+    /// </summary>
+    private static string ReadText(string path)
+    {
+        if (!path.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+            return File.ReadAllText(path);
+
+        using var file = File.OpenRead(path);
+        using var gzip = new GZipStream(file, CompressionMode.Decompress);
+        using var reader = new StreamReader(gzip);
+        return reader.ReadToEnd();
     }
 
     /// <summary>

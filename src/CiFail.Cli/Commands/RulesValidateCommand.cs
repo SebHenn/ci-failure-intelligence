@@ -13,7 +13,7 @@ namespace CiFail.Cli.Commands;
 /// </summary>
 public sealed class RulesValidateCommand : Command<RulesValidateCommand.Settings>
 {
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : OutputSettings
     {
         [CommandArgument(0, "[path]")]
         [Description("Directory of *.yaml packs to validate. Omit to validate embedded + user packs.")]

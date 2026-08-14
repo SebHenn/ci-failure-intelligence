@@ -255,6 +255,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         }
 
         RuleDiagnostics.Report(results);
+        ReportDetectionDetail(units, results);
 
         if (EmitResults(settings, results) is { } writeError) return writeError;
 
@@ -269,6 +270,38 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             ReportAutoResolved(autoResolved);
 
         return allMatched ? ExitMatched : ExitNoMatch;
+    }
+
+    /// <summary>
+    /// Under <c>--verbose</c>, show why each ecosystem was chosen.
+    ///
+    /// <para>
+    /// <c>EcosystemDetector.Rank</c> is public and documented as the answer to "why did it think
+    /// this was Java?" — and until now nothing but its own tests ever called it. Detection being
+    /// wrong is a common cause of "no rule matched", because the wrong ecosystem *narrows* the
+    /// rule set rather than widening it, so the scores are the first thing worth seeing.
+    /// </para>
+    /// </summary>
+    private static void ReportDetectionDetail(
+        IReadOnlyList<AnalysisUnit> units, IReadOnlyList<Analysis> results)
+    {
+        if (!CliConsole.Verbose) return;
+
+        for (var i = 0; i < results.Count && i < units.Count; i++)
+        {
+            var log = LogNormalizer.Build(units[i].Source, units[i].Text);
+            var ranked = EcosystemDetector.Rank(log)
+                .Where(r => r.Score > 0)
+                .Take(4)
+                .Select(r => $"{r.Ecosystem.ToString().ToLowerInvariant()} {r.Score}");
+
+            var scores = string.Join(", ", ranked);
+            CliConsole.Detail(
+                $"[grey]{Markup.Escape(units[i].Source)}: detected " +
+                $"[bold]{results[i].Ecosystem.ToString().ToLowerInvariant()}[/]" +
+                (string.IsNullOrEmpty(scores) ? " (no markers matched)" : $" from {Markup.Escape(scores)}") +
+                "[/]");
+        }
     }
 
     private static AiConfig ResolveAiConfig(Settings settings)

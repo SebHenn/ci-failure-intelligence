@@ -62,13 +62,31 @@ public static class ConsoleRenderer
 
         if (analysis.Matches.Count > 1)
         {
+            // --verbose lifts the cap: the secondary matches are exactly what you want when the
+            // top one is wrong, and "and 7 more you can't see" is not a useful state to be in.
+            var secondary = analysis.Matches.Skip(1);
+            var shown = CliConsole.Verbose ? secondary.ToList() : secondary.Take(5).ToList();
+            var hidden = analysis.Matches.Count - 1 - shown.Count;
+
             var table = new Table().Border(TableBorder.Minimal)
                 .Title("[grey]Other things cifail noticed (less likely the main cause)[/]");
             table.AddColumn("problem");
             table.AddColumn(new TableColumn("confidence").RightAligned());
-            foreach (var m in analysis.Matches.Skip(1).Take(5))
-                table.AddRow(Markup.Escape(m.Rule.Title), ConfidenceWord(m.Score));
+            if (CliConsole.Verbose) table.AddColumn("rule");
+
+            foreach (var m in shown)
+            {
+                if (CliConsole.Verbose)
+                    table.AddRow(Markup.Escape(m.Rule.Title), ConfidenceWord(m.Score), Markup.Escape(m.Rule.Id));
+                else
+                    table.AddRow(Markup.Escape(m.Rule.Title), ConfidenceWord(m.Score));
+            }
+
             console.Write(table);
+
+            if (hidden > 0)
+                CliConsole.Hint($"[grey]{hidden} more match{(hidden == 1 ? "" : "es")} not shown " +
+                                $"{Glyphs.Dash} run again with [bold]--verbose[/] to see them.[/]");
         }
     }
 

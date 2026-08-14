@@ -49,7 +49,18 @@ public static class CliConsole
     {
         _out = null;
         _err = null;
+        Quiet = false;
+        Verbose = false;
     }
+
+    /// <summary>
+    /// Suppress <see cref="Hint"/>s (<c>--quiet</c>). Errors and warnings still print: quiet means
+    /// "stop telling me what to do next", not "hide problems".
+    /// </summary>
+    public static bool Quiet { get; set; }
+
+    /// <summary>Show extra detail commands normally leave out (<c>--verbose</c>).</summary>
+    public static bool Verbose { get; set; }
 
     /// <summary>
     /// Write <c>error: &lt;markup&gt;</c> to stderr. The argument is Spectre markup, matching
@@ -64,7 +75,19 @@ public static class CliConsole
     /// Write an untagged advisory line to stderr — the "here's what to do instead" that follows
     /// an error, and the "nothing to show yet" notes that would otherwise pollute a piped stdout.
     /// </summary>
-    public static void Hint(string markup) => Err.MarkupLine(markup);
+    public static void Hint(string markup)
+    {
+        // --quiet silences advice, never errors or warnings.
+        if (Quiet) return;
+        Err.MarkupLine(markup);
+    }
+
+    /// <summary>An advisory line shown only under <c>--verbose</c>.</summary>
+    public static void Detail(string markup)
+    {
+        if (!Verbose) return;
+        Err.MarkupLine(markup);
+    }
 
     /// <summary>Set to <c>1</c> to see the stack trace behind an error instead of just the message.</summary>
     public const string DebugEnvVar = "CIFAIL_DEBUG";
