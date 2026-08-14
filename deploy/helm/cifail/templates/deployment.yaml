@@ -78,13 +78,18 @@ spec:
               port: http
             {{- end }}
             initialDelaySeconds: 10
+          # Readiness asks a different question from liveness: /readyz opens the store and
+          # queries it, so a pod that cannot reach its database stops receiving traffic instead
+          # of accepting requests it can only fail. Liveness deliberately stays on /healthz,
+          # which never touches the store — restarting a healthy pod because the database
+          # blinked turns a database problem into an outage.
           readinessProbe:
             {{- if .Values.mtls.enabled }}
             tcpSocket:
               port: http
             {{- else }}
             httpGet:
-              path: /healthz
+              path: /readyz
               port: http
             {{- end }}
             initialDelaySeconds: 5

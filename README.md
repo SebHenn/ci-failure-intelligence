@@ -213,7 +213,9 @@ we fix this last time?" history fills itself in. In `cifail history` these show 
 ### Handy options for `analyze`
 
 - `--json` — print the result as JSON instead of a panel. Useful inside CI pipelines or
-  other scripts.
+  other scripts. It is **always a JSON array**, one element per thing analyzed — one log
+  gives you a one-element array, and a test report with no failures gives you `[]`. So
+  `cifail analyze build.log --json | jq '.[0].RootCause.RuleId'` works whatever you pass it.
 - `--type dotnet|node|python|java|go|rust|ruby|php|cpp|swift|android|scala|elixir|infra|generic` — tell
   cifail what kind of log this is, if it guesses wrong.
 - `--format auto|log|junit|trx` — feed cifail a **structured test report** instead of a raw
@@ -630,10 +632,11 @@ docker run --rm -p 8080:8080 \
   ghcr.io/sebhenn/cifail serve --port 8080
 ```
 
-It exposes a small JSON API (`GET /healthz`, `POST /analyze`, `GET /history`,
-`GET /history/{id}`, `GET /repos/{repoId}/open`, `POST /resolve/{id}`) — `POST /analyze`
-returns the exact same shape as `cifail analyze --json`. Your CLI can browse and annotate that
-shared history, and reconcile fixed failures, without any database credentials:
+It exposes a small JSON API (`GET /healthz`, `GET /readyz`, `POST /analyze`, `GET /history`,
+`GET /history/{id}`, `GET /repos/{repoId}/open`, `POST /resolve/{id}`) — `POST /analyze` analyzes
+one log and returns one analysis object, the same object `cifail analyze --json` puts in its
+array. Your CLI can browse and annotate that shared history, and reconcile fixed failures,
+without any database credentials:
 
 ```console
 # Analyze a log against the shared server (it runs the pipeline + stores the result):

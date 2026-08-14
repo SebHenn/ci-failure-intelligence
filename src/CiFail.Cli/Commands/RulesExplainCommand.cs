@@ -31,13 +31,7 @@ public sealed class RulesExplainCommand : Command<RulesExplainCommand.Settings>
             return ExitCodes.NotFound;
         }
 
-        var embeddedIds = RulePackLoader.LoadEmbedded()
-            .Select(r => r.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var userIds = UserRuleIds();
-
-        var source = userIds.Contains(rule.Id)
-            ? (embeddedIds.Contains(rule.Id) ? "user pack (overrides an embedded default)" : "user pack")
-            : "embedded default";
+        var source = DescribeSource(rule.Id);
 
         var grid = new Grid().AddColumn().AddColumn();
         void Row(string k, string v) => grid.AddRow($"[grey]{k}[/]", Markup.Escape(v));
@@ -60,21 +54,58 @@ public sealed class RulesExplainCommand : Command<RulesExplainCommand.Settings>
         foreach (var line in rule.Fix.TrimEnd().Split('\n'))
             CliConsole.Out.MarkupLine($"  {Markup.Escape(line.TrimEnd())}");
 
-        return 0;
+        return ExitCodes.Ok;
     }
 
-    /// <summary>Ids defined in user packs under <c>~/.cifail/rules</c> (empty when none).</summary>
-    private static HashSet<string> UserRuleIds()
+    /// <summary>
+    /// Where the rule that actually won came from — naming the directory, not just "user pack".
+    ///
+    /// <para>
+    /// This used to check <c>~/.cifail/rules</c> alone while loading via the whole search path, so
+    /// a rule committed to a repository's <c>.cifail/rules/</c> — the case R14 exists for — was
+    /// reported as <c>embedded default</c>. "Which file does this rule live in?" is the entire
+    /// question <c>rules explain</c> is asked, and it answered it wrongly for the newest and most
+    /// interesting tier.
+    /// </para>
+    ///
+    /// <para>
+    /// <see cref="RuleSearchPath.Resolve"/> returns directories most general first and later wins
+    /// on a duplicate id, so the winner is the <i>last</i> directory defining it.
+    /// </para>
+    /// </summary>
+    private static string DescribeSource(string id)
     {
-        var dir = RulePackLoader.DefaultUserRulesDir;
-        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!Directory.Exists(dir))
-            return ids;
+        bool Defines(string dir) =>
+            Directory.Exists(dir) &&
+            Directory.EnumerateFiles(dir, "*.yaml", SearchOption.AllDirectories)
+                .Any(file => RulePackLoader.ParseDocument(SafeRead(file))
+                    .Any(r => string.Equals(r.Id, id, StringComparison.OrdinalIgnoreCase)));
 
-        foreach (var file in Directory.EnumerateFiles(dir, "*.yaml", SearchOption.AllDirectories))
-            foreach (var r in RulePackLoader.ParseDocument(File.ReadAllText(file)))
-                ids.Add(r.Id);
+        var winner = RuleSearchPath.Resolve().LastOrDefault(Defines);
+        var embedded = RulePackLoader.LoadEmbedded()
+            .Any(r => string.Equals(r.Id, id, StringComparison.OrdinalIgnoreCase));
 
-        return ids;
+        if (winner is null)
+            return "embedded default";
+
+        return embedded
+            ? $"{winner} (overrides an embedded default)"
+            : winner;
+    }
+
+    /// <summary>
+    /// A pack that cifail merely <i>found</i> must never break a command; an unreadable or
+    /// unparseable one is named by <c>rules validate</c> instead.
+    /// </summary>
+    private static string SafeRead(string file)
+    {
+        try
+        {
+            return File.ReadAllText(file);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
     }
 }

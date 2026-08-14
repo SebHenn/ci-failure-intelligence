@@ -139,8 +139,8 @@
   match: "Inconsistent JVM-target compatibility detected|'compileJava' task \\(current target is (?<java>[\\d.]+)\\) and 'compileKotlin' task \\(current target is (?<kotlin>[\\d.]+)\\)"
   confidence: 0.9
   fix: |
-    The Java and Kotlin compile tasks target different bytecode versions ({java} vs
-    {kotlin}), which Gradle refuses to mix. Set both from one place — a `java.toolchain`
+    The Java and Kotlin compile tasks target different bytecode versions, which Gradle
+    refuses to mix — the line above names both. Set them from one place: a `java.toolchain`
     block in build.gradle.kts is the modern fix, and it also stops the build depending on
     whichever JDK the runner happens to have.
   docs: https://kotlinlang.org/docs/gradle-configure-project.html#check-for-jvm-target-compatibility-of-related-compile-tasks

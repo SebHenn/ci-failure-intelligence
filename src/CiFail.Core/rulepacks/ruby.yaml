@@ -4,7 +4,7 @@
   ecosystem: ruby
   category: dependency
   title: Bundler could not find a gem
-  match: "Could not find gem '(?<gem>[^']+)'|An error occurred while installing (?<gem2>[\\w\\-]+) \\("
+  match: "Could not find gem '(?<gem>[^']+)'|An error occurred while installing (?<gem>[\\w\\-]+) \\("
   confidence: 0.85
   fix: |
     Bundler couldn't resolve a gem. Check the name/version in the Gemfile, run

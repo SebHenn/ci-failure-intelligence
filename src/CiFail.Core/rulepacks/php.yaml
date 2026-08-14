@@ -4,7 +4,7 @@
   ecosystem: php
   category: dependency
   title: Composer could not find a package
-  match: "Could not find (?:a matching version of package |package )(?<package>[\\w./-]+)|Root composer\\.json requires (?<package2>[\\w./-]+) .*could not be found"
+  match: "Could not find (?:a matching version of package |package )(?<package>[\\w./-]+)|Root composer\\.json requires (?<package>[\\w./-]+) .*could not be found"
   confidence: 0.85
   fix: |
     Composer couldn't resolve a required package. Check the name and version

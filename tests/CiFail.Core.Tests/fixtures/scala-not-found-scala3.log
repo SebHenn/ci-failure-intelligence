@@ -1,0 +1,8 @@
+[info] welcome to sbt 1.9.7 (Eclipse Adoptium Java 17.0.9)
+[info] compiling 3 Scala sources to /home/runner/work/api/target/scala-3.3.1/classes ...
+[error] -- [E006] Not Found Error: /home/runner/work/api/src/main/scala/Main.scala:7:12
+[error] 7 |    println(mesage)
+[error]   |            ^^^^^^
+[error]   |            Not found: mesage
+[error] one error found
+[error] (Compile / compileIncremental) Compilation failed

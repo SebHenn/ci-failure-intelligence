@@ -39,7 +39,7 @@
   ecosystem: python
   category: dependency
   title: No matching distribution for package
-  match: "ERROR: Could not find a version that satisfies the requirement (?<package>[^\\s]+)|ERROR: No matching distribution found for (?<package2>[^\\s]+)"
+  match: "ERROR: Could not find a version that satisfies the requirement (?<package>[^\\s]+)|ERROR: No matching distribution found for (?<package>[^\\s]+)"
   confidence: 0.85
   fix: |
     No installable version matched the requirement. Check the package name, the
@@ -74,7 +74,7 @@
   ecosystem: python
   category: build
   title: Building a wheel from source failed
-  match: "ERROR: Failed building wheel for (?<package>\\S+)|Building wheel for (?<package2>\\S+) \\(pyproject\\.toml\\) did not run successfully"
+  match: "ERROR: Failed building wheel for (?<package>\\S+)|Building wheel for (?<package>\\S+) \\(pyproject\\.toml\\) did not run successfully"
   confidence: 0.85
   fix: |
     pip had no prebuilt wheel for this platform and had to compile from source, which

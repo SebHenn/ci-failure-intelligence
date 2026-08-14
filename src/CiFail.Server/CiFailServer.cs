@@ -1,4 +1,5 @@
 using System.Net;
+using System.Threading.RateLimiting;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -13,6 +14,7 @@ using CiFail.Server.Dashboard;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -64,12 +66,32 @@ public static class CiFailServer
         Func<IAnalysisStore> storeFactory = () => StoreFactory.Create(options.Database);
         builder.Services.AddSingleton(storeFactory);
 
+        // Throttle the sign-in route. It is necessarily public — a browser signing in has no
+        // cookie yet — and it compares a submitted string against the server token, so without a
+        // limiter the token can simply be guessed at whatever rate the network allows.
+        builder.Services.AddRateLimiter(limiter =>
+        {
+            limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            limiter.AddPolicy(LoginRateLimitPolicy, context =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    // Per client address; a shared NAT shares the budget, which is the safe
+                    // direction to err for a sign-in route.
+                    context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 10,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                    }));
+        });
+
         var app = builder.Build();
+        app.UseRateLimiter();
         UseBearerAuth(app, options.ResolvedTokens());
         // Required by MapRazorComponents; it only validates endpoints that opt in (Blazor form
         // posts), so the plain minimal-API form posts below (/login, /ui/resolve) are untouched.
         app.UseAntiforgery();
-        MapEndpoints(app, options.ResolvedTokens(), options.Embedder, options.Notifications);
+        MapEndpoints(app, options);
         app.MapRazorComponents<App>();
         return app;
     }
@@ -187,6 +209,49 @@ public static class CiFailServer
     /// <summary>The browser dashboard's session cookie, set by <c>POST /login</c> after a token check.</summary>
     private const string AuthCookieName = "cifail_auth";
 
+    /// <summary>Name of the rate-limiting policy applied to the public sign-in route.</summary>
+    private const string LoginRateLimitPolicy = "cifail-login";
+
+    /// <summary>
+    /// How long a dashboard sign-in lasts. Previously the cookie had no expiry at all, so it
+    /// lived until the browser was closed and there was no way to end a session — the cookie
+    /// carries the bearer token verbatim, so an indefinite one is a credential sitting in a
+    /// cookie jar.
+    /// </summary>
+    private static readonly TimeSpan AuthCookieLifetime = TimeSpan.FromHours(12);
+
+    /// <summary>
+    /// Read the request body, giving up as soon as it exceeds <paramref name="maxBytes"/>.
+    /// Returns null when the limit was passed.
+    ///
+    /// <para>
+    /// Checking <c>Content-Length</c> alone is not enough: it is absent on a chunked upload and
+    /// is client-supplied either way, so the cap has to hold while reading.
+    /// </para>
+    /// </summary>
+    private static async Task<string?> ReadBoundedBody(HttpRequest request, long maxBytes)
+    {
+        if (request.ContentLength is { } declared && declared > maxBytes)
+            return null;
+
+        // One byte past the limit is enough to know it was exceeded.
+        var buffer = new byte[8192];
+        using var accumulated = new MemoryStream();
+        int read;
+        while ((read = await request.Body.ReadAsync(buffer)) > 0)
+        {
+            if (accumulated.Length + read > maxBytes)
+                return null;
+            accumulated.Write(buffer, 0, read);
+        }
+
+        return Encoding.UTF8.GetString(accumulated.GetBuffer(), 0, (int)accumulated.Length);
+    }
+
+    /// <summary>Clamp a caller-supplied <c>?limit=</c> into (0, max].</summary>
+    private static int ClampPageSize(int? requested, int fallback, int max) =>
+        requested is > 0 ? Math.Min(requested.Value, max) : Math.Min(fallback, max);
+
     private static bool WantsHtml(HttpRequest request) =>
         HttpMethods.IsGet(request.Method) &&
         request.Headers.Accept.ToString().Contains("text/html", StringComparison.OrdinalIgnoreCase);
@@ -227,16 +292,42 @@ public static class CiFailServer
     /// (the POST validates the submitted token itself; a signing-in browser has no cookie yet).
     /// </summary>
     private static readonly HashSet<string> PublicPaths =
-        new(StringComparer.OrdinalIgnoreCase) { "/healthz", "/login", "/ui/login" };
+        new(StringComparer.OrdinalIgnoreCase) { "/healthz", "/readyz", "/login", "/ui/login" };
 
-    private static void MapEndpoints(
-        WebApplication app,
-        IReadOnlyList<NamedToken> tokens,
-        IAiEmbedder? embedder,
-        NotificationDispatcher? notifications)
+    private static void MapEndpoints(WebApplication app, ServeOptions options)
     {
-        // Liveness/readiness — unauthenticated, used by the Helm probes.
+        var tokens = options.ResolvedTokens();
+        var embedder = options.Embedder;
+        var notifications = options.Notifications;
+
+        // Hoisted: the /analyze handler declares its own `options` (an AnalysisOptions), which
+        // would shadow the parameter inside that lambda.
+        var maxLogBytes = options.MaxLogBytes;
+        var maxPageSize = options.MaxPageSize;
+
+        // Liveness — unauthenticated, used by the Helm liveness probe. Deliberately answers
+        // without touching the store: liveness asks "is this process wedged", and restarting a
+        // healthy pod because the database blinked makes an outage worse.
         app.MapGet("/healthz", () => Results.Text("ok"));
+
+        // Readiness — the store must actually answer. /healthz was wired to *both* Helm probes,
+        // so a server that could not reach its database still reported itself ready and kept
+        // taking traffic it could only fail.
+        app.MapGet("/readyz", (Func<IAnalysisStore> stores) =>
+        {
+            try
+            {
+                using var store = stores();
+                _ = store.GetRecent(1);
+                return Results.Text("ready");
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogWarning(ex, "readiness probe failed: the store did not answer");
+                return Results.Json(new { error = "store unavailable" },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
 
         // Sign-in (R28). Validates the entered token against the configured set and, on success,
         // sets an HttpOnly cookie the auth middleware accepts. When the server runs open (no
@@ -261,12 +352,28 @@ public static class CiFailServer
                         SameSite = SameSiteMode.Strict,
                         Secure = request.IsHttps,
                         Path = "/",
+                        MaxAge = AuthCookieLifetime,
                     });
                 return Results.Redirect("/");
             }
 
             return Results.Redirect("/login?error=1");
-        }).DisableAntiforgery(); // a plain HTML form post, not a Blazor form — opt out of token validation
+        }).DisableAntiforgery() // a plain HTML form post, not a Blazor form — opt out of token validation
+          .RequireRateLimiting(LoginRateLimitPolicy);
+
+        // Sign out. There was no way to end a dashboard session short of clearing cookies by
+        // hand, which matters more than usual here because the cookie value *is* the bearer token.
+        app.MapPost("/ui/logout", (HttpRequest request) =>
+        {
+            request.HttpContext.Response.Cookies.Delete(AuthCookieName, new CookieOptions
+            {
+                HttpOnly = true,
+                SameSite = SameSiteMode.Strict,
+                Secure = request.IsHttps,
+                Path = "/",
+            });
+            return Results.Redirect("/login");
+        }).DisableAntiforgery();
 
         // Dashboard resolve action (R28): a plain form post from the detail pane. Mirrors the JSON
         // /resolve handler (manual resolution + a Resolved notification), then returns to the page.
@@ -292,8 +399,12 @@ public static class CiFailServer
         // ?noHistory=1 skips persistence.
         app.MapPost("/analyze", async (HttpRequest request, RuleEngine engine, Func<IAnalysisStore> stores) =>
         {
-            using var reader = new StreamReader(request.Body);
-            var body = await reader.ReadToEndAsync();
+            var body = await ReadBoundedBody(request, maxLogBytes);
+            if (body is null)
+                return Results.Json(
+                    new { error = $"log exceeds the {maxLogBytes} byte limit" },
+                    statusCode: StatusCodes.Status413PayloadTooLarge);
+
             if (string.IsNullOrWhiteSpace(body))
                 return Results.BadRequest("empty log body");
 
@@ -326,7 +437,7 @@ public static class CiFailServer
         app.MapGet("/history", (int? limit, Func<IAnalysisStore> stores) =>
         {
             using var store = stores();
-            var records = store.GetRecent(limit is > 0 ? limit.Value : 20);
+            var records = store.GetRecent(ClampPageSize(limit, 20, maxPageSize));
             var dtos = records.Select(StoredAnalysisJson.ToDto).ToList();
             return Json(JsonSerializer.Serialize(dtos, AnalysisJson.Options));
         });
@@ -412,10 +523,17 @@ public static class CiFailServer
 
         // Open (unresolved) failures for one repository — the client-side reconciler (R11)
         // reads these, then writes auto-resolutions back via /resolve?source=auto.
-        app.MapGet("/repos/{repoId}/open", (string repoId, Func<IAnalysisStore> stores) =>
+        app.MapGet("/repos/{repoId}/open", (string repoId, int? limit, Func<IAnalysisStore> stores) =>
         {
             using var store = stores();
-            var dtos = store.GetOpenFailures(repoId).Select(StoredAnalysisJson.ToDto).ToList();
+
+            // The store method has no limit of its own, so a repository with a long backlog
+            // returned every open row in one response. The reconciler wants them all, hence a
+            // default at the page ceiling rather than a small page.
+            var dtos = store.GetOpenFailures(repoId)
+                .Take(ClampPageSize(limit, maxPageSize, maxPageSize))
+                .Select(StoredAnalysisJson.ToDto)
+                .ToList();
             return Json(JsonSerializer.Serialize(dtos, AnalysisJson.Options));
         });
 

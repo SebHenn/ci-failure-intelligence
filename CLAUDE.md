@@ -91,7 +91,7 @@ never affect plain build/test/pack.
 `-p:IncludeExternalDb=true`, exactly like `CIFAIL_EXTERNAL_DB`). The slim binaries get
 neither the `serve` command nor ASP.NET Core. The Docker runtime base is therefore
 `dotnet/aspnet:8.0` (not `runtime:8.0`). The Helm chart in `deploy/helm/cifail` runs it; see
-`deploy/README.md`. Auth (R9): every route except `/healthz` requires `Authorization: Bearer
+`deploy/README.md`. Auth (R9): every route except those in `PublicPaths` requires `Authorization: Bearer
 <token>` when a token is set via `CIFAIL_SERVER_TOKEN` / `serve --token` (constant-time compare via
 `CryptographicOperations.FixedTimeEquals`); started without one, serve runs open and logs a loud
 warning. Clients send it with `--server-token` / `CIFAIL_SERVER_TOKEN` (see
@@ -143,7 +143,18 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
   `StaticWebAssetsEnabled=false`, no static assets). Auth is dual: `IsAuthorized` accepts
   `Authorization: Bearer` **or** the `cifail_auth` cookie (both constant-time via `MatchesAnyToken`);
   `WantsHtml` (GET + `Accept: text/html`) redirects unauthenticated browsers to `/login` while API
-  clients get 401 + `WWW-Authenticate: Bearer`. `PublicPaths = {/healthz, /login, /ui/login}`.
+  clients get 401 + `WWW-Authenticate: Bearer`.
+  `PublicPaths = {/healthz, /readyz, /login, /ui/login}` — the probes must stay public because
+  **the kubelet sends no token**; putting one behind auth means the pod never becomes ready.
+  `/healthz` is liveness and never touches the store (restarting a healthy pod because the DB
+  blinked makes an outage worse); `/readyz` is readiness and queries it, so an unreachable
+  database takes the pod out of rotation. Request bounds live in `ServeOptions`:
+  `MaxLogBytes` (10 MB, enforced while reading via `ReadBoundedBody` — `Content-Length` is
+  absent on chunked bodies and client-supplied anyway) and `MaxPageSize` (1000, via
+  `ClampPageSize`). `POST /ui/login` is rate-limited (`LoginRateLimitPolicy`, 10/min per remote
+  IP) because it is necessarily public and compares against the server token. **`MapEndpoints`
+  takes the whole `ServeOptions`** — note the `/analyze` handler declares its own local named
+  `options` (an `AnalysisOptions`), so limits are hoisted into locals at the top.
   Plain-HTML form posts land on `MapPost("/ui/login")` (validates the token, sets an
   HttpOnly/SameSite=Strict cookie) and `MapPost("/ui/resolve")` — both `.DisableAntiforgery()`
   (they're not Blazor forms; `UseAntiforgery()` only validates Blazor-opt-in posts). The `/ui/`
@@ -181,6 +192,14 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
    confidence. Rules whose `ecosystem` is `generic` always apply; ecosystem-specific
    rules only apply when detected (or when ecosystem is undetected). Named regex
    capture groups are interpolated into the rule's `fix` template via `{name}`.
+   **Every pattern compiles with `RuleEngine.MatchTimeout` (2s) and the cache is keyed on the
+   pattern, not the rule id.** Rule packs are untrusted input — R14 loads them from the
+   `.cifail/rules` of whatever repo you're in — so an unbounded regex is a hang, not a slow
+   analysis. A timed-out or invalid rule is skipped and reported through the optional
+   `diagnostics` sink, which `AnalysisService` surfaces as `Analysis.Warnings` and the CLI prints
+   via `RuleDiagnostics.Report` (stderr, deduped; shared by `analyze` and `gate`).
+   `Analysis.Warnings` is deliberately **not** in the `--json` DTO: it describes the run, not the
+   answer.
    **Ecosystem inheritance (`RuleEngine.Inherits`):** `Android` and `Scala` also get the
    `java` rules, because those builds *are* JVM builds — an Android job that OOM'd used to
    get the vague `generic-oom` while `gradle-daemon-disappeared` sat unused in `java.yaml`,
@@ -389,6 +408,18 @@ have matched anything real — `generic-command-not-found` had the shell's word 
 "requires PHP extension ext-intl" wording. All three passed review; only a realistic fixture
 caught them.
 
+**A `fix` placeholder must be captured by EVERY top-level alternation branch of `match`.**
+Enforced by `RulePackValidator` (error) and, end-to-end, by `RulePackBreadthTests` asserting no
+rendered fix contains a leftover `{name}`. Eleven shipped rules violated this: a two-branch
+`match` whose `fix` read the first branch's capture names, so a log hitting the other branch was
+shown `tsc rejected {file}:{line}` verbatim. Note the **naive check does not catch it** — `file`
+*is* defined in the pattern, just not in the branch that matched; the branch is the unit that has
+to satisfy the fix. Two ways to comply: give both branches **duplicate group names** (.NET allows
+this and it is the preferred fix — `generic.yaml:16` has always done it), or write a fix that
+doesn't need the capture, which is the only option when a branch genuinely can't provide it (a
+bare `ImagePullBackOff` doesn't name an image). The matched line is displayed anyway, so
+"the line above names it" reads fine. Never use `name2`-suffixed groups to dodge duplicates.
+
 **Overlap is a design decision, not an accident.** A broad rule that restates a specific one
 is noise in "other things cifail noticed" — `go-build-failed` excludes the errors the specific
 Go rules explain via a negative lookahead, and `generic-docker-build` deliberately does *not*
@@ -514,6 +545,13 @@ of the file). Wiring: `ServeCommand` builds the dispatcher and passes it via `Se
 `ConsoleRenderer` (Spectre panels/tables) and `JsonOutput` are separate. `JsonOutput`
 serializes an explicit DTO, **not** the domain model, so the `--json` contract can
 evolve independently — keep it stable.
+
+**`analyze --json` is ALWAYS an array**, one element per analysis unit, `[]` included. It used to
+emit a bare object for one input and an array for several, so the document's shape depended on how
+many files a glob matched. Don't reintroduce the special case. The same goes for the empty result:
+a report with no failing tests must still produce its `--json` document and write its
+`--report-out` file — returning early there meant `upload-sarif` failed on a missing artifact on
+exactly the runs where nothing was wrong.
 
 **Two streams, one rule (`Cli/Output/CliConsole.cs`): stdout carries the answer, stderr carries
 everything about the run.** Never call `AnsiConsole.*` from a command — use `CliConsole.Out` /

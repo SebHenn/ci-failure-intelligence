@@ -5,7 +5,7 @@
   ecosystem: android
   category: build
   title: Android resource linking failed
-  match: "(?:error: )?resource (?<resource>[\\w.@/:+-]+) not found|AAPT: error: resource (?<resource2>[\\w.@/:+-]+) not found"
+  match: "(?:error: )?resource (?<resource>[\\w.@/:+-]+) not found|AAPT: error: resource (?<resource>[\\w.@/:+-]+) not found"
   confidence: 0.8
   fix: |
     AAPT couldn't resolve a resource reference. Check it exists in res/ with the right

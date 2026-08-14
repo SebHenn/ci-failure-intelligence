@@ -41,6 +41,11 @@ public sealed class StreamSeparationTests
         parse.Should().NotThrow("stdout must stay a single valid JSON document");
     }
 
+    /// <summary>
+    /// <c>--json</c> is always an array, one element per analysis unit — never a bare object.
+    /// It used to depend on the input count, so a glob matching one file changed the document's
+    /// shape and broke every consumer indexing into it.
+    /// </summary>
     [Fact]
     public void Json_output_carries_nothing_but_json()
     {
@@ -48,7 +53,22 @@ public sealed class StreamSeparationTests
         var result = cli.Run("analyze", "--no-git", "--json", Sample("nuget-nu1101.log"));
 
         var document = JsonDocument.Parse(result.Stdout);
-        document.RootElement.TryGetProperty("Source", out _).Should().BeTrue();
+        document.RootElement.ValueKind.Should().Be(JsonValueKind.Array);
+        document.RootElement.GetArrayLength().Should().Be(1);
+        document.RootElement[0].TryGetProperty("Source", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Json_output_is_an_array_for_one_input_and_for_several()
+    {
+        using var cli = new CliHarness();
+
+        var one = cli.Run("analyze", "--no-git", "--json", Sample("nuget-nu1101.log"));
+        var two = cli.Run("analyze", "--no-git", "--json",
+            Sample("nuget-nu1101.log"), Sample("node-eresolve.log"));
+
+        JsonDocument.Parse(one.Stdout).RootElement.GetArrayLength().Should().Be(1);
+        JsonDocument.Parse(two.Stdout).RootElement.GetArrayLength().Should().Be(2);
     }
 
     [Fact]

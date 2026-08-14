@@ -58,6 +58,9 @@ public class RulePackBreadthTests
         { "yarn-frozen-lockfile.log", Ecosystem.Node, "yarn-frozen-lockfile" },
         { "pnpm-frozen-lockfile.log", Ecosystem.Node, "pnpm-frozen-lockfile" },
         { "typescript-compile-error.log", Ecosystem.Node, "typescript-compile-error" },
+        // The second alternation branch — modern `file.ts:line:col - error TSxxxx` output. It had
+        // no fixture, which is how it shipped rendering its fix template literally.
+        { "typescript-compile-error-modern.log", Ecosystem.Node, "typescript-compile-error" },
         { "vitest-test-failed.log", Ecosystem.Node, "vitest-test-failed" },
         { "playwright-test-failed.log", Ecosystem.Node, "playwright-test-failed" },
 
@@ -156,6 +159,10 @@ public class RulePackBreadthTests
         // scala / sbt
         { "scala-type-mismatch.log", Ecosystem.Scala, "scala-type-mismatch" },
         { "scala-not-found.log", Ecosystem.Scala, "scala-not-found" },
+        // Scala 2 and Scala 3 word these completely differently, and only one wording had a
+        // fixture — so the other branch's captures were never exercised.
+        { "scala-type-mismatch-scala2.log", Ecosystem.Scala, "scala-type-mismatch" },
+        { "scala-not-found-scala3.log", Ecosystem.Scala, "scala-not-found" },
         { "sbt-unresolved-dependency.log", Ecosystem.Scala, "sbt-unresolved-dependency" },
         { "scala-version-conflict.log", Ecosystem.Scala, "scala-version-conflict" },
         { "scalatest-failed.log", Ecosystem.Scala, "scalatest-failed" },
@@ -164,6 +171,10 @@ public class RulePackBreadthTests
         // elixir / mix
         { "elixir-compile-error.log", Ecosystem.Elixir, "elixir-compile-error" },
         { "elixir-undefined-function.log", Ecosystem.Elixir, "elixir-undefined-function" },
+        // Elixir 1.15+ prints diagnostics as `error: <message>` followed by a `└─ file:line`
+        // gutter — the branch whose captures the fix template actually reads.
+        { "elixir-compile-error-diagnostic.log", Ecosystem.Elixir, "elixir-compile-error" },
+        { "elixir-undefined-function-warning.log", Ecosystem.Elixir, "elixir-undefined-function" },
         { "mix-deps-unavailable.log", Ecosystem.Elixir, "mix-deps-unavailable" },
         { "hex-package-not-found.log", Ecosystem.Elixir, "hex-package-not-found" },
         { "exunit-test-failed.log", Ecosystem.Elixir, "exunit-test-failed" },
@@ -196,6 +207,27 @@ public class RulePackBreadthTests
         analysis.Ecosystem.Should().Be(eco);
         analysis.RootCause.Should().NotBeNull("no rule matched {0}", fixture);
         analysis.RootCause!.Rule.Id.Should().Be(ruleId);
+
+        // A rule whose fix text still contains {braces} is showing the user the template instead
+        // of the answer. Six shipped rules did exactly that, because each one's `fix` read the
+        // capture names from the *first* alternation branch while a real log took the second.
+        NoUnresolvedPlaceholders(analysis.RootCause.Fix, fixture, ruleId);
+    }
+
+    /// <summary>
+    /// The invariant that catches the whole class of bug, on every fixture at once: whatever the
+    /// rule captured, the rendered fix must never contain a leftover <c>{placeholder}</c>.
+    /// </summary>
+    private static void NoUnresolvedPlaceholders(string fix, string fixture, string ruleId)
+    {
+        var leftovers = System.Text.RegularExpressions.Regex.Matches(fix, @"\{(\w+)\}")
+            .Select(m => m.Value)
+            .Distinct()
+            .ToList();
+
+        leftovers.Should().BeEmpty(
+            "rule '{0}' rendered {1} literally on {2} — the capture group it names is missing " +
+            "from the alternation branch that matched", ruleId, string.Join(", ", leftovers), fixture);
     }
 
     /// <summary>

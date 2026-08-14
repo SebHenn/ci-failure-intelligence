@@ -28,7 +28,7 @@
   ecosystem: node
   category: dependency
   title: npm package not found (404)
-  match: "npm ERR! 404 .*?'(?<package>[^']+)' is not in (?:this registry|the npm registry)|npm ERR! 404 Not Found - GET .*/(?<package2>[^/\\s]+)"
+  match: "npm ERR! 404 .*?'(?<package>[^']+)' is not in (?:this registry|the npm registry)|npm ERR! 404 Not Found - GET .*/(?<package>[^/\\s]+)"
   confidence: 0.85
   fix: |
     The registry returned 404 for a package. Check the name/scope for typos and
@@ -140,7 +140,7 @@
   ecosystem: node
   category: compile
   title: TypeScript type error
-  match: "(?<file>[^\\s(]+)\\((?<line>\\d+),\\d+\\): error (?<code>TS\\d+): (?<message>.+)|(?<file2>[^\\s:]+\\.tsx?):(?<line2>\\d+):\\d+ - error (?<code2>TS\\d+): (?<message2>.+)"
+  match: "(?<file>[^\\s(]+)\\((?<line>\\d+),\\d+\\): error (?<code>TS\\d+): (?<message>.+)|(?<file>[^\\s:]+\\.tsx?):(?<line>\\d+):\\d+ - error (?<code>TS\\d+): (?<message>.+)"
   confidence: 0.8
   fix: |
     tsc rejected {file}:{line} — {code}: {message}

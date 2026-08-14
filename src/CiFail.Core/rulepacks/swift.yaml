@@ -73,10 +73,10 @@
   match: "XCTAssert\\w* failed(?::| -)|Test Case '-\\[(?<suite>[\\w.]+) (?<test>[\\w]+)\\]' failed"
   confidence: 0.8
   fix: |
-    An XCTest assertion failed in {suite}.{test}. The line above shows the file and the
-    values it compared. Re-run just that test with
-    `xcodebuild test -only-testing:<Target>/{suite}/{test}` (or `swift test --filter {test}`
-    for a SwiftPM package).
+    An XCTest assertion failed. The line above names the test case, and shows the file and
+    the values it compared. Re-run just that test with
+    `xcodebuild test -only-testing:<Target>/<Suite>/<testMethod>` (or
+    `swift test --filter <testMethod>` for a SwiftPM package).
   docs: https://developer.apple.com/documentation/xctest
 
 - id: swift-package-resolution

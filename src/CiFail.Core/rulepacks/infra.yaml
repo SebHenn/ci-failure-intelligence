@@ -45,7 +45,7 @@
   ecosystem: infra
   category: build
   title: Docker COPY/ADD source not found
-  match: "(?:COPY|ADD) failed: (?:file not found in build context|stat )(?<path>[^\\n:]+)?|failed to compute cache key: .*?\"(?<path2>[^\"]+)\": not found"
+  match: "(?:COPY|ADD) failed: (?:file not found in build context|stat )(?<path>[^\\n:]+)?|failed to compute cache key: .*?\"(?<path>[^\"]+)\": not found"
   confidence: 0.8
   fix: |
     A Docker COPY/ADD referenced a path that isn't in the build context. Check the
@@ -85,7 +85,7 @@
   match: "\\b(?<reason>ImagePullBackOff|ErrImagePull|ErrImageNeverPull)\\b|Failed to pull image \"(?<image>[^\"]+)\""
   confidence: 0.88
   fix: |
-    The kubelet could not fetch {image}. Three things to check, in order: the tag really
+    The kubelet could not fetch the image named above. Three things to check, in order: the tag really
     exists in the registry (a deploy racing the image push is the classic one), the node
     can reach the registry, and — for a private registry — the ServiceAccount has an
     `imagePullSecrets` entry. `kubectl describe pod <pod>` prints the underlying registry
@@ -116,7 +116,7 @@
     `kubectl rollout status` gave up waiting. The new pods never became Ready — check them
     with `kubectl get pods` and `kubectl describe`. Common causes: a failing readiness
     probe, unschedulable pods (no node with enough CPU/memory, or a taint), or an image
-    that won't pull. `kubectl rollout undo deployment/{name}` reverts while you look.
+    that won't pull. `kubectl rollout undo deployment/<name>` reverts while you look.
   docs: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
 
 - id: helm-release-failed
@@ -126,7 +126,7 @@
   match: "Error: (?:UPGRADE|INSTALL) FAILED: (?<message>.+)|Error: release (?<release>\\S+) failed|has no deployed releases"
   confidence: 0.85
   fix: |
-    {message}
+    The release did not go out; the line above carries Helm's own message.
     "has no deployed releases" means a previous install failed and left the release in a
     broken state — `helm uninstall <release>` and reinstall, or `helm rollback`. If the
     error mentions a field being immutable, the resource has to be deleted rather than
@@ -140,8 +140,9 @@
   match: "Error: (?:template|parse error|YAML parse error|failed to parse)[^\\n]*: (?<message>.+)|executing \"(?<template>[^\"]+)\" at <(?<expression>[^>]+)>"
   confidence: 0.85
   fix: |
-    The chart didn't render, so nothing was sent to the cluster. `<{expression}>` in
-    template '{template}' is where it broke — usually a value that isn't set (guard it with
-    `default` or `required`), or indentation that produced invalid YAML. Reproduce without
-    a cluster: `helm template . -f values.yaml`, and `--debug` prints the rendered output.
+    The chart didn't render, so nothing was sent to the cluster. The template and the
+    expression named above are where it broke — usually a value that isn't set (guard it
+    with `default` or `required`), or indentation that produced invalid YAML. Reproduce
+    without a cluster: `helm template . -f values.yaml`, and `--debug` prints the rendered
+    output.
   docs: https://helm.sh/docs/chart_template_guide/debugging/

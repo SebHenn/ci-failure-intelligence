@@ -85,9 +85,12 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
 
         [CommandOption("--top <N>")]
         [Description("Maximum number of similar past failures to show.")]
-        [DefaultValue(3)]
-        public int Top { get; init; } = 3;
+        [DefaultValue(DefaultTopSimilar)]
+        public int Top { get; init; } = DefaultTopSimilar;
     }
+
+    /// <summary>Shared by the option default and the "--top is ignored with --server" check.</summary>
+    internal const int DefaultTopSimilar = 3;
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
@@ -133,9 +136,13 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
 
         if (units.Count == 0)
         {
-            // A report that parsed cleanly but had no failing tests is a success.
-            if (!settings.Json)
-                CliConsole.Out.MarkupLine($"[green]{Glyphs.Check}[/] No failing tests found.");
+            // A report that parsed cleanly but had no failing tests is a success — but it still
+            // has to produce every output that was asked for. Returning here directly meant
+            // `--json` printed nothing at all (so `| jq` failed on empty input) and
+            // `--report sarif --report-out` never created the file, which broke the
+            // upload-sarif chain the README documents on exactly the runs where nothing is wrong.
+            if (EmitResults(settings, Array.Empty<Analysis>()) is { } emptyWriteError)
+                return emptyWriteError;
             return ExitMatched;
         }
 
@@ -192,8 +199,22 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             CliConsole.Warn($"rules directory not found: {Markup.Escape(dir)}");
 
         // --server runs the whole pipeline remotely, against the server's own packs.
-        if (settings.Rules.Length > 0 && !string.IsNullOrWhiteSpace(settings.Server))
-            CliConsole.Warn("--rules is ignored with --server; the server matches with its own rule packs.");
+        if (!string.IsNullOrWhiteSpace(settings.Server))
+        {
+            if (settings.Rules.Length > 0)
+                CliConsole.Warn("--rules is ignored with --server; the server matches with its own rule packs.");
+
+            // These were accepted and silently dropped, which is worse than rejecting them: you
+            // get a plausible-looking result produced by a different pipeline than you asked for.
+            if (settings.Ai || settings.AiProvider is not null || settings.AiModel is not null)
+                CliConsole.Warn("--ai is ignored with --server; the server decides whether AI runs.");
+
+            if (settings.Top != DefaultTopSimilar)
+                CliConsole.Warn("--top is ignored with --server; the server chooses how many similar failures to return.");
+
+            if (!settings.NoGit)
+                CliConsole.Hint("[grey]--server does not auto-resolve past failures; run [bold]cifail reconcile --server[/] for that.[/]");
+        }
 
         return null;
     }
@@ -226,6 +247,8 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             observed.Add(analysis.Fingerprint.ToString());
             allMatched &= analysis.HasMatch;
         }
+
+        RuleDiagnostics.Report(results);
 
         if (EmitResults(settings, results) is { } writeError) return writeError;
 
@@ -386,6 +409,11 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         {
             // A missing directory or a read-only path is a user mistake, not a crash: an
             // unwritable --report-out used to surface as an unhandled IOException.
+            // Create the parent directory as `gate --update` does — `--report-out out/x.sarif`
+            // is the natural thing to write in CI, and failing because `out/` doesn't exist yet
+            // is a papercut, not a safety property.
+            var directory = Path.GetDirectoryName(Path.GetFullPath(settings.ReportOut));
+            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
             File.WriteAllText(settings.ReportOut, content);
             return null;
         }
@@ -407,14 +435,21 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         _ => null,
     };
 
+    /// <summary>
+    /// Always a JSON <b>array</b>, one element per analysis unit — including the empty array when
+    /// nothing failed.
+    ///
+    /// <para>
+    /// This used to emit a bare object for a single input and an array for several, which meant
+    /// the shape of the document depended on how many files a glob happened to match:
+    /// <c>cifail analyze *.log --json | jq '.[0]'</c> worked until the day one log was left, and
+    /// a clean test report produced no document at all. A consumer cannot branch on that. The
+    /// change is breaking and is called out in CHANGELOG.md.
+    /// </para>
+    /// </summary>
     private static void EmitJson(IReadOnlyList<Analysis> results)
     {
-        // Single input -> a single object; multiple -> an array. Keeps the common
-        // case simple while staying valid for batch use.
-        var payload = results.Count == 1
-            ? JsonOutput.Serialize(results[0])
-            : "[" + string.Join(",", results.Select(JsonOutput.Serialize)) + "]";
-        Console.Out.WriteLine(payload);
+        Console.Out.WriteLine("[" + string.Join(",", results.Select(JsonOutput.Serialize)) + "]");
     }
 
     private static void ReportAutoResolved(IReadOnlyList<ResolutionReconciler.Resolved> resolved)
@@ -431,6 +466,13 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
 
     private static void EmitConsole(IReadOnlyList<Analysis> results)
     {
+        // Only reachable from a structured report that parsed cleanly and had no failing tests.
+        if (results.Count == 0)
+        {
+            CliConsole.Out.MarkupLine($"[green]{Glyphs.Check}[/] No failing tests found.");
+            return;
+        }
+
         for (int i = 0; i < results.Count; i++)
         {
             if (i > 0) CliConsole.Out.WriteLine();

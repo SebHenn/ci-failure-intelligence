@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using CiFail.Core.Models;
 
@@ -58,6 +59,19 @@ public static class EcosystemDetector
     private static readonly TimeSpan MatchTimeout = TimeSpan.FromSeconds(1);
 
     /// <summary>
+    /// Ceiling on the time <see cref="Rank"/> may spend across <i>all</i> markers.
+    ///
+    /// <para>
+    /// <see cref="MatchTimeout"/> alone bounds each marker, but there are ~130 of them and every
+    /// one is evaluated on every call, so the per-marker limit multiplied out to a worst case of
+    /// over two minutes before anything else in the pipeline had run. Detection is a heuristic:
+    /// once the budget is gone, the markers not yet scored are treated as absent, which at worst
+    /// costs us the ecosystem and falls back to <see cref="Ecosystem.Generic"/>.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan RankBudget = TimeSpan.FromSeconds(2);
+
+    /// <summary>
     /// Tie-break order, most specific first. Previously a tie fell through to whatever order the
     /// score dictionary happened to enumerate in, which is not a decision.
     ///
@@ -109,11 +123,18 @@ public static class EcosystemDetector
     {
         var text = log.NormalizedText;
 
+        // One budget shared across every ecosystem's markers, so the total cost of detection is
+        // bounded rather than (marker count × per-marker timeout). Materialized eagerly — a lazy
+        // Select would leave the stopwatch running across the caller's enumeration.
+        var deadline = Stopwatch.StartNew();
+
         // Rank by score, then by precedence position — OrderBy is stable, so scoring in
         // precedence order and sorting only on the score would work too; being explicit keeps
         // the tie-break from depending on a sort's stability guarantee.
         return Precedence
-            .Select((eco, index) => (Ecosystem: eco, Score: Score(Markers[eco], text), Index: index))
+            .Select((eco, index) =>
+                (Ecosystem: eco, Score: Score(Markers[eco], text, deadline), Index: index))
+            .ToList()
             .OrderByDescending(x => x.Score)
             .ThenBy(x => x.Index)
             .Select(x => (x.Ecosystem, x.Score))
@@ -148,11 +169,14 @@ public static class EcosystemDetector
     }
 
     /// <summary>Sum the weights of the markers that fire — each one counted once, however often it occurs.</summary>
-    private static int Score(Marker[] markers, string text)
+    private static int Score(Marker[] markers, string text, Stopwatch deadline)
     {
         var total = 0;
         foreach (var marker in markers)
         {
+            // Out of budget: every remaining marker counts as absent (see RankBudget).
+            if (deadline.Elapsed > RankBudget) break;
+
             try
             {
                 if (marker.Pattern.IsMatch(text)) total += marker.Weight;

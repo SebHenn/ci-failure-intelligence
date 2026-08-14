@@ -1,0 +1,11 @@
+[info] welcome to sbt 1.9.7 (Eclipse Adoptium Java 17.0.9)
+[info] loading project definition from /home/runner/work/ledger/project
+[info] compiling 14 Scala sources to /home/runner/work/ledger/target/scala-2.13/classes ...
+[error] /home/runner/work/ledger/src/main/scala/com/example/Total.scala:18:26: type mismatch;
+[error]  found   : String
+[error]  required: Int
+[error]     val total: Int = row.amount
+[error]                          ^
+[error] one error found
+[error] (Compile / compileIncremental) Compilation failed
+[error] Total time: 9 s, completed 14 Aug 2026, 09:12:04

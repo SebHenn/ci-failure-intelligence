@@ -9,6 +9,72 @@ after 1.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Rule patterns now run under a 2-second timeout.** cifail loads rule packs from the
+  repository you are working in (`.cifail/rules/`, added below), so running `cifail analyze`
+  inside a freshly cloned checkout compiles and runs that repository's regexes against your
+  log — and nothing bounded how long one could take. A pattern with catastrophic backtracking,
+  hostile or (far more likely) accidental, hung the CLI outright and pinned a request thread in
+  `cifail serve`. A pattern that exceeds the budget is now skipped with a warning naming the
+  rule, so a rule that has stopped working says so instead of disappearing. Ecosystem detection
+  gained an overall time budget to go with its existing per-marker timeout, and the compiled-regex
+  cache is keyed on the pattern rather than the rule id (two rules sharing an id used to make the
+  second silently evaluate the first one's pattern). See SECURITY.md for the rule-pack trust model.
+
+- **Eleven rules showed you their fix *template* instead of the fix.** Rules whose `match` is an
+  alternation had `fix` text reading capture names that only one branch provides — so a log
+  matching the other branch rendered `tsc rejected {file}:{line} — {code}: {message}` literally.
+  It affected `typescript-compile-error` (on the `file.ts:12:5 - error TS2345` form modern `tsc`
+  emits), three Elixir rules, three Scala rules, plus `helm-template-error`,
+  `k8s-image-pull-failed`, `kotlin-jvm-target-mismatch` and `xctest-failed` — the last four on
+  their *own* fixtures, i.e. every time they fired. Every fixture exercised only the first
+  branch, and the breadth tests asserted the right rule won without ever checking that its fix
+  rendered. Now: the tests assert no rendered fix contains a leftover placeholder, `rules
+  validate` rejects a `fix` placeholder that any top-level alternation branch fails to capture
+  (the obvious "does this group exist in the pattern" check passes on all eleven — the branch is
+  the unit that has to satisfy the fix), and new fixtures cover the previously untested branches.
+
+- **A passing test report produced no output at all.** `analyze --format junit --json` on a green
+  report wrote nothing to stdout, so a downstream `jq` failed on empty input, and
+  `--report sarif --report-out` never created the file — which breaks the
+  `github/codeql-action/upload-sarif` chain the README documents, on exactly the runs where
+  nothing is wrong. Both now emit an empty-but-valid document.
+
+- `analyze --report-out out/report.sarif` no longer fails when `out/` does not exist; it creates
+  the directory, as `gate --update` already did.
+
+- `rules explain` reported a rule committed to a repository's `.cifail/rules/` as an
+  `embedded default`. It checked `~/.cifail/rules` alone while loading from the full search
+  path — so it was wrong for the newest tier and silent about it. It now names the directory the
+  winning rule actually came from, and returns the documented exit code rather than a bare `0`.
+
+- `analyze --server` silently ignored `--ai`, `--ai-provider`, `--ai-model` and `--top`, and
+  skipped auto-resolution. They are now called out, as `--rules` already was.
+
+- `cifail serve`: the sign-in route is rate-limited (it is necessarily public and compares a
+  submitted string against the server token, so it was brute-forceable at network speed);
+  `POST /analyze` caps the log body at 10 MB and answers `413`; `?limit=` is clamped on
+  `/history` and available on `/repos/{repoId}/open`, which had no limit at all; the dashboard
+  cookie expires after 12 hours and `POST /ui/logout` clears it. The notification dedupe map no
+  longer grows without bound in a long-running server.
+
+### Changed
+
+- **`analyze --json` is now always a JSON array**, one element per analysis unit. It previously
+  emitted a bare object for a single input and an array for several, so the document's shape
+  depended on how many files a glob happened to match — `cifail analyze *.log --json | jq '.[0]'`
+  worked until the day one log was left. A clean report now yields `[]` rather than nothing.
+  **This is a breaking change to the `--json` contract**; wrap a single-object consumer in
+  `.[0]`. (Below 1.0 a minor bump may carry breaking changes, as stated above.)
+
+- **`cifail serve` gained `GET /readyz`**, and the Helm chart's readiness probe now points at it.
+  `/healthz` was wired to both probes but never touched the store, so a server that could not
+  reach its database reported itself both alive *and* ready and kept taking traffic it could only
+  fail. `/healthz` deliberately still answers without touching the store — restarting a healthy
+  pod because the database blinked makes an outage worse. Both remain public; the kubelet has no
+  token.
+
 ### Added
 
 - **A repository can ship its own rule packs.** Rules are most useful when they are specific to

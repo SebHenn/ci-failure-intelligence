@@ -12,7 +12,27 @@ namespace CiFail.Core.Rules;
 public sealed class RuleEngine
 {
     private readonly IReadOnlyList<RuleDefinition> _rules;
-    private readonly ConcurrentDictionary<string, Regex> _regexCache = new();
+    private readonly ConcurrentDictionary<string, Regex> _regexCache = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// How long any single rule pattern may run against one log before it is abandoned.
+    ///
+    /// <para>
+    /// Rule packs are <i>untrusted input</i>. Since R14 cifail loads them from the
+    /// <c>.cifail/rules</c> directory of whatever repository you happen to be working in, so
+    /// running <c>cifail analyze</c> inside a freshly cloned checkout executes that repository's
+    /// regexes against your log. Without a timeout a pattern with catastrophic backtracking —
+    /// authored maliciously or, far more likely, by accident — hangs the CLI, and on
+    /// <c>cifail serve</c> pins a request thread indefinitely.
+    /// </para>
+    ///
+    /// <para>
+    /// Two seconds is deliberately generous next to <see cref="RuleDraftValidator"/>'s one-second
+    /// draft-time gate: this budget is spent against a real log that may be tens of megabytes,
+    /// where that one is spent against a single excerpt.
+    /// </para>
+    /// </summary>
+    public static readonly TimeSpan MatchTimeout = TimeSpan.FromSeconds(2);
 
     public RuleEngine(IReadOnlyList<RuleDefinition> rules) => _rules = rules;
 
@@ -22,7 +42,14 @@ public sealed class RuleEngine
     /// Evaluate all applicable rules against the log. Returns matches sorted by
     /// descending score (highest-confidence root cause first).
     /// </summary>
-    public IReadOnlyList<RuleMatch> Match(LogDocument log, Ecosystem ecosystem)
+    /// <param name="diagnostics">
+    /// Optional sink for problems that made a rule unusable — a malformed pattern, or one that
+    /// exceeded <see cref="MatchTimeout"/>. Analysis continues without that rule either way, but a
+    /// rule that has silently stopped working is exactly the failure this codebase's fixture
+    /// discipline exists to prevent, so the caller is given the chance to say so.
+    /// </param>
+    public IReadOnlyList<RuleMatch> Match(
+        LogDocument log, Ecosystem ecosystem, ICollection<string>? diagnostics = null)
     {
         var matches = new List<RuleMatch>();
 
@@ -33,16 +60,34 @@ public sealed class RuleEngine
             Regex regex;
             try
             {
-                regex = _regexCache.GetOrAdd(rule.Id, _ =>
-                    new Regex(rule.Match, RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline));
+                // Keyed on the pattern, not the id: two rules can share an id (only
+                // RulePackLoader dedupes, and a RuleEngine can be constructed directly), and
+                // keying on the id made the second one silently run the first one's pattern.
+                regex = _regexCache.GetOrAdd(rule.Match, pattern => new Regex(
+                    pattern,
+                    RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline,
+                    MatchTimeout));
             }
             catch (ArgumentException)
             {
                 // A malformed rule regex should never crash analysis; skip it.
+                diagnostics?.Add($"rule '{rule.Id}' has an invalid pattern and was skipped");
                 continue;
             }
 
-            var m = regex.Match(log.NormalizedText);
+            Match m;
+            try
+            {
+                m = regex.Match(log.NormalizedText);
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                diagnostics?.Add(
+                    $"rule '{rule.Id}' took longer than {MatchTimeout.TotalSeconds:0.#}s to " +
+                    "evaluate and was skipped");
+                continue;
+            }
+
             if (!m.Success) continue;
 
             var captures = ExtractCaptures(regex, m);

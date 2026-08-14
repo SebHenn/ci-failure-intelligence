@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "cifail server",
-    "description": "HTTP API for cifail — analyze CI/build/test logs, browse history, and resolve failures. Served by `cifail serve`.\n\nEvery route except /healthz, /login and /ui/login requires `Authorization: Bearer <token>` when the server was started with a token. Started without one, the server runs open and logs a warning.",
+    "description": "HTTP API for cifail — analyze CI/build/test logs, browse history, and resolve failures. Served by `cifail serve`.\n\nEvery route except /healthz, /readyz, /login and /ui/login requires `Authorization: Bearer <token>` when the server was started with a token. Started without one, the server runs open and logs a warning.",
     "license": { "name": "MIT", "url": "https://github.com/SebHenn/ci-failure-intelligence/blob/main/LICENSE" }
   },
   "servers": [{ "url": "/", "description": "This server" }],
@@ -83,10 +83,21 @@
   "paths": {
     "/healthz": {
       "get": {
-        "summary": "Liveness/readiness probe",
-        "description": "Always public — the Helm chart's probes hit this.",
+        "summary": "Liveness probe",
+        "description": "Always public — the Helm chart's liveness probe hits this. Deliberately does not touch the store: liveness asks whether the process is wedged, and restarting a healthy pod because the database blinked makes an outage worse.",
         "security": [],
         "responses": { "200": { "description": "ok" } }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "summary": "Readiness probe",
+        "description": "Always public — the Helm chart's readiness probe hits this. Opens the store and queries it, so a server that cannot reach its database stops receiving traffic.",
+        "security": [],
+        "responses": {
+          "200": { "description": "ready" },
+          "503": { "description": "the store did not answer" }
+        }
       }
     },
     "/analyze": {

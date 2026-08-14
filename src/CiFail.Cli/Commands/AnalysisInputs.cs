@@ -1,6 +1,37 @@
+using CiFail.Cli.Output;
 using CiFail.Core.Ingest.Reports;
+using Spectre.Console;
+using Analysis = CiFail.Core.Models.Analysis;
 
 namespace CiFail.Cli.Commands;
+
+/// <summary>
+/// Reporting the rule problems an analysis ran into (an invalid pattern, or one abandoned for
+/// exceeding <see cref="CiFail.Core.Rules.RuleEngine.MatchTimeout"/>).
+///
+/// <para>
+/// Shared by <c>analyze</c> and <c>gate</c> for the same reason <see cref="AnalysisInputs"/> is:
+/// a rule that silently stopped working must look identical whichever command you ran. It goes to
+/// <b>stderr</b> — this is a fact about the run, not part of the answer.
+/// </para>
+/// </summary>
+internal static class RuleDiagnostics
+{
+    /// <summary>
+    /// Warn once per distinct problem. A structured report expands into one analysis unit per
+    /// failing test (R17), so a single bad rule would otherwise print the same line hundreds of
+    /// times — and the count is noise: the rule is either working or it isn't.
+    /// </summary>
+    public static void Report(IEnumerable<Analysis> results)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var warning in results.SelectMany(r => r.Warnings))
+        {
+            if (seen.Add(warning))
+                CliConsole.Warn(Markup.Escape(warning));
+        }
+    }
+}
 
 /// <summary>
 /// One thing to analyze: a whole log, or a single failing test expanded out of a JUnit/TRX

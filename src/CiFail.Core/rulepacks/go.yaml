@@ -16,7 +16,7 @@
   ecosystem: go
   category: dependency
   title: Go cannot find package
-  match: "cannot find package \"(?<package>[^\"]+)\"|no required module provides package (?<package2>[^\\s;]+)"
+  match: "cannot find package \"(?<package>[^\"]+)\"|no required module provides package (?<package>[^\\s;]+)"
   confidence: 0.85
   fix: |
     Go could not resolve a required package. Run `go mod tidy` to add the missing
@@ -92,7 +92,7 @@
   ecosystem: go
   category: environment
   title: Go toolchain version too old
-  match: "note: module requires Go (?<version>[\\d.]+)|go: go\\.mod requires go >= (?<version2>[\\d.]+)"
+  match: "note: module requires Go (?<version>[\\d.]+)|go: go\\.mod requires go >= (?<version>[\\d.]+)"
   # Below the specific compile rules (0.78-0.85) on purpose. Go prints "note: module requires
   # Go 1.21" as a hint alongside ordinary compile errors, so on its own it is corroboration,
   # not the cause. It still wins when the toolchain really is too old, because then nothing

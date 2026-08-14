@@ -71,5 +71,23 @@ public sealed class ServeOptions
     /// </summary>
     public NotificationDispatcher? Notifications { get; init; }
 
+    /// <summary>
+    /// Largest log <c>POST /analyze</c> will accept, in bytes (default 10 MB).
+    ///
+    /// <para>
+    /// The body is materialized as a single string and then normalized, scrubbed and tokenized —
+    /// several full-size copies — so an unbounded body is a memory-exhaustion lever for anyone who
+    /// can reach the port. Kestrel's 30 MB default was the only thing standing in the way, and it
+    /// answers with a bare protocol error rather than something a client can act on.
+    /// </para>
+    /// </summary>
+    public long MaxLogBytes { get; init; } = 10 * 1024 * 1024;
+
+    /// <summary>
+    /// Ceiling on <c>?limit=</c> for the list endpoints (default 1000). Without one,
+    /// <c>GET /history?limit=2000000000</c> serializes the whole table into one response.
+    /// </summary>
+    public int MaxPageSize { get; init; } = 1000;
+
     public string ResolvedUrl => Url ?? $"http://{Host}:{Port}";
 }

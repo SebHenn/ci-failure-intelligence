@@ -4,7 +4,7 @@
   ecosystem: elixir
   category: compile
   title: Elixir compile error
-  match: "\\*\\* \\(CompileError\\) (?<file>[^\\s:]+):(?<line>\\d+):?(?:\\d+:)? (?<message>.+)|error: (?<message2>.+)\\n\\s+└─ (?<file2>\\S+):(?<line2>\\d+)"
+  match: "\\*\\* \\(CompileError\\) (?<file>[^\\s:]+):(?<line>\\d+):?(?:\\d+:)? (?<message>.+)|error: (?<message>.+)\\n\\s+└─ (?<file>\\S+):(?<line>\\d+)"
   confidence: 0.85
   fix: |
     The compiler rejected {file}:{line} — {message}
@@ -17,7 +17,7 @@
   ecosystem: elixir
   category: compile
   title: Undefined or private function
-  match: "\\*\\* \\(UndefinedFunctionError\\) function (?<function>[\\w.]+/\\d+) is undefined|(?:warning|error): (?<function2>[\\w.]+/\\d+) is undefined or private"
+  match: "\\*\\* \\(UndefinedFunctionError\\) function (?<function>[\\w.]+/\\d+) is undefined|(?:warning|error): (?<function>[\\w.]+/\\d+) is undefined or private"
   confidence: 0.88
   fix: |
     {function} doesn't exist with that arity, or isn't public. Elixir treats arity as part
@@ -43,7 +43,7 @@
   ecosystem: elixir
   category: dependency
   title: Hex package or version not found
-  match: "No package with name (?<package>\\w+)|Failed to fetch record for '(?<package2>[^']+)' from registry|no matching version for (?<requirement>[^\\s]+)"
+  match: "No package with name (?<package>\\w+)|Failed to fetch record for '(?<package>[^']+)' from registry|no matching version for (?<requirement>[^\\s]+)"
   confidence: 0.85
   fix: |
     Hex has no such package or no version matching your requirement. Check the spelling
@@ -69,10 +69,11 @@
   ecosystem: elixir
   category: environment
   title: Elixir or OTP version does not satisfy the project
-  match: "You're trying to run :\\w+ on Elixir (?<actual>[\\d.]+) but it has declared in its mix\\.exs file it supports only Elixir (?<required>[^\\n]+)|Elixir (?<actual2>[\\d.]+) is not compatible"
+  match: "You're trying to run :\\w+ on Elixir (?<actual>[\\d.]+) but it has declared in its mix\\.exs file it supports only Elixir (?<required>[^\\n]+)|Elixir (?<actual>[\\d.]+) is not compatible"
   confidence: 0.9
   fix: |
-    The runner has Elixir {actual}, but the project requires {required}. Pin the CI image
+    The runner's Elixir is not the version the project asks for — the line above names
+    both. Pin the CI image
     or setup action (for example erlef/setup-beam's `elixir-version` and `otp-version`) to
     a matching pair, or relax `elixir:` in mix.exs. Elixir and OTP versions are coupled —
     check the compatibility table before bumping just one.

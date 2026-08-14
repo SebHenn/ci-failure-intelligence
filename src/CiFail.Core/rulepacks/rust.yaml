@@ -52,7 +52,7 @@
   ecosystem: rust
   category: dependency
   title: Cargo could not resolve dependencies
-  match: "error: failed to select a version for [`'](?<crate>[^'`]+)|failed to resolve dependencies|could not find [`'](?<crate2>[^'`]+)[`'] in registry"
+  match: "error: failed to select a version for [`'](?<crate>[^'`]+)|failed to resolve dependencies|could not find [`'](?<crate>[^'`]+)[`'] in registry"
   confidence: 0.8
   fix: |
     Cargo couldn't pick compatible versions. Read the conflict it prints, relax or
@@ -64,7 +64,7 @@
   ecosystem: rust
   category: environment
   title: Rust toolchain too old / wrong channel
-  match: "(?:package .* cannot be built because it requires rustc (?<version>[\\d.]+)|requires rustc (?<version2>[\\d.]+) or newer|this feature requires a nightly)"
+  match: "(?:package .* cannot be built because it requires rustc (?<version>[\\d.]+)|requires rustc (?<version>[\\d.]+) or newer|this feature requires a nightly)"
   confidence: 0.8
   fix: |
     The crate needs a newer (or nightly) Rust than the runner has. Update the toolchain

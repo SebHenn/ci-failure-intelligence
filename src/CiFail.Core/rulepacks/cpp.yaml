@@ -17,7 +17,7 @@
   ecosystem: cpp
   category: compile
   title: Header file not found
-  match: "fatal error: (?<header>[^\\s:]+\\.(?:h|hpp|hh)): No such file or directory|fatal error: '(?<header2>[^']+)' file not found"
+  match: "fatal error: (?<header>[^\\s:]+\\.(?:h|hpp|hh)): No such file or directory|fatal error: '(?<header>[^']+)' file not found"
   confidence: 0.85
   fix: |
     The compiler couldn't find an #include'd header. Add its directory with -I (or
@@ -41,7 +41,7 @@
   ecosystem: cpp
   category: build
   title: CMake could not find a package
-  match: "Could NOT find (?<package>[\\w.+-]+)|Could not find a package configuration file provided by \"(?<package2>[^\"]+)\""
+  match: "Could NOT find (?<package>[\\w.+-]+)|Could not find a package configuration file provided by \"(?<package>[^\"]+)\""
   confidence: 0.8
   fix: |
     CMake's find_package() failed. Install the library's development package (it

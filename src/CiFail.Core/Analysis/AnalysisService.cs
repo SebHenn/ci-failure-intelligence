@@ -64,7 +64,8 @@ public sealed class AnalysisService
 
         var log = LogNormalizer.Build(source, rawText);
         var ecosystem = EcosystemDetector.Detect(log, options.EcosystemOverride);
-        var matches = _engine.Match(log, ecosystem);
+        var warnings = new List<string>();
+        var matches = _engine.Match(log, ecosystem, warnings);
         var rootCause = matches.Count > 0 ? matches[0] : null;
         var fingerprint = FingerprintBuilder.Build(log, rootCause);
 
@@ -110,6 +111,7 @@ public sealed class AnalysisService
             HistoryId = historyId,
             SimilarFailures = similar,
             AiSuggestion = aiSuggestion,
+            Warnings = warnings,
         };
     }
 

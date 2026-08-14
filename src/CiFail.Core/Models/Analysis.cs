@@ -35,6 +35,19 @@ public sealed class Analysis
 
     public DateTimeOffset AnalyzedAt { get; init; } = DateTimeOffset.UtcNow;
 
+    /// <summary>
+    /// Problems encountered while producing this analysis — a rule with an invalid pattern, or one
+    /// abandoned for exceeding <see cref="Rules.RuleEngine.MatchTimeout"/>. The analysis is still
+    /// valid; it was simply produced with fewer rules than the pack contains.
+    ///
+    /// <para>
+    /// Deliberately <b>not</b> part of the <c>--json</c> DTO. These describe the run, not the
+    /// answer, and this codebase keeps that line sharp: stdout carries the answer, stderr carries
+    /// everything about the run. The CLI prints them with <c>CliConsole.Warn</c>.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
+
     /// <summary>True when at least one rule matched.</summary>
     public bool HasMatch => Matches.Count > 0;
 }

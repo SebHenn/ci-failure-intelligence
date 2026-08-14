@@ -158,15 +158,22 @@ public sealed class GateCommand : Command<GateCommand.Settings>
         var options = new AnalysisOptions { EcosystemOverride = ecosystemOverride };
 
         var observed = new List<ObservedFailure>(units.Count);
+        var analyses = new List<Core.Models.Analysis>(units.Count);
         foreach (var unit in units)
         {
             var analysis = service.Analyze(unit.Source, unit.Text, options);
+            analyses.Add(analysis);
             observed.Add(new ObservedFailure(
                 analysis.Fingerprint.ToString(),
                 unit.Source,
                 analysis.Fingerprint.RuleId,
                 analysis.RootCause?.Rule.Title));
         }
+
+        // A rule that was skipped is a rule that cannot gate — say so, or a pack that stopped
+        // working looks exactly like a clean run.
+        RuleDiagnostics.Report(analyses);
+
         return observed;
     }
 

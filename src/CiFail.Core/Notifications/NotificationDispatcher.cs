@@ -53,9 +53,34 @@ public sealed class NotificationDispatcher
             if (_recent.TryGetValue(key, out var last) && now - last < _dedupeWindow)
                 return true;
             _recent[key] = now;
+            PruneExpired(now);
             return false;
         }
     }
+
+    /// <summary>
+    /// Drop entries that can no longer suppress anything.
+    ///
+    /// <para>
+    /// Every distinct <c>(event, fingerprint)</c> added one permanent entry, so in a long-running
+    /// <c>cifail serve</c> the dedupe map grew without bound — one entry per failure the server
+    /// had ever seen, for the lifetime of the process, to answer a question with a five-minute
+    /// horizon. Sweeping only when the map is large keeps the common path a single lookup.
+    /// </para>
+    /// </summary>
+    private void PruneExpired(DateTimeOffset now)
+    {
+        if (_recent.Count < PruneThreshold) return;
+
+        foreach (var key in _recent.Where(e => now - e.Value >= _dedupeWindow)
+                     .Select(e => e.Key).ToList())
+        {
+            _recent.Remove(key);
+        }
+    }
+
+    /// <summary>Entry count that triggers a sweep — high enough that sweeps are rare.</summary>
+    private const int PruneThreshold = 512;
 
     /// <summary>
     /// Build a dispatcher from config: one channel per configured target (Slack, generic webhook,

@@ -1,0 +1,12 @@
+==> my_app
+Compiling 42 files (.ex)
+
+warning: MyApp.Accounts.get_user/1 is undefined or private. Did you mean:
+
+      * get_user!/1
+      * get_users/0
+
+  └─ lib/my_app_web/controllers/user_controller.ex:15:20
+
+Generated my_app app
+** (Mix) Compilation failed because of warnings while using the --warnings-as-errors option

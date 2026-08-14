@@ -106,6 +106,60 @@ public sealed class RuleSearchPathCliTests : IDisposable
         result.ExitCode.Should().Be(ExitCodes.Ok, "a bad --rules is a warning, not a failed analysis");
     }
 
+    /// <summary>
+    /// `rules explain` used to decide "is this a user rule?" by looking only in
+    /// <c>~/.cifail/rules</c>, while loading the rule itself from the full search path — so a
+    /// pack reached through <c>CIFAIL_RULES</c>, <c>config.yaml</c>, or a repository's own
+    /// <c>.cifail/rules</c> was reported as an <c>embedded default</c>. "Where does this rule
+    /// live?" is the question the command exists to answer.
+    /// </summary>
+    [Fact]
+    public void Rules_explain_does_not_call_a_user_pack_an_embedded_default()
+    {
+        using var cli = new CliHarness();
+        Environment.SetEnvironmentVariable(ConfigLoader.RulesEnvVar, PackDir());
+
+        var result = cli.Run("rules", "explain", "repo-determinism-broken");
+
+        result.ExitCode.Should().Be(ExitCodes.Ok);
+        result.StdoutFlat.Should().NotContain("embedded default");
+        result.StdoutFlat.Should().Contain("Determinism contract broken");
+    }
+
+    [Fact]
+    public void Rules_explain_still_calls_a_shipped_rule_an_embedded_default()
+    {
+        using var cli = new CliHarness();
+
+        var result = cli.Run("rules", "explain", "nuget-nu1101");
+
+        result.ExitCode.Should().Be(ExitCodes.Ok);
+        result.StdoutFlat.Should().Contain("embedded default");
+    }
+
+    [Fact]
+    public void Rules_explain_reports_a_user_pack_that_overrides_a_shipped_rule()
+    {
+        using var cli = new CliHarness();
+        var dir = Path.Combine(_root, "override");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "override.yaml"),
+            "- id: nuget-nu1101\n" +
+            "  ecosystem: dotnet\n" +
+            "  category: dependency\n" +
+            "  title: Our own NU1101 wording\n" +
+            "  match: 'NU1101'\n" +
+            "  confidence: 0.95\n" +
+            "  fix: Ask the platform team.\n" +
+            "  docs: https://example.com/nu1101\n");
+        Environment.SetEnvironmentVariable(ConfigLoader.RulesEnvVar, dir);
+
+        var result = cli.Run("rules", "explain", "nuget-nu1101");
+
+        result.StdoutFlat.Should().Contain("overrides an embedded default");
+        result.StdoutFlat.Should().Contain("Our own NU1101 wording");
+    }
+
     [Fact]
     public void Rules_list_shows_every_directory_it_searched()
     {

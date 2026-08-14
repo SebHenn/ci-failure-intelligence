@@ -1,0 +1,9 @@
+==> my_app
+Compiling 42 files (.ex)
+
+error: expected one argument, got two
+  └─ lib/my_app/router.ex:41:5
+
+== Compilation error in file lib/my_app/router.ex ==
+** (CompileError) lib/my_app/router.ex: cannot compile module MyApp.Router
+    (elixir 1.16.2) expanding macro: Kernel.|>/2

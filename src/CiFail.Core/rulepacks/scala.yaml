@@ -10,10 +10,10 @@
   # Scala 3 and Scala 2 report this completely differently, so all three forms are here:
   # the Scala 3 `-- [E007] Type Mismatch Error:` header, the Scala 2 `type mismatch;` line,
   # and the Found:/Required: pair (whose second line carries sbt's `[error]  |` gutter).
-  match: "\\[E\\d+\\] Type Mismatch Error: (?<file>[^\\s:]+):(?<line>\\d+)|(?<file2>\\S+\\.scala):(?<line2>\\d+):(?:\\d+:)? (?:error: )?type mismatch;|Found:\\s+(?<found>[^\\n]+)\\n[^\\n]*Required:\\s*(?<required>[^\\n]+)"
+  match: "\\[E\\d+\\] Type Mismatch Error: (?<file>[^\\s:]+):(?<line>\\d+)|(?<file>\\S+\\.scala):(?<line>\\d+):(?:\\d+:)? (?:error: )?type mismatch;|Found:\\s+(?<found>[^\\n]+)\\n[^\\n]*Required:\\s*(?<required>[^\\n]+)"
   confidence: 0.85
   fix: |
-    The compiler got a different type than it needed at {file}:{line}. The `Found:` /
+    The compiler got a different type than it needed at the location above. The `Found:` /
     `Required:` pair below names both. Scala 3 prints the two on separate lines; Scala 2
     prints `found:`/`required:`. Convert explicitly, or widen the expected type.
   docs: https://docs.scala-lang.org/scala3/book/types-inferred.html
@@ -22,7 +22,7 @@
   ecosystem: scala
   category: compile
   title: Scala symbol not found
-  match: "(?:error: )?not found: (?:value|type|object) (?<symbol>\\w+)|Not found: (?<symbol2>[\\w.]+)"
+  match: "(?:error: )?not found: (?:value|type|object) (?<symbol>\\w+)|Not found: (?<symbol>[\\w.]+)"
   confidence: 0.85
   fix: |
     '{symbol}' isn't in scope at that point. Usually a missing import, a typo, or a name
@@ -37,7 +37,7 @@
   match: "(?:error: )?(?:sbt\\.librarymanagement\\.ResolveException|unresolved dependency: (?<dependency>[^\\s:]+))|not found: https?://\\S+\\.pom"
   confidence: 0.88
   fix: |
-    sbt could not download {dependency}. The most common cause in Scala is a
+    sbt could not download the dependency named above. The most common cause in Scala is a
     **cross-version mismatch**: an artifact published for 2.13 pulled into a 3.x build (or
     vice versa). Check you're using `%%` (which appends the Scala version) rather than `%`,
     and that the version exists for your `scalaVersion`. Otherwise the resolver may simply
@@ -51,7 +51,7 @@
   match: "Conflicting cross-version suffixes in: (?<library>\\S+)|is not a valid cross-version suffix"
   confidence: 0.9
   fix: |
-    Two dependencies bring in {library} built for different Scala versions, which cannot
+    Two dependencies bring in the same library built for different Scala versions, which cannot
     coexist on one classpath. Run `sbt evicted` to see which dependency drags in the odd
     one, then align it — usually by bumping the older library or excluding its transitive
     dependency.
