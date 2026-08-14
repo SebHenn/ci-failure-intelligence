@@ -8,7 +8,8 @@ namespace CiFail.Core.Storage;
 /// SQLite-backed history store. Defaults to <c>~/.cifail/history.db</c>; pass an
 /// explicit path (or <c>":memory:"</c>) for tests. The schema is created on first use.
 /// </summary>
-public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCounter, IAnalysisStats, IDisposable
+public sealed class SqliteAnalysisRepository
+    : IAnalysisStore, IFingerprintCounter, IAnalysisStats, IHistoryQuery, IPrunableStore, IDisposable
 {
     private readonly SqliteConnection _connection;
 
@@ -27,6 +28,7 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCount
         // file to stay locked after close).
         _connection = new SqliteConnection($"Data Source={dbPath};Pooling=False");
         _connection.Open();
+        ApplyPragmas();
         EnsureSchema();
     }
 
@@ -107,8 +109,42 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCount
         }
 
         using var idx = _connection.CreateCommand();
-        idx.CommandText = "CREATE INDEX IF NOT EXISTS ix_analyses_repo_status ON analyses(repo_id, status);";
+        idx.CommandText = """
+            CREATE INDEX IF NOT EXISTS ix_analyses_repo_status ON analyses(repo_id, status);
+            -- Every `--since` filter (stats, /metrics, the dashboard, history) sorts and ranges
+            -- on this column and had no index to use.
+            CREATE INDEX IF NOT EXISTS ix_analyses_analyzed_at ON analyses(analyzed_at);
+            """;
         idx.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Connection-level pragmas.
+    ///
+    /// <para>
+    /// WAL lets readers and the writer proceed at once. Under the default rollback journal a
+    /// dashboard render — which issues several separate queries — serializes against a concurrent
+    /// <c>/analyze</c> writing its result, and the loser waits. <c>busy_timeout</c> turns the
+    /// remaining contention into a short wait instead of an immediate <c>SQLITE_BUSY</c>.
+    /// </para>
+    ///
+    /// <para>
+    /// Both are best-effort: WAL is unavailable on some network filesystems, and failing to set a
+    /// performance pragma must never stop cifail from opening its history.
+    /// </para>
+    /// </summary>
+    private void ApplyPragmas()
+    {
+        try
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;";
+            cmd.ExecuteNonQuery();
+        }
+        catch (SqliteException)
+        {
+            // Keep going on the default journal.
+        }
     }
 
     public long Save(AnalysisRecord record)
@@ -162,6 +198,135 @@ public sealed class SqliteAnalysisRepository : IAnalysisStore, IFingerprintCount
 
         using var reader = cmd.ExecuteReader();
         return reader.Read() ? ReadStored(reader) : null;
+    }
+
+    /// <summary>
+    /// Filtered, paged history run as SQL (R37) rather than by pulling recent rows and sifting
+    /// them in memory — which is what made the dashboard's filters search only the newest 200
+    /// records and silently miss everything older.
+    /// </summary>
+    public HistoryPage Query(HistoryQuery query)
+    {
+        var (where, bind) = BuildFilter(query);
+
+        int total;
+        using (var count = _connection.CreateCommand())
+        {
+            count.CommandText = $"SELECT COUNT(*) FROM analyses{where};";
+            bind(count);
+            total = Convert.ToInt32(count.ExecuteScalar() ?? 0);
+        }
+
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = $"{SelectColumns}{where} ORDER BY id DESC LIMIT $limit OFFSET $offset;";
+        bind(cmd);
+        cmd.Parameters.AddWithValue("$limit", Math.Max(1, query.Limit));
+        cmd.Parameters.AddWithValue("$offset", Math.Max(0, query.Offset));
+
+        using var reader = cmd.ExecuteReader();
+        var items = new List<StoredAnalysis>();
+        while (reader.Read()) items.Add(ReadStored(reader));
+
+        // A real COUNT(*), so the total is exact and never truncated.
+        return new HistoryPage(items, total);
+    }
+
+    /// <summary>
+    /// Build the shared WHERE clause plus a delegate that binds its parameters, so the count and
+    /// the page query cannot drift apart. Comparisons mirror <see cref="HistoryQuery.Filter"/>:
+    /// exact on the enumerated columns, case-insensitive substring on the free-text search.
+    /// </summary>
+    private static (string Where, Action<SqliteCommand> Bind) BuildFilter(HistoryQuery q)
+    {
+        var clauses = new List<string>();
+        var parameters = new List<(string Name, object Value)>();
+
+        void Add(string clause, string name, object value)
+        {
+            clauses.Add(clause);
+            parameters.Add((name, value));
+        }
+
+        if (q.Since is { } since)
+            Add("analyzed_at >= $since", "$since", since.ToUniversalTime().ToString("O"));
+        if (!string.IsNullOrWhiteSpace(q.RepoId))
+            Add("repo_id = $repo", "$repo", q.RepoId);
+        if (!string.IsNullOrWhiteSpace(q.Status))
+            Add("status = $status", "$status", q.Status);
+        if (!string.IsNullOrWhiteSpace(q.RuleId))
+            Add("rule_id = $rule", "$rule", q.RuleId);
+        if (!string.IsNullOrWhiteSpace(q.Ecosystem))
+            Add("ecosystem = $eco COLLATE NOCASE", "$eco", q.Ecosystem);
+
+        if (!string.IsNullOrWhiteSpace(q.Search))
+        {
+            // LIKE with an escaped pattern: a user searching for "100%" must not match everything.
+            clauses.Add("(source LIKE $q ESCAPE '\\' OR fingerprint LIKE $q ESCAPE '\\' " +
+                        "OR excerpt LIKE $q ESCAPE '\\')");
+            parameters.Add(("$q", "%" + EscapeLike(q.Search!) + "%"));
+        }
+
+        var where = clauses.Count == 0 ? string.Empty : " WHERE " + string.Join(" AND ", clauses);
+        return (where, cmd =>
+        {
+            foreach (var (name, value) in parameters) cmd.Parameters.AddWithValue(name, value);
+        });
+    }
+
+    /// <summary>Neutralize LIKE wildcards in user input (paired with <c>ESCAPE '\'</c>).</summary>
+    private static string EscapeLike(string value) =>
+        value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+
+    /// <summary>
+    /// Delete analyses older than the cutoff (R37). Reclaims the file with <c>VACUUM</c>, since
+    /// deleting rows only frees pages inside the database — the point of pruning is usually that
+    /// the file itself has grown.
+    /// </summary>
+    public PruneResult Prune(PruneRequest request)
+    {
+        var where = "analyzed_at < $before" + (request.ResolvedOnly ? " AND status = $resolved" : string.Empty);
+        var cutoff = request.Before.ToUniversalTime().ToString("O");
+
+        void Bind(SqliteCommand cmd)
+        {
+            cmd.Parameters.AddWithValue("$before", cutoff);
+            if (request.ResolvedOnly) cmd.Parameters.AddWithValue("$resolved", AnalysisStatus.Resolved);
+        }
+
+        int affected;
+        using (var count = _connection.CreateCommand())
+        {
+            count.CommandText = $"SELECT COUNT(*) FROM analyses WHERE {where};";
+            Bind(count);
+            affected = Convert.ToInt32(count.ExecuteScalar() ?? 0);
+        }
+
+        if (request.DryRun || affected == 0)
+            return new PruneResult(affected, request.DryRun);
+
+        using (var del = _connection.CreateCommand())
+        {
+            del.CommandText = $"DELETE FROM analyses WHERE {where};";
+            Bind(del);
+            del.ExecuteNonQuery();
+        }
+
+        // The corpus cache is keyed on (count, max id); a delete can leave both unchanged while
+        // the contents differ, so clear it explicitly — as Save/SetResolution already do.
+        _corpusCache = null;
+
+        try
+        {
+            using var vacuum = _connection.CreateCommand();
+            vacuum.CommandText = "VACUUM;";
+            vacuum.ExecuteNonQuery();
+        }
+        catch (SqliteException)
+        {
+            // Rows are gone either way; reclaiming the pages is a bonus, not the contract.
+        }
+
+        return new PruneResult(affected, DryRun: false);
     }
 
     // Corpus cache (R21): a single `cifail analyze` of a structured report expands into many

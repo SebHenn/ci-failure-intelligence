@@ -388,7 +388,7 @@ public static class CiFailServer
 
             using var store = stores();
             if (store.SetResolution(id, form["note"].ToString()) && store.GetById(id) is { } updated)
-                notifications?.Dispatch(new Notification(NotificationEvent.Resolved, updated));
+                notifications?.DispatchAsync(new Notification(NotificationEvent.Resolved, updated));
 
             // Only ever redirect to a local path (the hidden field is page-supplied, but guard anyway).
             var returnTo = form["return"].ToString();
@@ -426,7 +426,10 @@ public static class CiFailServer
                 var prior = store is IFingerprintCounter counter
                     ? counter.CountByFingerprint(stored.Fingerprint)
                     : 1;
-                notifications.Dispatch(new Notification(
+                // Intentionally not awaited: the caller asked for an analysis, not for six
+                // webhooks to finish. The event filter and dedupe run synchronously inside
+                // DispatchAsync, so only the network calls are deferred.
+                _ = notifications.DispatchAsync(new Notification(
                     prior > 1 ? NotificationEvent.Recurrence : NotificationEvent.NewFailure, stored));
             }
 
@@ -563,7 +566,7 @@ public static class CiFailServer
                 return Results.NotFound();
 
             var updated = store.GetById(id)!;
-            notifications?.Dispatch(new Notification(NotificationEvent.Resolved, updated));
+            notifications?.DispatchAsync(new Notification(NotificationEvent.Resolved, updated));
             return Json(JsonSerializer.Serialize(StoredAnalysisJson.ToDto(updated), AnalysisJson.Options));
         });
     }

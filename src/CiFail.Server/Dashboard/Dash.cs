@@ -85,6 +85,10 @@ internal static class Dash
     .muted { color: var(--muted); }
     .banner { padding: 10px 16px; background: #2a1f1f; color: var(--red); border-bottom: 1px solid var(--border); }
     .empty { padding: 40px 16px; color: var(--muted); text-align: center; }
+    .pager { display: flex; gap: 14px; align-items: center; justify-content: center;
+             padding: 12px 16px; border-top: 1px solid var(--line); font-size: 13px; }
+    .pager a { color: var(--accent); text-decoration: none; }
+    .pager a:hover { text-decoration: underline; }
     pre { white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin: 6px 0 14px; }
     .detail h2 { font-size: 15px; margin: 0 0 4px; }
     .detail .resolve { display: flex; gap: 8px; margin-top: 10px; }

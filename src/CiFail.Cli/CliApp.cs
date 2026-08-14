@@ -128,6 +128,10 @@ public static class CliApp
                 .WithDescription("Auto-resolve past failures that no longer happen at the current commit.")
                 .WithExample("reconcile");
 
+            config.AddCommand<PruneCommand>("prune")
+                .WithDescription("Delete old analyses from history.")
+                .WithExample("prune", "--older-than", "90d", "--dry-run");
+
             config.AddCommand<InitCommand>("init")
                 .WithDescription("Install git hooks so cifail auto-resolves fixed failures on each commit.")
                 .WithExample("init");

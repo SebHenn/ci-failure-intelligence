@@ -284,6 +284,36 @@ Unmatched failures are gated too (`unknown:<hash>`), which is the point. Input h
 shared with `analyze` via `Cli/Commands/AnalysisInputs.cs` (`Read` + `BuildUnits`) so the two
 can never disagree about what one failure is.
 
+### History browsing + retention (R37, `Core/Storage/HistoryQuery.cs` + `Analysis/HistoryService.cs`)
+
+`HistoryQuery` (limit/offset/since/repo/ecosystem/status/rule/search) + `HistoryPage`
+(items, total, **truncated**) + `IHistoryQuery`, a **side-interface** like `IAnalysisStats`.
+`HistoryService.Query(store, query)` routes to it when present, else `GetRecent(ScanLimit)` +
+`HistoryQuery.Filter`. **Both paths share `Filter`, and a theory asserts they return identical
+rows** — a filter that means one thing in SQL and another in LINQ is the bug this prevents.
+SQLite implements it as real SQL with a `COUNT(*)` (so `Total` is exact and `Truncated` false);
+the LIKE pattern **escapes `%`/`_`** or a search for "100%" matches everything.
+
+The bug it fixes: `Index.razor` did `GetRecent(200)` + an in-memory `Where`, so **every dashboard
+filter searched only the newest 200 rows** — an older resolved failure was unreachable and the
+page said "No failures match" as though it had looked. The ecosystem dropdown now comes from
+`StatsSnapshot.ByEcosystem` (a far wider window) rather than one page.
+
+`IPrunableStore` + `cifail prune --older-than 90d [--include-open] [--dry-run]`: history had no
+delete path at all. SQLite `VACUUM`s after deleting (deleting rows only frees pages *inside* the
+file, and the point of pruning is usually the file size) and **clears `_corpusCache`** — a delete
+can leave the `(count, max-id)` cache key unchanged while the contents differ.
+
+**Log size cap (`LogNormalizer.Window`, `MaxCharacters` = 8 MB):** head+tail windowing with a
+visible `ElisionMarker`, not a `Take(n)`. In CI the failure is at the *end* and the ecosystem
+markers are at the *beginning*, so cutting either end alone throws away one or the other.
+`LogDocument.RawText` is the **windowed** text — it must not pin a string we chose not to analyze.
+
+**Notifications dispatch off the request thread** (`NotificationDispatcher.DispatchAsync`).
+Filtering and dedupe stay synchronous so suppression keeps the caller's order; only the blocking
+channel calls are deferred. The returned task is what keeps this testable — `ServeNotifyTests`
+polls for the effect rather than assuming it landed before the HTTP response did.
+
 ### Insights / stats (R16, `Core/Analysis/StatsComputer.cs` + `Storage/IAnalysisStats`)
 
 `cifail stats` turns history into signal: open/resolved/unmatched counts, by-ecosystem

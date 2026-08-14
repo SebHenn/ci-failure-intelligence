@@ -593,6 +593,26 @@ folder of your choice.
 By default history lives in a local SQLite file — zero setup, nothing to run. If your
 team wants to **share** history, you can point cifail at an external database instead.
 
+### Clearing out old history
+
+History grows as you use cifail, and every stored failure keeps a short excerpt of the log
+it came from — which, for CI logs, can include secrets (see
+[SECURITY.md](SECURITY.md)). `cifail prune` trims it:
+
+```console
+$ cifail prune --older-than 90d --dry-run
+⚠ Would delete 214 resolved analyses recorded before 2026-05-16.
+Re-run without --dry-run to actually delete them.
+
+$ cifail prune --older-than 90d
+✓ Deleted 214 resolved analyses recorded before 2026-05-16.
+Unresolved failures were kept. Pass --include-open to delete those too.
+```
+
+Ages are written `30d`, `6w`, `3mo` or `1y`. Only **resolved** failures go by default — an
+old failure nobody ever resolved is usually the one you least want to forget. Always worth
+a `--dry-run` first.
+
 ---
 
 ## Use a shared database (optional)

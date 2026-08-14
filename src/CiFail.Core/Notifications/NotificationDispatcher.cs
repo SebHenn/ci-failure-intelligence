@@ -31,11 +31,45 @@ public sealed class NotificationDispatcher
     /// <summary>True when at least one channel is configured (so callers can skip work).</summary>
     public bool HasNotifiers => _notifiers.Count > 0;
 
+    /// <summary>
+    /// Send a notification to every enabled channel, blocking until they have all been tried.
+    /// </summary>
     public void Dispatch(Notification notification)
     {
-        if (_notifiers.Count == 0 || !_events.Contains(notification.Event) || IsDuplicate(notification))
-            return;
+        if (!ShouldSend(notification)) return;
+        Deliver(notification);
+    }
 
+    /// <summary>
+    /// Start delivery and return immediately, handing back a task that completes when every
+    /// channel has been tried.
+    ///
+    /// <para>
+    /// Channels are blocking HTTP/SMTP calls with a 10-second timeout each, and the server
+    /// dispatched them inline — so six configured channels could add a minute to the
+    /// <c>POST /analyze</c> that triggered them, for work the caller does not wait on. Filtering
+    /// and dedupe still happen synchronously here, so "was this suppressed?" is decided in the
+    /// caller's order rather than by whichever background task wins a race.
+    /// </para>
+    ///
+    /// <para>
+    /// The returned task is what makes this testable: a caller that needs to observe the effect
+    /// (a test, or a shutdown path) can await it, so moving work off the request thread does not
+    /// turn the notification tests into a timing gamble.
+    /// </para>
+    /// </summary>
+    public Task DispatchAsync(Notification notification)
+    {
+        if (!ShouldSend(notification)) return Task.CompletedTask;
+        return Task.Run(() => Deliver(notification));
+    }
+
+    /// <summary>Event filter + dedupe. Cheap, and deliberately not deferred — see DispatchAsync.</summary>
+    private bool ShouldSend(Notification notification) =>
+        _notifiers.Count > 0 && _events.Contains(notification.Event) && !IsDuplicate(notification);
+
+    private void Deliver(Notification notification)
+    {
         foreach (var notifier in _notifiers)
         {
             try { notifier.Notify(notification); }

@@ -11,6 +11,19 @@ after 1.0.
 
 ### Added
 
+- **`cifail prune --older-than <duration>`** deletes old analyses. History had no delete path of
+  any kind — no store method, no command, no retention setting — so `history.db` grew for the
+  life of the install, holding a log excerpt and a term bag per failure. That is both unbounded
+  disk and an ever-growing pile of log text at rest, which can contain secrets from the logs you
+  analyzed (see SECURITY.md). Resolved failures only by default (an old failure nobody resolved
+  is usually the one you least want to forget); `--include-open` takes those too, and
+  `--dry-run` counts without deleting. Durations are `30d`, `6w`, `3mo`, `1y` — a bare `m` is
+  rejected rather than guessed at, and an unparseable age is an error rather than "delete
+  everything".
+
+- **The dashboard gained free-text search and paging**, and the ecosystem dropdown is now built
+  from the full history rather than one page of it.
+
 - **Rules can say more about themselves.** Five optional fields, all of which a pack written
   before them behaves identically without:
   - `severity: error|warning|note` — how *bad* a failure is, as opposed to `confidence`'s how
@@ -36,28 +49,33 @@ after 1.0.
   to type 'number'` printed underneath, which is the part that tells you what to change. The
   report now shows the matched line with the lines either side, each numbered and the matched one
   marked. `--context <N>` sets the window (default 3; `--context 0` restores the old terse view).
+
 - **The report tells you which line it matched, and how many times.** A rule that fired twelve
   times looked exactly like one that fired once, because the engine only ever reported the first
   occurrence.
+
 - **The report shows the rule id and the fingerprint.** Both were previously reachable only
   through `--json`, which meant you could read an entire report and still not know what to pass
   to `cifail rules explain`, or what line `cifail gate`'s baseline would key on.
+
 - **SARIF results point at the line the rule matched**, with the matched text as a `snippet`.
   Every result was previously pinned to line 1, so GitHub Code Scanning put every annotation at
   the top of the file regardless of where the failure was. The snippet matters because the
   artifact a SARIF result names is usually a CI log that no longer exists by the time anyone
   reads the finding.
+
 - **Markdown reports include the context block** rather than the bare line — on a PR comment or a
   step summary there is no terminal to go and look at the original log in.
+
 - `--json` gains `LineNumber`, `ContextBefore`, `ContextAfter` and `OccurrenceCount` on each
   match. All four are **omitted when they carry nothing**, so an existing consumer sees exactly
   the document it saw before.
+
 - **Stored history keeps the context block**, so `cifail history <id>` and the dashboard detail
   pane can show a failure with its surroundings. Previously the excerpt was the matched line
   alone, which meant a recorded failure could never be re-read in context once the CI log was
   gone. The excerpt cap grew from 500 to 2000 characters (note this is more log text at rest —
   see SECURITY.md).
-
 
 - **A repository can ship its own rule packs.** Rules are most useful when they are specific to
   one repo ("two runs of the same seed produced different bytes"), and until now the only place
@@ -88,22 +106,28 @@ after 1.0.
   recomputed per scrape, not monotonic process counters), and the per-fingerprint series is
   capped at 10 because a fingerprint label is unbounded. Authenticated like every other
   route; see `deploy/README.md` for the scrape config.
+
 - **`GET /openapi.json`** — a static OpenAPI 3.0 description of the API, with a test asserting
   every documented route still answers.
+
 - **The dashboard gained three panels**: a failures-per-day sparkline over the last 30 days
   (drawn including the quiet days — a chart built only from the days that had failures hides
   exactly the gaps you want to see), the noisiest tests from the per-test flakiness data, and
   cluster drill-down that expands to the failures in each group and links straight to them.
   All of it is still server-rendered with no JavaScript: the chart is inline SVG and the
   drill-down is `<details>`, so both work with scripting disabled.
+
 - **Scala/sbt and Elixir/Mix are now recognized ecosystems**, with 6 rules each: Scala type
   mismatch (Scala 2 *and* 3 wording), unresolved symbol, sbt dependency resolution,
   conflicting cross-versions, ScalaTest; Elixir compile errors, undefined/private functions,
   Mix dependency drift, Hex package resolution, ExUnit, and Elixir/OTP version mismatch.
+
 - **Kubernetes and Helm** join Docker and Terraform in the `infra` pack: `ImagePullBackOff`,
   `CrashLoopBackOff`, rollout timeouts, failed Helm releases and template render errors.
+
 - **Kotlin** rules in the `java` pack: unresolved reference, type mismatch (including
   nullability), and the Gradle JVM-target mismatch between `compileJava` and `compileKotlin`.
+
 - **45 new rules in total** (91 → 136), each with a fixture proving it matches real tool
   output and wins the ranking:
   - **node** (6 → 14): `npm ci` lockfile mismatch, `EBADENGINE`, `EINTEGRITY`, yarn
@@ -134,6 +158,31 @@ after 1.0.
   token.
 
 ### Fixed
+
+- **The dashboard's filters only ever searched the newest 200 records.** It fetched
+  `GetRecent(200)` and filtered that in memory, so "show me resolved failures" could not find one
+  recorded any earlier — the page said "No failures match" as though it had looked. Filtering,
+  counting and paging now happen in the store. A new side-interface (`IHistoryQuery`, alongside
+  `IAnalysisStats` and `IClusterer`) carries it, with an in-memory fallback for stores that don't
+  implement it; both paths share one definition of what each filter means, and a test asserts
+  they return identical rows.
+
+- **A very large log could exhaust memory before analysis started.** Nothing capped the input,
+  while a log document holds the raw text, the normalized text and a line array, and the
+  similarity path scrubs the whole thing seven more times. Logs over ~8 MB now keep their head
+  and their tail and drop the middle, marked with a visible `[... cifail: middle of the log
+  omitted ...]`. Both ends are kept deliberately: in CI the failure is at the end, while the
+  beginning carries the tool versions and command line the ecosystem detector keys on.
+
+- **`cifail serve` no longer blocks a response on outbound notifications.** Channels are blocking
+  HTTP/SMTP calls with a 10-second timeout each, dispatched inline — so six configured channels
+  could add a minute to the `POST /analyze` that triggered them. Delivery now runs off the
+  request thread; the event filter and dedupe still run synchronously, so suppression decisions
+  keep their order.
+
+- **SQLite history gained an index on `analyzed_at`** (every `--since` filter sorted and ranged
+  on it with no index) and now runs in **WAL** mode with a busy timeout, so a dashboard render no
+  longer serializes against a concurrent `/analyze`.
 
 - **`php-call-undefined` and `php-fatal-uncaught` both matched the same line with confidence
   0.8**, so which one was reported as the root cause came down to alphabetical order by rule id.
@@ -190,7 +239,6 @@ after 1.0.
   cookie expires after 12 hours and `POST /ui/logout` clears it. The notification dedupe map no
   longer grows without bound in a long-running server.
 
-
 - **`github-actions-error` now recognizes the `::error::` form**, not just the `##[error]`
   one. They are two spellings of the same annotation — `::error::msg` is what a script
   *writes*, `##[error]msg` is how the runner *renders* it in the log you download from the
@@ -199,25 +247,31 @@ after 1.0.
   exactly the logs it tells you to produce and falling through to the vague non-zero-exit rule.
   The annotation-properties spelling (`::error file=a.cs,line=12::msg`) matches too, without
   the properties leaking into the reported message.
+
 - **A long absolute log path no longer vanishes from the report header.** Spectre word-wraps a
   rule title and keeps only the first line, so an absolute path — one long word — collapsed to
   `cifail ·…` and every report in a job that analyzed several logs looked identical. The label
   is now shortened from the left, keeping the file name (and, for an expanded test report, the
   test name), which is the part that says which log this is. CI passes absolute paths, so this
   was the common case rather than the rare one.
+
 - **Ecosystem detection only knew each ecosystem's oldest tool.** A yarn or pnpm failure
   need never mention its own lockfile, a mypy or Ruff run has nothing but a `.py` suffix,
   and a SwiftPM build never says "xcodebuild" — so all of those scored below the threshold
   and fell back to `generic`. Tool invocations (`yarn install`, `npm run`, `npx`, `swift
   build`) and modern config files (`pyproject.toml`, `Package.swift`, `Podfile`) are now
   markers, alongside `mypy`/`ruff`/`poetry`/`flake8`/`pylint`.
+
 - **Android and Scala builds now inherit the JVM rules**, because they are JVM builds. An
   Android job killed by the OOM killer used to get the vague `generic-oom` while
   `gradle-daemon-disappeared` sat unused in `java.yaml`. Inheritance is one-directional —
   a Maven build does not pick up Android's aapt2 rules.
+
 - Gradle's `BUILD FAILED` was never a detection marker (only Maven's `BUILD FAILURE` was),
   so a Gradle-only log had nothing strong in it at all.
+
 - `swift-compile-error` no longer restates every XCTest failure.
+
 - **`cifail serve --help` crashed** (`Could not find color or style 'name'`, exit 70) in the
   Docker/full build. Spectre renders option descriptions as markup, and `--tokens-file`'s
   description contained a literal `[name]`. CI now builds the image and *runs* it, since a
@@ -229,8 +283,10 @@ after 1.0.
   under [Teach it a new failure], along with `analyze --top`, `--no-git`, analyzing several
   logs in one run, and the `CIFAIL_AI_MAX_CALLS*` cost caps — all of which shipped
   undocumented.
+
 - Added `SECURITY.md`, which states plainly that a stored analysis keeps a **log excerpt**,
   so your history database can contain whatever secrets were in the logs you analyzed.
+
 - Added issue forms and a PR checklist. The rule-request form asks for a **redacted** log;
   the README previously asked for logs with no redaction guidance at all.
 

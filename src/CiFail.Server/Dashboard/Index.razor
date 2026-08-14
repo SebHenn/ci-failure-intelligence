@@ -25,6 +25,7 @@
             <option value="resolved" selected="@(Status == "resolved")">resolved</option>
         </select>
         <input name="repo" placeholder="filter repo id…" value="@Repo" size="14" />
+        <input name="q" placeholder="search source / text…" value="@Search" size="18" />
         <button class="primary" type="submit">Filter</button>
     </form>
     <span class="grow"></span>
@@ -56,6 +57,25 @@
         @if (_rows.Count == 0)
         {
             <div class="empty">No failures match.</div>
+        }
+
+        @* Paging is plain links, like everything else here — the dashboard ships zero JS. *@
+        @if (_total > PageSize)
+        {
+            <nav class="pager">
+                @if (CurrentPage > 1)
+                {
+                    <a href="@PageHref(CurrentPage - 1)">&larr; newer</a>
+                }
+                <span class="muted">
+                    page @CurrentPage of @TotalPages
+                    (@(_truncated ? $"{_total}+" : _total.ToString()) matching)
+                </span>
+                @if (CurrentPage < TotalPages)
+                {
+                    <a href="@PageHref(CurrentPage + 1)">older &rarr;</a>
+                }
+            </nav>
         }
     </div>
 
@@ -118,7 +138,12 @@
     [SupplyParameterFromQuery] public string? Eco { get; set; }
     [SupplyParameterFromQuery] public string? Status { get; set; }
     [SupplyParameterFromQuery] public string? Repo { get; set; }
+    [SupplyParameterFromQuery(Name = "q")] public string? Search { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int? Page { get; set; }
     [SupplyParameterFromQuery(Name = "sel")] public long? Sel { get; set; }
+
+    /// <summary>Rows per page. Small enough to render fast, large enough to scan.</summary>
+    private const int PageSize = 50;
 
     private IReadOnlyList<StoredAnalysisJson.StoredAnalysisDto> _rows = Array.Empty<StoredAnalysisJson.StoredAnalysisDto>();
     private IReadOnlyList<string> _ecosystems = Array.Empty<string>();
@@ -126,17 +151,43 @@
     private IReadOnlyList<FailureCluster> _clusters = Array.Empty<FailureCluster>();
     private TestStatsSnapshot? _tests;
     private StoredAnalysisJson.StoredAnalysisDto? _detail;
+    private int _total;
+    private bool _truncated;
+
+    private int CurrentPage => Math.Max(1, Page ?? 1);
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(_total / (double)PageSize));
 
     protected override void OnParametersSet()
     {
         using var store = Stores();
 
-        var all = store.GetRecent(200).Select(StoredAnalysisJson.ToDto).ToList();
-        _ecosystems = all.Select(r => r.Ecosystem).Where(e => !string.IsNullOrEmpty(e))
-            .Distinct().OrderBy(e => e, StringComparer.Ordinal).ToList();
-        _rows = all.Where(Match).ToList();
+        // Filter in the store, not in memory. This used to be GetRecent(200) followed by a LINQ
+        // Where, so every filter searched only the newest 200 records: an older resolved failure
+        // was unreachable, and the ecosystem dropdown — built from the same window — silently
+        // dropped any ecosystem that hadn't appeared recently.
+        var page = HistoryService.Query(store, new HistoryQuery
+        {
+            Ecosystem = Eco,
+            Status = Status,
+            RepoId = string.IsNullOrWhiteSpace(Repo) ? null : Repo,
+            Search = Search,
+            Limit = PageSize,
+            Offset = (CurrentPage - 1) * PageSize,
+        });
+
+        _rows = page.Items.Select(StoredAnalysisJson.ToDto).ToList();
+        _total = page.Total;
+        _truncated = page.Truncated;
 
         _stats = StatsService.Compute(store, new StatsQuery { Top = 5 });
+
+        // The ecosystem list comes from the stats snapshot, which aggregates over a far wider
+        // window than one page — so the dropdown offers every ecosystem actually present.
+        _ecosystems = _stats?.ByEcosystem.Select(e => e.Key)
+            .Where(e => !string.IsNullOrEmpty(e))
+            .OrderBy(e => e, StringComparer.Ordinal).ToList()
+            ?? (IReadOnlyList<string>)Array.Empty<string>();
+
         try { _clusters = ClusterService.Compute(store, new ClusterQuery { Top = 5 }).Clusters; }
         catch { _clusters = Array.Empty<FailureCluster>(); }
 
@@ -150,10 +201,17 @@
             : null;
     }
 
-    private bool Match(StoredAnalysisJson.StoredAnalysisDto r) =>
-        (string.IsNullOrEmpty(Eco) || r.Ecosystem == Eco) &&
-        (string.IsNullOrEmpty(Status) || r.Status == Status) &&
-        (string.IsNullOrEmpty(Repo) || (r.RepoId ?? "").Contains(Repo, StringComparison.OrdinalIgnoreCase));
+    /// <summary>Link to another page, preserving the active filters.</summary>
+    private string PageHref(int page)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(Eco)) parts.Add($"eco={Uri.EscapeDataString(Eco)}");
+        if (!string.IsNullOrEmpty(Status)) parts.Add($"status={Uri.EscapeDataString(Status)}");
+        if (!string.IsNullOrEmpty(Repo)) parts.Add($"repo={Uri.EscapeDataString(Repo)}");
+        if (!string.IsNullOrEmpty(Search)) parts.Add($"q={Uri.EscapeDataString(Search)}");
+        if (page > 1) parts.Add($"page={page}");
+        return parts.Count == 0 ? "/" : "/?" + string.Join("&", parts);
+    }
 
     private string DetailHref(long id)
     {

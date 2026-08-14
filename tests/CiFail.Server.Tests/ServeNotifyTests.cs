@@ -38,14 +38,36 @@ public sealed class ServeNotifyTests : IClassFixture<NotifyServeFixture>
         resolve.EnsureSuccessStatusCode();
 
         var fingerprint = first.Fingerprint;
-        var forThis = _fixture.Notifier.Received
+
+        // Notifications are dispatched off the request thread (R37): a channel is a blocking HTTP
+        // or SMTP call with a 10s timeout, and six of them inline could add a minute to the
+        // /analyze that triggered them. So the assertion waits for the effect instead of assuming
+        // it landed before the response did — asserting immediately would pass on timing luck.
+        var forThis = await Eventually(() => _fixture.Notifier.Received
             .Where(n => n.Analysis.Fingerprint == fingerprint)
-            .ToList();
+            .ToList(),
+            done: list => list.Count >= 3);
 
         forThis.Select(n => n.Event).Should().ContainInOrder(
             NotificationEvent.NewFailure,
             NotificationEvent.Recurrence,
             NotificationEvent.Resolved);
+    }
+
+    /// <summary>
+    /// Poll until <paramref name="done"/> is satisfied or the budget runs out, then return
+    /// whatever we have so the caller's own assertion produces the failure message.
+    /// </summary>
+    private static async Task<T> Eventually<T>(
+        Func<T> read, Func<T, bool> done, int timeoutMs = 10_000)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (true)
+        {
+            var value = read();
+            if (done(value) || Environment.TickCount64 > deadline) return value;
+            await Task.Delay(25);
+        }
     }
 
     private async Task<AnalysisJson.AnalysisDto> Analyze(string log)

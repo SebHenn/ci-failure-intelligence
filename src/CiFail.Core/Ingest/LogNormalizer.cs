@@ -12,17 +12,74 @@ namespace CiFail.Core.Ingest;
 /// </summary>
 public static partial class LogNormalizer
 {
+    /// <summary>
+    /// Largest log cifail will analyze in full, in characters (~8 MB of text).
+    ///
+    /// <para>
+    /// Nothing bounded this. A <see cref="LogDocument"/> holds the raw text, the normalized text
+    /// and a line array — three full copies — and <see cref="Scrub"/> makes seven more passes over
+    /// the whole thing on the similarity path, so a 200 MB log meant gigabytes of allocation, all
+    /// of it on the large object heap. Past roughly a billion characters .NET cannot represent the
+    /// string at all and the read throws before analysis even starts.
+    /// </para>
+    /// </summary>
+    public const int MaxCharacters = 8 * 1024 * 1024;
+
+    /// <summary>
+    /// Marker inserted where the middle of an oversized log was dropped. Deliberately visible: a
+    /// silently truncated log is one where the user cannot tell why a rule didn't fire.
+    /// </summary>
+    public const string ElisionMarker = "[... cifail: middle of the log omitted ...]";
+
     public static LogDocument Build(string source, string rawText)
     {
-        var normalized = Normalize(rawText);
+        // RawText is the windowed text, not the caller's original: the document describes what was
+        // actually analyzed, and holding a reference to a hundreds-of-megabytes string we chose
+        // not to look at would defeat the point of windowing it.
+        var windowed = Window(rawText);
+        var normalized = Normalize(windowed);
         var lines = normalized.Split('\n');
         return new LogDocument
         {
             Source = source,
-            RawText = rawText,
+            RawText = windowed,
             NormalizedText = normalized,
             NormalizedLines = lines,
         };
+    }
+
+    /// <summary>
+    /// Keep the head and the tail of an oversized log, dropping the middle.
+    ///
+    /// <para>
+    /// Not a hard refusal, and not a plain <c>Take(n)</c>: in CI the failure is almost always near
+    /// the <i>end</i> (the compiler error, the assertion, the exit code), while the beginning
+    /// carries the tool versions and the command line that identify the ecosystem. Cutting from
+    /// the front would throw away the answer; cutting from the back would throw away the context
+    /// that detection needs. So both ends are kept and the middle — usually thousands of lines of
+    /// progress output — goes.
+    /// </para>
+    /// </summary>
+    public static string Window(string raw, int maxCharacters = MaxCharacters)
+    {
+        if (string.IsNullOrEmpty(raw) || raw.Length <= maxCharacters) return raw;
+
+        // Weighted to the tail, which is where the failure is.
+        var headBudget = maxCharacters / 4;
+        var tailBudget = maxCharacters - headBudget - ElisionMarker.Length - 2;
+
+        // Snap to line boundaries so neither half starts or ends mid-line.
+        var headEnd = raw.LastIndexOf('\n', Math.Min(headBudget, raw.Length - 1));
+        if (headEnd <= 0) headEnd = headBudget;
+
+        var tailStart = raw.IndexOf('\n', raw.Length - tailBudget);
+        if (tailStart < 0 || tailStart >= raw.Length - 1) tailStart = raw.Length - tailBudget;
+
+        return new StringBuilder(maxCharacters)
+            .Append(raw, 0, headEnd)
+            .Append('\n').Append(ElisionMarker).Append('\n')
+            .Append(raw, tailStart + 1, raw.Length - tailStart - 1)
+            .ToString();
     }
 
     /// <summary>Strip ANSI, normalize newlines, drop leading CI timestamps, trim trailing space.</summary>
