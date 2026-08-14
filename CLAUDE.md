@@ -205,7 +205,16 @@ Two-layer design so the core logic stays reusable by a future GUI/web UI:
    get the vague `generic-oom` while `gradle-daemon-disappeared` sat unused in `java.yaml`,
    and the Kotlin rules (which live in that pack) never applied on the platform where most
    Kotlin is written. One-directional: Java must not pick up Android's aapt2 rules.
+   **R34:** a `RuleMatch` also carries `LineNumber` (1-based), `ContextBefore`/`ContextAfter`
+   (window size from `AnalysisOptions.ContextLines`, CLI `--context`, default 3) and
+   `OccurrenceCount` (`regex.Matches`, capped at `RuleEngine.MaxCountedOccurrences` = 100).
+   `ContextBlock`/`ContextStartLine` are the derived pair renderers use. This is what lets the
+   console show numbered evidence, SARIF emit a real `region.startLine` + `snippet`, and the
+   stored excerpt be re-read with its surroundings. The JSON fields are **omitted when empty**
+   (null, not 0/[]) so an old consumer's document is byte-identical.
 4. `Analysis/FingerprintBuilder` — `ruleId:hash` identity from scrubbed signature.
+   **Note it hashes `MatchedLine`, not the context block** — widening the signature would
+   re-fingerprint every existing failure, which is Phase 3's problem, not R34's.
 5. Similarity + persistence (only when an `IAnalysisStore` is supplied): TF-IDF cosine
    over scrubbed bag-of-terms vs. stored history; then persists the run unless
    `--no-history`. **R10 (opt-in):** when an `IAiEmbedder` is wired *and* the store also

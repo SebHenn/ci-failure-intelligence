@@ -87,6 +87,11 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         [Description("Maximum number of similar past failures to show.")]
         [DefaultValue(DefaultTopSimilar)]
         public int Top { get; init; } = DefaultTopSimilar;
+
+        [CommandOption("--context <N>")]
+        [Description("Log lines to show either side of the matched line (0 for just the line).")]
+        [DefaultValue(AnalysisOptions.DefaultContextLines)]
+        public int Context { get; init; } = AnalysisOptions.DefaultContextLines;
     }
 
     /// <summary>Shared by the option default and the "--top is ignored with --server" check.</summary>
@@ -152,6 +157,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             EnableAi = settings.Ai,
             RecordHistory = !settings.NoHistory,
             TopSimilar = settings.Top,
+            ContextLines = Math.Max(0, settings.Context),
         };
 
         // analyze --server (R18): the server's POST /analyze runs the full pipeline (rules +

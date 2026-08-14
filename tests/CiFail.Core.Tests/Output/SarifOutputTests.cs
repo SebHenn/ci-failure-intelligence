@@ -157,4 +157,51 @@ public class SarifOutputTests
 
         uri.Should().Be("stdin");
     }
+
+    private static JsonElement RegionOf(string json) =>
+        JsonDocument.Parse(json).RootElement.GetProperty("runs")[0].GetProperty("results")[0]
+            .GetProperty("locations")[0].GetProperty("physicalLocation").GetProperty("region");
+
+    /// <summary>
+    /// Every result used to be pinned to <c>startLine: 1</c> because nothing tracked line numbers
+    /// (R34) — so Code Scanning put every annotation at the top of the file no matter where the
+    /// failure actually was.
+    /// </summary>
+    [Fact]
+    public void Result_points_at_the_line_the_rule_matched()
+    {
+        var dto = Matched("build.log", "npm-404", "404", 0.9, "npm-404:abc");
+        var withLine = new AnalysisJson.AnalysisDto
+        {
+            Source = dto.Source,
+            Ecosystem = dto.Ecosystem,
+            Matched = true,
+            Fingerprint = dto.Fingerprint,
+            RootCause = new AnalysisJson.MatchDto
+            {
+                RuleId = "npm-404", Title = "404", Category = "dependency", Confidence = 0.9,
+                MatchedLine = "npm ERR! 404 Not Found", Fix = "install it", LineNumber = 87,
+            },
+        };
+
+        var region = RegionOf(SarifOutput.Build(new[] { withLine }));
+
+        region.GetProperty("startLine").GetInt32().Should().Be(87);
+        region.GetProperty("snippet").GetProperty("text").GetString()
+            .Should().Be("npm ERR! 404 Not Found",
+                "the CI log the artifact uri names is usually gone by the time anyone reads this");
+    }
+
+    /// <summary>
+    /// SARIF requires a positive startLine, so an unmatched failure — which has no line of its
+    /// own — still has to point somewhere valid.
+    /// </summary>
+    [Fact]
+    public void An_unmatched_failure_still_emits_a_valid_region()
+    {
+        var region = RegionOf(SarifOutput.Build(new[] { Unmatched("build.log", "unknown:abc") }));
+
+        region.GetProperty("startLine").GetInt32().Should().Be(1);
+        region.TryGetProperty("snippet", out _).Should().BeFalse();
+    }
 }

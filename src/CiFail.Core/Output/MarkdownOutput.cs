@@ -32,10 +32,18 @@ public static class MarkdownOutput
                 if (!string.IsNullOrWhiteSpace(rc.MatchedLine))
                 {
                     sb.AppendLine();
-                    sb.AppendLine("**What broke**");
+
+                    // Say where, and how often, when we know (R34).
+                    var where = rc.LineNumber is > 0 ? $" (line {rc.LineNumber})" : string.Empty;
+                    var often = rc.OccurrenceCount is > 1 ? $" — {rc.OccurrenceCount} occurrences" : string.Empty;
+                    sb.AppendLine($"**What broke**{where}{often}");
+
                     sb.AppendLine();
                     sb.AppendLine("```");
-                    sb.AppendLine(rc.MatchedLine.Trim());
+                    // The context block, not the bare line: on a PR comment or a step summary the
+                    // reader has no terminal to go and look at the original log in.
+                    foreach (var line in ContextBlock(rc))
+                        sb.AppendLine(line);
                     sb.AppendLine("```");
                 }
                 if (!string.IsNullOrWhiteSpace(rc.Fix))
@@ -89,6 +97,19 @@ public static class MarkdownOutput
         }
 
         return sb.ToString().TrimEnd() + "\n";
+    }
+
+    /// <summary>
+    /// The matched line with its surrounding log, oldest first. Inside a fenced block, so no
+    /// escaping is needed — but a stray fence in the log would end it early, hence the guard.
+    /// </summary>
+    private static IEnumerable<string> ContextBlock(AnalysisJson.MatchDto rc)
+    {
+        var lines = (rc.ContextBefore ?? new List<string>())
+            .Append(rc.MatchedLine.Trim())
+            .Concat(rc.ContextAfter ?? new List<string>());
+
+        return lines.Select(l => l.TrimEnd().Replace("```", "'''"));
     }
 
     /// <summary>Neutralize characters that would break a single-line Markdown cell/inline span.</summary>

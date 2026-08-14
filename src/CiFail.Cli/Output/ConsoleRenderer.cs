@@ -49,7 +49,7 @@ public static class ConsoleRenderer
         var body = new Markup(
             "[bold]How to fix it[/]\n" +
             $"{Markup.Escape(rc.Fix.TrimEnd())}\n\n" +
-            $"[grey]The line that gave it away:[/]\n{Markup.Escape(Truncate(rc.MatchedLine, 100))}" +
+            RenderEvidence(rc, console.Profile.Width) +
             (string.IsNullOrWhiteSpace(rc.Rule.Docs)
                 ? string.Empty
                 : $"\n\n[grey]Learn more:[/] [link]{Markup.Escape(rc.Rule.Docs!)}[/]"));
@@ -71,6 +71,59 @@ public static class ConsoleRenderer
             console.Write(table);
         }
     }
+
+    /// <summary>
+    /// The evidence block: the matched line with its surrounding log, each line numbered and the
+    /// matched one marked.
+    ///
+    /// <para>
+    /// Every release before this showed a single line truncated to 100 characters, which for a
+    /// compiler error threw away the "expected X, got Y" underneath it — the part that says what
+    /// to change. Numbering the lines makes the report locatable in the original log.
+    /// </para>
+    /// </summary>
+    private static string RenderEvidence(RuleMatch rc, int consoleWidth)
+    {
+        var occurrences = rc.OccurrenceCount > 1
+            ? $" [grey]({Occurrences(rc)})[/]"
+            : string.Empty;
+
+        var heading = rc.LineNumber > 0
+            ? $"[grey]The line that gave it away[/] [grey](line {rc.LineNumber})[/]{occurrences}[grey]:[/]"
+            : $"[grey]The line that gave it away{occurrences}:[/]";
+
+        // Leave room for the gutter ("  1234 > ") and the panel's own border/padding.
+        var width = Math.Max(MinSourceWidth, consoleWidth - EvidenceChrome);
+
+        var block = rc.ContextBlock.ToList();
+        if (block.Count == 1 && rc.LineNumber == 0)
+            return $"{heading}\n{Markup.Escape(Truncate(rc.MatchedLine, width))}";
+
+        var gutter = Math.Max(3, (rc.ContextStartLine + block.Count).ToString().Length);
+        var lines = new List<string>(block.Count);
+
+        for (var i = 0; i < block.Count; i++)
+        {
+            var number = rc.ContextStartLine + i;
+            var isMatch = number == rc.LineNumber;
+            var text = Markup.Escape(Truncate(block[i], width));
+
+            // The marker has to survive a console that can't render the glyph, hence Glyphs.
+            lines.Add(isMatch
+                ? $"[grey]{number.ToString().PadLeft(gutter)}[/] [red]{Glyphs.Bullet}[/] [bold]{text}[/]"
+                : $"[grey]{number.ToString().PadLeft(gutter)}   {text}[/]");
+        }
+
+        return $"{heading}\n{string.Join("\n", lines)}";
+    }
+
+    private static string Occurrences(RuleMatch rc) =>
+        rc.OccurrenceCount >= Core.Rules.RuleEngine.MaxCountedOccurrences
+            ? $"{rc.OccurrenceCount}+ times"
+            : $"{rc.OccurrenceCount} times";
+
+    /// <summary>Gutter ("1234 > ") plus the panel border and padding.</summary>
+    private const int EvidenceChrome = 16;
 
     private static void RenderNoMatch(IAnsiConsole console, Analysis analysis)
     {
@@ -123,6 +176,17 @@ public static class ConsoleRenderer
 
     private static void RenderNextSteps(IAnsiConsole console, Analysis analysis)
     {
+        // The identifiers every follow-up command needs. Neither used to appear anywhere in the
+        // human view: you could read the whole report and still not know what to pass to
+        // `cifail rules explain`, or what line a gate baseline would key on — both were
+        // reachable only through --json.
+        console.WriteLine();
+        if (analysis.RootCause is { } rc)
+            console.MarkupLine($"[grey]Rule[/] [bold]{Markup.Escape(rc.Rule.Id)}[/] " +
+                               $"[grey]{Glyphs.Dot} explain it with[/] [bold]cifail rules explain {Markup.Escape(rc.Rule.Id)}[/]");
+
+        console.MarkupLine($"[grey]Fingerprint[/] [bold]{Markup.Escape(analysis.Fingerprint.ToString())}[/]");
+
         // Once they've fixed it, let them record how — that's what powers the
         // "you've seen this before" hint next time. Only show when we have an id.
         if (analysis.HistoryId is { } id)

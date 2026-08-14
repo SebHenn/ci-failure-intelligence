@@ -65,7 +65,7 @@ public sealed class AnalysisService
         var log = LogNormalizer.Build(source, rawText);
         var ecosystem = EcosystemDetector.Detect(log, options.EcosystemOverride);
         var warnings = new List<string>();
-        var matches = _engine.Match(log, ecosystem, warnings);
+        var matches = _engine.Match(log, ecosystem, warnings, options.ContextLines);
         var rootCause = matches.Count > 0 ? matches[0] : null;
         var fingerprint = FingerprintBuilder.Build(log, rootCause);
 
@@ -222,12 +222,33 @@ public sealed class AnalysisService
         }).ToList();
     }
 
+    /// <summary>
+    /// What gets persisted with the record and shown by <c>cifail history &lt;id&gt;</c> and the
+    /// dashboard detail pane.
+    ///
+    /// <para>
+    /// This used to be the matched line alone, so a stored failure could never be re-read with any
+    /// of the surrounding output — you had to go back to the original log, which in CI is usually
+    /// gone. It now keeps the matched line together with its context, which is the same block the
+    /// console panel shows.
+    /// </para>
+    /// </summary>
     private static string BuildExcerpt(LogDocument log, RuleMatch? rootCause)
     {
-        var text = rootCause?.MatchedLine ?? log.NormalizedText;
+        var text = rootCause is not null
+            ? string.Join('\n', rootCause.ContextBlock)
+            : log.NormalizedText;
+
         text = text.Trim();
-        return text.Length <= 500 ? text : text[..500];
+        return text.Length <= ExcerptMaxChars ? text : text[..ExcerptMaxChars];
     }
+
+    /// <summary>
+    /// Cap on the stored excerpt. Raised from 500 when the excerpt grew from one line to a context
+    /// block; still small enough that history stays a set of pointers rather than a copy of every
+    /// log ever analyzed (and every stored byte is a byte of possible secrets — see SECURITY.md).
+    /// </summary>
+    public const int ExcerptMaxChars = 2000;
 
     private static string HashRaw(string raw)
     {

@@ -85,7 +85,11 @@ public static class SarifOutput
                         physicalLocation = new
                         {
                             artifactLocation = new { uri = ArtifactUri(a.Source), uriBaseId = "SRCROOT" },
-                            region = new { startLine = 1 },
+                            // The line the rule actually matched (R34), with the matched text as
+                            // the snippet. Every result used to be pinned to line 1 because
+                            // nothing tracked line numbers — which put every Code Scanning
+                            // annotation at the top of the file regardless of where the failure was.
+                            region = Region(a),
                         },
                     },
                 },
@@ -124,6 +128,26 @@ public static class SarifOutput
     /// take the file part; relativize to the working dir for Code Scanning to anchor it; for stdin
     /// (no real file) emit a stable placeholder.
     /// </summary>
+    /// <summary>
+    /// The SARIF <c>region</c> for a result: the matched line, with the matched text as a
+    /// <c>snippet</c> so a viewer can show the evidence without fetching the artifact — which
+    /// matters here because the "artifact" is usually a CI log that no longer exists.
+    /// </summary>
+    private static object Region(AnalysisJson.AnalysisDto a)
+    {
+        var line = a.RootCause?.LineNumber ?? 0;
+        var snippet = a.RootCause?.MatchedLine;
+
+        // SARIF startLine is 1-based and must be positive; fall back to 1 for an unmatched
+        // failure, which has no line of its own to point at.
+        if (line <= 0)
+            return new { startLine = 1 };
+
+        return string.IsNullOrWhiteSpace(snippet)
+            ? new { startLine = line }
+            : new { startLine = line, snippet = new { text = snippet } };
+    }
+
     private static string ArtifactUri(string source)
     {
         var sep = source.IndexOf("::", StringComparison.Ordinal);

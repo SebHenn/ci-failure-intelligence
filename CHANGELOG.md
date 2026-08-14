@@ -9,6 +9,35 @@ after 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Failures now come with their surrounding log.** cifail used to show you one line, truncated
+  to 100 characters — so for a compiler error it threw away the `Type 'string' is not assignable
+  to type 'number'` printed underneath, which is the part that tells you what to change. The
+  report now shows the matched line with the lines either side, each numbered and the matched one
+  marked. `--context <N>` sets the window (default 3; `--context 0` restores the old terse view).
+- **The report tells you which line it matched, and how many times.** A rule that fired twelve
+  times looked exactly like one that fired once, because the engine only ever reported the first
+  occurrence.
+- **The report shows the rule id and the fingerprint.** Both were previously reachable only
+  through `--json`, which meant you could read an entire report and still not know what to pass
+  to `cifail rules explain`, or what line `cifail gate`'s baseline would key on.
+- **SARIF results point at the line the rule matched**, with the matched text as a `snippet`.
+  Every result was previously pinned to line 1, so GitHub Code Scanning put every annotation at
+  the top of the file regardless of where the failure was. The snippet matters because the
+  artifact a SARIF result names is usually a CI log that no longer exists by the time anyone
+  reads the finding.
+- **Markdown reports include the context block** rather than the bare line — on a PR comment or a
+  step summary there is no terminal to go and look at the original log in.
+- `--json` gains `LineNumber`, `ContextBefore`, `ContextAfter` and `OccurrenceCount` on each
+  match. All four are **omitted when they carry nothing**, so an existing consumer sees exactly
+  the document it saw before.
+- **Stored history keeps the context block**, so `cifail history <id>` and the dashboard detail
+  pane can show a failure with its surroundings. Previously the excerpt was the matched line
+  alone, which meant a recorded failure could never be re-read in context once the CI log was
+  gone. The excerpt cap grew from 500 to 2000 characters (note this is more log text at rest —
+  see SECURITY.md).
+
 ### Fixed
 
 - **Rule patterns now run under a 2-second timeout.** cifail loads rule packs from the

@@ -109,6 +109,10 @@ public static class AnalysisJson
         MatchedLine = m.MatchedLine,
         Score = m.Confidence,
         Fix = m.Fix,
+        LineNumber = m.LineNumber ?? 0,
+        ContextBefore = m.ContextBefore ?? (IReadOnlyList<string>)Array.Empty<string>(),
+        ContextAfter = m.ContextAfter ?? (IReadOnlyList<string>)Array.Empty<string>(),
+        OccurrenceCount = m.OccurrenceCount ?? 1,
     };
 
     private static MatchDto ToMatchDto(RuleMatch m) => new()
@@ -121,6 +125,13 @@ public static class AnalysisJson
         Fix = m.Fix,
         Docs = m.Rule.Docs,
         Captures = m.Captures.Count > 0 ? new Dictionary<string, string>(m.Captures) : null,
+
+        // Additive (R34). Null rather than 0/[] when absent so `WhenWritingNull` keeps them out
+        // of the document entirely and an older consumer sees exactly what it saw before.
+        LineNumber = m.LineNumber > 0 ? m.LineNumber : null,
+        ContextBefore = m.ContextBefore.Count > 0 ? m.ContextBefore.ToList() : null,
+        ContextAfter = m.ContextAfter.Count > 0 ? m.ContextAfter.ToList() : null,
+        OccurrenceCount = m.OccurrenceCount > 1 ? m.OccurrenceCount : null,
     };
 
     public sealed class AnalysisDto
@@ -147,6 +158,21 @@ public static class AnalysisJson
         public string Fix { get; init; } = "";
         public string? Docs { get; init; }
         public Dictionary<string, string>? Captures { get; init; }
+
+        /// <summary>1-based line of <see cref="MatchedLine"/> in the normalized log; null when unknown.</summary>
+        public int? LineNumber { get; init; }
+
+        /// <summary>Lines immediately before the matched line. Omitted when empty.</summary>
+        public List<string>? ContextBefore { get; init; }
+
+        /// <summary>Lines immediately after the matched line. Omitted when empty.</summary>
+        public List<string>? ContextAfter { get; init; }
+
+        /// <summary>
+        /// How many times the rule matched. Omitted when 1, so the common case of a single
+        /// occurrence doesn't grow every document.
+        /// </summary>
+        public int? OccurrenceCount { get; init; }
     }
 
     public sealed class SimilarDto

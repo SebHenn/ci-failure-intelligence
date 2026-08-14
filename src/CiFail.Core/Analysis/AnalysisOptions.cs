@@ -14,4 +14,16 @@ public sealed class AnalysisOptions
 
     /// <summary>Maximum number of similar past failures to return (CLI: --top).</summary>
     public int TopSimilar { get; init; } = 3;
+
+    /// <summary>
+    /// Log lines to keep either side of a matched line (CLI: --context). Zero shows the matched
+    /// line alone, which is what every release before this one did.
+    /// </summary>
+    public int ContextLines { get; init; } = DefaultContextLines;
+
+    /// <summary>
+    /// Enough to show what a compiler printed under the error line without the panel becoming
+    /// the log itself.
+    /// </summary>
+    public const int DefaultContextLines = 3;
 }

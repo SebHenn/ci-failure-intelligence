@@ -19,16 +19,27 @@ and it doesn't care what language your project is in.
 ```console
 $ dotnet build 2>&1 | cifail analyze
 
-── cifail · stdin ───────────────────────────────────────────────
-╭─ What broke: NuGet package not found  (dotnet · dependency · high confidence) ─╮
-│ How to fix it                                                                  │
-│ Package 'Newtonsoft.Jsn' was not found in any configured NuGet source.         │
-│ Check the package name/version for typos, and confirm the right source is      │
-│ configured in nuget.config (e.g. nuget.org or a private feed).                 │
-│                                                                                │
-│ The line that gave it away:                                                    │
-│ error NU1101: Unable to find package Newtonsoft.Jsn …                          │
-╰────────────────────────────────────────────────────────────────────────────────╯
+── cifail · stdin ──────────────────────────────────────────────────────────────
+╭─What broke: NuGet package not found  (dotnet · dependency · high confidence)─╮
+│ How to fix it                                                                │
+│ Package 'Newtonsoft.Jsn' was not found in any configured NuGet source.       │
+│ Check the package name/version for typos, and confirm the right source is    │
+│ configured in nuget.config (e.g. nuget.org or a private feed).               │
+│                                                                              │
+│ The line that gave it away (line 3) (2 times):                               │
+│   1   Determining projects to restore...                                     │
+│   2     Restoring packages for C:\proj\src\App\App.csproj...                 │
+│   3 • C:\proj\src\App\App.csproj : error NU1101: Unable to find packa…       │
+│   4     Failed to restore C:\proj\src\App\App.csproj (in 412 ms).            │
+│   5                                                                          │
+│   6   Build FAILED.                                                          │
+│                                                                              │
+│ Learn more:                                                                  │
+│ https://learn.microsoft.com/nuget/reference/errors-and-warnings/nu1101       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+Rule nuget-nu1101 · explain it with cifail rules explain nuget-nu1101
+Fingerprint nuget-nu1101:3f95e732e609
 Saved as #1. Once you've fixed it, record how so future-you remembers:
   cifail resolve 1 --note "what fixed it"
 ```
@@ -216,6 +227,9 @@ we fix this last time?" history fills itself in. In `cifail history` these show 
   other scripts. It is **always a JSON array**, one element per thing analyzed — one log
   gives you a one-element array, and a test report with no failures gives you `[]`. So
   `cifail analyze build.log --json | jq '.[0].RootCause.RuleId'` works whatever you pass it.
+- `--context <N>` — how many log lines to show either side of the line that matched
+  (default 3). The lines around a failure are usually where the detail is — a compiler
+  prints *what* it wanted on the next line. `--context 0` shows just the matched line.
 - `--type dotnet|node|python|java|go|rust|ruby|php|cpp|swift|android|scala|elixir|infra|generic` — tell
   cifail what kind of log this is, if it guesses wrong.
 - `--format auto|log|junit|trx` — feed cifail a **structured test report** instead of a raw

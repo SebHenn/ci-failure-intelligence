@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using CiFail.Core.Analysis;
 using CiFail.Core.Models;
 
 namespace CiFail.Core.Rules;
@@ -49,7 +50,10 @@ public sealed class RuleEngine
     /// discipline exists to prevent, so the caller is given the chance to say so.
     /// </param>
     public IReadOnlyList<RuleMatch> Match(
-        LogDocument log, Ecosystem ecosystem, ICollection<string>? diagnostics = null)
+        LogDocument log,
+        Ecosystem ecosystem,
+        ICollection<string>? diagnostics = null,
+        int contextLines = AnalysisOptions.DefaultContextLines)
     {
         var matches = new List<RuleMatch>();
 
@@ -76,9 +80,16 @@ public sealed class RuleEngine
             }
 
             Match m;
+            int occurrences;
             try
             {
                 m = regex.Match(log.NormalizedText);
+                if (!m.Success) continue;
+
+                // Count the rest too, capped: "12 of these" is a materially different report from
+                // "one of these", and it used to be invisible. The cap keeps a rule that matches
+                // every line of a 100k-line log from dominating the run.
+                occurrences = CountOccurrences(regex, log.NormalizedText, m);
             }
             catch (RegexMatchTimeoutException)
             {
@@ -88,16 +99,19 @@ public sealed class RuleEngine
                 continue;
             }
 
-            if (!m.Success) continue;
-
             var captures = ExtractCaptures(regex, m);
+            var line = LocateLine(log, m.Index);
             matches.Add(new RuleMatch
             {
                 Rule = rule,
                 Captures = captures,
-                MatchedLine = MatchedLine(log.NormalizedText, m.Index),
+                MatchedLine = line.Text,
                 Score = rule.Confidence,
                 Fix = Interpolate(rule.Fix, captures),
+                LineNumber = line.Number,
+                ContextBefore = Context(log.NormalizedLines, line.Number, contextLines, before: true),
+                ContextAfter = Context(log.NormalizedLines, line.Number, contextLines, before: false),
+                OccurrenceCount = occurrences,
             });
         }
 
@@ -152,9 +166,19 @@ public sealed class RuleEngine
         return captures;
     }
 
-    private static string MatchedLine(string text, int index)
+    /// <summary>
+    /// The line containing <paramref name="index"/>, with its 1-based number.
+    ///
+    /// <para>
+    /// The number is the count of newlines before the line start — an O(n) scan of the prefix,
+    /// paid once per matching rule rather than per line, which is cheap next to the regex that
+    /// just ran over the whole text.
+    /// </para>
+    /// </summary>
+    private static (string Text, int Number) LocateLine(LogDocument log, int index)
     {
-        if (text.Length == 0) return string.Empty;
+        var text = log.NormalizedText;
+        if (text.Length == 0) return (string.Empty, 0);
 
         // The match can begin on a newline itself (e.g. a pattern starting with \s), so anchor on
         // the line start and search the line end forward from there — never backwards (which would
@@ -163,8 +187,60 @@ public sealed class RuleEngine
         var start = text.LastIndexOf('\n', index) + 1;
         var end = text.IndexOf('\n', start);
         if (end < 0) end = text.Length;
-        return text[start..end].Trim();
+
+        var number = 1;
+        for (var i = 0; i < start; i++)
+            if (text[i] == '\n') number++;
+
+        return (text[start..end].Trim(), number);
     }
+
+    /// <summary>
+    /// Lines either side of a 1-based line number, in log order. Blank lines at the outer edge are
+    /// trimmed — padding a panel with the empty lines a build tool happened to print is noise.
+    /// </summary>
+    private static IReadOnlyList<string> Context(
+        IReadOnlyList<string> lines, int lineNumber, int count, bool before)
+    {
+        if (count <= 0 || lineNumber <= 0 || lines.Count == 0) return Array.Empty<string>();
+
+        var index = lineNumber - 1; // to 0-based
+        var window = before
+            ? lines.Skip(Math.Max(0, index - count)).Take(Math.Min(count, index))
+            : lines.Skip(index + 1).Take(count);
+
+        var result = window.Select(l => l.TrimEnd()).ToList();
+
+        if (before)
+            while (result.Count > 0 && string.IsNullOrWhiteSpace(result[0])) result.RemoveAt(0);
+        else
+            while (result.Count > 0 && string.IsNullOrWhiteSpace(result[^1])) result.RemoveAt(result.Count - 1);
+
+        return result;
+    }
+
+    /// <summary>
+    /// How many times the pattern matches, counted from the first match and capped at
+    /// <see cref="MaxCountedOccurrences"/> so a rule that fires on every line of a huge log
+    /// doesn't turn counting into the expensive part of analysis.
+    /// </summary>
+    private static int CountOccurrences(Regex regex, string text, Match first)
+    {
+        var count = 1;
+        var next = first.NextMatch();
+        while (next.Success && count < MaxCountedOccurrences)
+        {
+            count++;
+            // A zero-width match would never advance; step past it.
+            var resumeAt = next.Index + Math.Max(1, next.Length);
+            if (resumeAt >= text.Length) break;
+            next = regex.Match(text, resumeAt);
+        }
+        return count;
+    }
+
+    /// <summary>Reporting ceiling for occurrences; beyond this the exact number tells you nothing.</summary>
+    public const int MaxCountedOccurrences = 100;
 
     /// <summary>Replace <c>{name}</c> placeholders with capture values.</summary>
     public static string Interpolate(string template, IReadOnlyDictionary<string, string> captures)
