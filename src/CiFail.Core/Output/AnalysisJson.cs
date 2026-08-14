@@ -102,6 +102,7 @@ public static class AnalysisJson
             Match = string.Empty, // the regex isn't part of the public contract
             Fix = m.Fix,
             Docs = m.Docs,
+            Severity = m.Severity,
         },
         Captures = m.Captures is null
             ? new Dictionary<string, string>()
@@ -132,6 +133,7 @@ public static class AnalysisJson
         ContextBefore = m.ContextBefore.Count > 0 ? m.ContextBefore.ToList() : null,
         ContextAfter = m.ContextAfter.Count > 0 ? m.ContextAfter.ToList() : null,
         OccurrenceCount = m.OccurrenceCount > 1 ? m.OccurrenceCount : null,
+        Severity = m.Rule.Severity,
     };
 
     public sealed class AnalysisDto
@@ -173,6 +175,13 @@ public static class AnalysisJson
         /// occurrence doesn't grow every document.
         /// </summary>
         public int? OccurrenceCount { get; init; }
+
+        /// <summary>
+        /// The rule's declared severity (R36) — <c>error</c>/<c>warning</c>/<c>note</c>, distinct
+        /// from <see cref="Confidence"/>. Omitted when the rule doesn't declare one, in which case
+        /// consumers should fall back to the confidence buckets as before.
+        /// </summary>
+        public string? Severity { get; init; }
     }
 
     public sealed class SimilarDto

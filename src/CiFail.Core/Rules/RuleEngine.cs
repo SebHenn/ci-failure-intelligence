@@ -59,6 +59,7 @@ public sealed class RuleEngine
 
         foreach (var rule in _rules)
         {
+            if (!rule.Enabled) continue;
             if (!AppliesTo(rule, ecosystem)) continue;
 
             Regex regex;
@@ -85,6 +86,10 @@ public sealed class RuleEngine
             {
                 m = regex.Match(log.NormalizedText);
                 if (!m.Success) continue;
+
+                // Guard clauses (R36). Evaluated only after the main pattern hit, so the common
+                // case — a rule that simply doesn't match — pays nothing for them.
+                if (!GuardsPass(rule, log.NormalizedText)) continue;
 
                 // Count the rest too, capped: "12 of these" is a materially different report from
                 // "one of these", and it used to be invisible. The cap keeps a rule that matches
@@ -142,15 +147,53 @@ public sealed class RuleEngine
 
     private static bool AppliesTo(RuleDefinition rule, Ecosystem ecosystem)
     {
-        if (string.Equals(rule.Ecosystem, "generic", StringComparison.OrdinalIgnoreCase))
+        // A rule may name more than one ecosystem (R36); any of them qualifying is enough.
+        var declared = rule.AllEcosystems.ToList();
+
+        if (declared.Any(e => string.Equals(e, "generic", StringComparison.OrdinalIgnoreCase)))
             return true;
         if (ecosystem is Ecosystem.Generic or Ecosystem.Unknown)
             return true; // when undetected, try everything
-        if (string.Equals(rule.Ecosystem, ecosystem.ToString(), StringComparison.OrdinalIgnoreCase))
+        if (declared.Any(e => string.Equals(e, ecosystem.ToString(), StringComparison.OrdinalIgnoreCase)))
             return true;
 
         return Inherits.TryGetValue(ecosystem, out var parents)
-            && parents.Any(p => string.Equals(rule.Ecosystem, p.ToString(), StringComparison.OrdinalIgnoreCase));
+            && parents.Any(p => declared.Any(e => string.Equals(e, p.ToString(), StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>
+    /// The optional <c>requires</c> / <c>notMatch</c> conditions (R36). Both are compiled and
+    /// timed out exactly like the main pattern — they are the same untrusted input.
+    ///
+    /// <para>
+    /// A guard that cannot be evaluated (invalid or too slow) is treated as <b>not satisfied</b>,
+    /// so the rule stays quiet. Failing open would be worse: a <c>notMatch</c> that times out
+    /// would let through precisely the match it exists to suppress.
+    /// </para>
+    /// </summary>
+    private bool GuardsPass(RuleDefinition rule, string text)
+    {
+        if (!string.IsNullOrWhiteSpace(rule.Requires) && !GuardMatches(rule.Requires!, text, ifUnusable: false))
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(rule.NotMatch) && GuardMatches(rule.NotMatch!, text, ifUnusable: true))
+            return false;
+
+        return true;
+    }
+
+    private bool GuardMatches(string pattern, string text, bool ifUnusable)
+    {
+        try
+        {
+            var regex = _regexCache.GetOrAdd(pattern, p => new Regex(
+                p, RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline, MatchTimeout));
+            return regex.IsMatch(text);
+        }
+        catch (Exception ex) when (ex is ArgumentException or RegexMatchTimeoutException)
+        {
+            return ifUnusable;
+        }
     }
 
     private static IReadOnlyDictionary<string, string> ExtractCaptures(Regex regex, Match m)

@@ -212,6 +212,34 @@ public class RulePackBreadthTests
         // of the answer. Six shipped rules did exactly that, because each one's `fix` read the
         // capture names from the *first* alternation branch while a real log took the second.
         NoUnresolvedPlaceholders(analysis.RootCause.Fix, fixture, ruleId);
+
+        NoArbitraryWinner(analysis, fixture);
+    }
+
+    /// <summary>
+    /// When two rules that both fire on a log declare the <b>same</b> confidence, which one is
+    /// reported as the root cause comes down to the id-ordinal tie-break — i.e. alphabetical
+    /// order, which is not a decision about which explanation is better.
+    ///
+    /// <para>
+    /// The project's answer to this is to fix the data, not the engine: the more specific rule
+    /// gets the higher confidence (that is how the live <c>go-undefined</c> /
+    /// <c>go-version-mismatch</c> tie was settled). This asserts the situation does not come
+    /// back — it is only detectable against a real log, since two rules sharing a confidence is
+    /// perfectly fine until they both match the same thing.
+    /// </para>
+    /// </summary>
+    private static void NoArbitraryWinner(Models.Analysis analysis, string fixture)
+    {
+        if (analysis.Matches.Count < 2) return;
+
+        var top = analysis.Matches[0];
+        var runnerUp = analysis.Matches[1];
+
+        top.Score.Should().NotBe(runnerUp.Score,
+            "'{0}' and '{1}' both match {2} with confidence {3}, so which one is shown as the " +
+            "root cause is decided by alphabetical order. Give the more specific rule the higher " +
+            "confidence.", top.Rule.Id, runnerUp.Rule.Id, fixture, top.Score);
     }
 
     /// <summary>

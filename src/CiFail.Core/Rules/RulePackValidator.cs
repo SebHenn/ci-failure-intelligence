@@ -146,6 +146,31 @@ public static class RulePackValidator
         if (string.IsNullOrWhiteSpace(rule.Id))
             Error("rule is missing a required 'id'");
 
+        // A disabled rule exists only to switch off a shipped one of the same id (R36), so it is
+        // allowed to be a stub — demanding a match/fix/docs from it would defeat the point.
+        if (!rule.Enabled)
+        {
+            if (string.IsNullOrWhiteSpace(rule.Id))
+                Error("a rule with 'enabled: false' still needs the 'id' of the rule it disables");
+            return;
+        }
+
+        if (!RuleSeverity.IsValid(rule.Severity))
+            Error($"'severity' must be one of {string.Join(", ", RuleSeverity.All)}; got '{rule.Severity}'");
+
+        foreach (var guard in new[] { ("notMatch", rule.NotMatch), ("requires", rule.Requires) })
+        {
+            if (string.IsNullOrWhiteSpace(guard.Item2)) continue;
+            try
+            {
+                _ = new Regex(guard.Item2!);
+            }
+            catch (ArgumentException ex)
+            {
+                Error($"'{guard.Item1}' is not a valid regex: {ex.Message}");
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(rule.Match))
             Error("rule is missing a required 'match' pattern");
         else

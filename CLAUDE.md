@@ -382,7 +382,21 @@ Offline-degrades (no model → friendly message, exit 1).
 ### Rule packs (`Core/rulepacks/*.yaml`)
 
 Rules are **data, not code** — this is the primary extension point. Each pack is a
-YAML list of `{ id, ecosystem, category, title, match (regex), confidence, fix, docs }`.
+YAML list of `{ id, ecosystem, category, title, match (regex), confidence, fix, docs }`
+plus the optional R36 fields `{ severity, requires, notMatch, ecosystems, enabled }` —
+**all optional, all degrade to the pre-R36 behaviour when absent**:
+- `severity` (`error|warning|note`) separates *how bad* from `confidence`'s *how sure*, and
+  drives the SARIF level via `ReportFormatting.SarifLevel(confidence, severity)`; unset falls
+  back to the confidence buckets.
+- `requires` / `notMatch` are guards evaluated **only after `match` hits** (so a non-matching
+  rule pays nothing), under the same `MatchTimeout`. An unusable guard leaves the rule
+  **quiet** — failing open on a `notMatch` would admit exactly the match it exists to suppress.
+- `ecosystems` is a list for genuinely cross-cutting rules (`AllEcosystems` merges it with the
+  singular `ecosystem`). It deliberately does **not** replace `RuleEngine.Inherits`: that table
+  is a fact about the ecosystems (an Android build *is* a JVM build), not about a rule, and
+  encoding it per-rule means tagging every JVM rule and keeping them in step.
+- `enabled: false` switches a rule off; the intended use is a 2-line user stub that silences a
+  shipped rule by id. `RulePackValidator` skips the usual requirements for a disabled rule.
 Packs are **embedded resources** (see `EmbeddedResource` glob in `CiFail.Core.csproj`),
 loaded by `RulePackLoader` from the assembly; users can add their own, and a user rule with a
 duplicate `id` overrides the embedded one. A malformed regex is skipped, never fatal. To add
@@ -428,6 +442,21 @@ this and it is the preferred fix — `generic.yaml:16` has always done it), or w
 doesn't need the capture, which is the only option when a branch genuinely can't provide it (a
 bare `ImagePullBackOff` doesn't name an image). The matched line is displayed anyway, so
 "the line above names it" reads fine. Never use `name2`-suffixed groups to dodge duplicates.
+
+**Two rules that both match one log must not share a confidence.** The sort is
+`Score desc, then Rule.Id ordinal`, so an exact tie hands the decision to alphabetical order.
+Fix it in the **data** — give the more specific rule the higher confidence — not by adding
+signals to the engine. `RulePackBreadthTests.NoArbitraryWinner` asserts the top two matches on
+every fixture differ, which is the only place it's detectable: two rules sharing a confidence is
+perfectly fine until they both fire on the same thing.
+
+**Ranking is deliberately still `Score = rule.Confidence`.** A positional/occurrence/corroboration
+score was planned for R35 and dropped after measuring: across all 144 fixtures only **43** produce
+more than one match, and the gap between the top two is ≥0.15 in most of them (exactly one tie,
+now fixed). A bounded bonus would therefore almost never fire, and where it did it would flip a
+winner — which re-fingerprints that failure and invalidates committed gate baselines — on an
+unreviewed heuristic. Re-measure before revisiting: `analyze --json <fixtures>/*.log` and diff
+the winner per fixture.
 
 **Overlap is a design decision, not an accident.** A broad rule that restates a specific one
 is noise in "other things cifail noticed" — `go-build-failed` excludes the errors the specific

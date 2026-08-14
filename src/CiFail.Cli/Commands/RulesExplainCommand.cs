@@ -37,9 +37,13 @@ public sealed class RulesExplainCommand : Command<RulesExplainCommand.Settings>
         void Row(string k, string v) => grid.AddRow($"[grey]{k}[/]", Markup.Escape(v));
 
         Row("id", rule.Id);
-        Row("ecosystem", rule.Ecosystem);
+        Row("ecosystem", string.Join(", ", rule.AllEcosystems));
         Row("category", rule.Category);
         Row("confidence", $"{rule.Confidence:0.00}");
+        // Severity is deliberately shown next to confidence: the two answer different questions
+        // ("how bad" vs "how sure"), and seeing them together is what makes that legible.
+        if (!string.IsNullOrWhiteSpace(rule.Severity)) Row("severity", rule.Severity!);
+        if (!rule.Enabled) Row("enabled", "no (this rule is switched off)");
         Row("source", source);
         if (!string.IsNullOrWhiteSpace(rule.Docs)) Row("docs", rule.Docs!);
 
@@ -49,6 +53,20 @@ public sealed class RulesExplainCommand : Command<RulesExplainCommand.Settings>
 
         CliConsole.Out.MarkupLine("[bold]match[/] (regex):");
         CliConsole.Out.MarkupLine($"  [grey]{Markup.Escape(rule.Match)}[/]");
+
+        // The guards decide whether a matching rule actually fires, so a reader trying to work
+        // out why a rule stayed quiet needs them right next to the pattern.
+        if (!string.IsNullOrWhiteSpace(rule.Requires))
+        {
+            CliConsole.Out.MarkupLine("[bold]requires[/] (must also appear in the log):");
+            CliConsole.Out.MarkupLine($"  [grey]{Markup.Escape(rule.Requires!)}[/]");
+        }
+        if (!string.IsNullOrWhiteSpace(rule.NotMatch))
+        {
+            CliConsole.Out.MarkupLine("[bold]notMatch[/] (suppresses this rule when it matches):");
+            CliConsole.Out.MarkupLine($"  [grey]{Markup.Escape(rule.NotMatch!)}[/]");
+        }
+
         CliConsole.Out.WriteLine();
         CliConsole.Out.MarkupLine("[bold]fix[/] (template):");
         foreach (var line in rule.Fix.TrimEnd().Split('\n'))

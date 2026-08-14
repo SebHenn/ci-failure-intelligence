@@ -46,7 +46,10 @@
   category: runtime
   title: Call to an undefined function or method
   match: "PHP (?:Fatal error|Error):\\s+(?:Uncaught Error: )?Call to undefined (?:function|method) (?<symbol>[\\w:\\\\>-]+)"
-  confidence: 0.8
+  # Above php-fatal-uncaught (0.8), which fires on the same line: "Call to undefined
+  # function str_contians()" names the actual problem, where "uncaught Error" only says
+  # something threw. Equal confidences left the winner to alphabetical order by rule id.
+  confidence: 0.85
   fix: |
     PHP called {symbol}, which doesn't exist at runtime. Check for a typo, a missing
     `use` import/namespace, or a missing extension/package that provides it. If it's a

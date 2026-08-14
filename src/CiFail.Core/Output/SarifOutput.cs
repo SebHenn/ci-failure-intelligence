@@ -37,7 +37,8 @@ public static class SarifOutput
             if (rc is not null)
             {
                 ruleId = rc.RuleId;
-                level = ReportFormatting.SarifLevel(rc.Confidence);
+                // The rule's declared severity when it has one, else the confidence buckets (R36).
+                level = ReportFormatting.SarifLevel(rc.Confidence, rc.Severity);
                 message = string.IsNullOrWhiteSpace(rc.Fix) ? rc.Title : $"{rc.Title} — {rc.Fix}";
                 if (!ruleIndex.ContainsKey(ruleId))
                 {

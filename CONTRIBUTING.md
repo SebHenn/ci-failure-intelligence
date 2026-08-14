@@ -69,15 +69,27 @@ adding a rule to an existing file is enough — no project changes.
 
 ```yaml
 - id: my-tool-widget-error          # stable, unique, kebab-case
-  ecosystem: generic                # dotnet|node|python|java|go|rust|ruby|php|cpp|infra|swift|android|generic
+  ecosystem: generic                # dotnet|node|python|java|go|rust|ruby|php|cpp|infra|swift|android|scala|elixir|generic
   category: dependency              # loose grouping: dependency|compile|build|test|environment|network|auth|ci
   title: Widget registry rejected the request
   match: "WIDGET-(?<code>\\d+): (?<message>.+)"   # regex; named groups become {placeholders}
-  confidence: 0.85                  # 0..1 — see guidance below
+  confidence: 0.85                  # 0..1 — how *sure*; see guidance below
   fix: |
     The widget registry rejected the build (code {code}): {message}
     Check your WIDGET_TOKEN secret is set and not expired, then re-run.
   docs: https://example.com/widget/errors   # the tool's own reference page for this error
+```
+
+All the optional fields, none of which existed before v0.3 — leave them out and the rule
+behaves exactly as it always did:
+
+```yaml
+  severity: error         # error|warning|note — how *bad*, as opposed to how sure.
+                          # Drives the SARIF level. Omitted => derived from confidence.
+  requires: "Running tests"   # regex that must ALSO appear somewhere in the log
+  notMatch: "known flake"     # regex that SUPPRESSES this rule when it also matches
+  ecosystems: [go]        # extra ecosystems beyond `ecosystem:`, for genuinely cross-cutting rules
+  enabled: false          # switch a rule off (see "Turning off a shipped rule" below)
 ```
 
 Notes:
@@ -94,11 +106,43 @@ Notes:
   **If your rule can fire on the same line as an existing one, the more specific rule must
   have the strictly higher confidence** — equal confidence makes the winner arbitrary, which
   was live between two Go rules until fixtures exposed it.
+- **Every `{placeholder}` in `fix` must be captured by *every* top-level alternation branch
+  of `match`.** `cifail rules validate` fails the build otherwise. If your pattern is
+  `A(?<file>…)|B`, a log matching `B` leaves `{file}` in the rendered text and the user is
+  shown your template instead of an answer — eleven shipped rules did exactly this. Two ways
+  to comply: give both branches the **same group name** (.NET allows duplicates, and that is
+  the preferred fix), or write a fix that doesn't need the capture. Never use `name2`-style
+  suffixes to dodge the duplicate. The matched line is displayed anyway, so "the line above
+  names it" reads perfectly well.
+- **`requires` / `notMatch` beat a clever regex.** Before these existed, "only when X is also
+  present" and "except when Y" had to be crammed into the one pattern as lookarounds —
+  `go-build-failed` still does, and it is unreadable. Both guards run under the same 2-second
+  timeout as `match`, and a guard that can't be evaluated leaves the rule **quiet** rather than
+  firing anyway (failing open on a `notMatch` would let through exactly what it exists to stop).
+- **`severity` is not `confidence`.** Confidence is how sure cifail is that this is what
+  happened; severity is how bad it is. Only set it when the two genuinely differ — a
+  confidently-identified deprecation notice (`severity: note`, `confidence: 0.9`) or a
+  tentative but fatal OOM.
 - **`docs:` is expected**, not decorative: it's where a reader goes when the `fix` text isn't
-  enough. All 91 shipped rules have one and `cifail rules validate` warns when a rule doesn't.
+  enough. All 136 shipped rules have one and `cifail rules validate` warns when a rule doesn't.
 - New ecosystem? Add an enum value to `Models/Ecosystem.cs`, marker regexes to
   `Ingest/EcosystemDetector.cs`, and a new `rulepacks/<eco>.yaml`. That's the only case
-  that touches C#.
+  that touches C#. Note `ecosystems:` is *not* the way to express "Android builds are JVM
+  builds" — that's `RuleEngine.Inherits`, a property of the ecosystems rather than of any one
+  rule.
+
+### Turning off a shipped rule
+
+Put a stub in one of your own rule packs (`~/.cifail/rules/`, your repo's `.cifail/rules/`,
+or anything on `--rules`). A user rule wins over a shipped one with the same id:
+
+```yaml
+- id: generic-nonzero-exit
+  enabled: false
+```
+
+That's the whole file — a disabled rule needs no `match`, `fix` or `docs`, and
+`rules validate` won't ask for them.
 
 ### 2. Test it as you write
 
