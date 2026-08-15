@@ -8,7 +8,7 @@
       the build if one does, because a second copy is how the 0.1.0/0.1.0-alpha split that
       broke every install path got in.
     -->
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
 
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

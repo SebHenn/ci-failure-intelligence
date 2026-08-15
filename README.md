@@ -117,7 +117,8 @@ and put it on your `PATH`. Every archive ships a `.sha256` next to it, and each 
 an aggregate `SHA256SUMS` — verify before you run:
 
 ```console
-sha256sum -c cifail-0.2.0-linux-x64.tar.gz.sha256   # macOS: shasum -a 256 -c
+# (substitute the version and platform you downloaded)
+sha256sum -c cifail-<version>-linux-x64.tar.gz.sha256   # macOS: shasum -a 256 -c
 ```
 
 **Homebrew:** every release ships a rendered `cifail.rb` formula, but there is no official

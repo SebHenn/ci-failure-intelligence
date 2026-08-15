@@ -9,7 +9,7 @@ type: application
 version: 0.3.0
 # The cifail version this chart targets (image tag default).
 # Must match <Version> in Directory.Build.props — scripts/check-versions.sh enforces this.
-appVersion: "0.2.0"
+appVersion: "0.3.0"
 keywords:
   - ci
   - diagnostics
