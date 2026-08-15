@@ -455,7 +455,8 @@ public sealed class SqliteAnalysisRepository
         while (reader.Read()) rows.Add(ReadStored(reader));
 
         // Filters are already applied in SQL; computer re-applies them harmlessly.
-        return StatsComputer.Compute(rows, query);
+        // A full page back means the scan limit, not the data, decided where counting stopped.
+        return StatsComputer.Compute(rows, query, truncated: rows.Count >= Math.Max(1, query.ScanLimit));
     }
 
     public int CountByFingerprint(string fingerprint)

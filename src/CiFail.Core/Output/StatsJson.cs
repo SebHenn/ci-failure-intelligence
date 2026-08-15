@@ -27,6 +27,7 @@ public static class StatsJson
             Day = d.Day.ToString("yyyy-MM-dd"),
             Count = d.Count,
         }).ToList(),
+        Truncated = s.Truncated ? true : null,
     };
 
     public static StatsSnapshot FromDto(StatsDto d) => new()
@@ -46,6 +47,7 @@ public static class StatsJson
         Daily = d.Daily
             .Select(x => new CountByDay(DateOnly.ParseExact(x.Day, "yyyy-MM-dd"), x.Count))
             .ToList(),
+        Truncated = d.Truncated ?? false,
     };
 
     private static FingerprintDto ToFpDto(FingerprintStat f) => new()
@@ -83,6 +85,13 @@ public static class StatsJson
 
         /// <summary>Failures per UTC day, oldest first, including days with none.</summary>
         public List<DayCountDto> Daily { get; init; } = new();
+
+        /// <summary>
+        /// Present and true only when the scan limit, rather than the data, decided where
+        /// counting stopped — so these figures describe the newest rows, not all of them.
+        /// Omitted otherwise, keeping the document identical for the ordinary case.
+        /// </summary>
+        public bool? Truncated { get; init; }
     }
 
     public sealed class DayCountDto

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using CiFail.Cli.Output;
+using CiFail.Core.Output;
 using CiFail.Core.Rules;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -17,6 +18,10 @@ public sealed class RulesExplainCommand : Command<RulesExplainCommand.Settings>
         [CommandArgument(0, "<id>")]
         [Description("The rule id to explain (e.g. nuget-nu1101).")]
         public string Id { get; init; } = string.Empty;
+
+        [CommandOption("--json")]
+        [Description("Print the rule as JSON instead of a panel.")]
+        public bool Json { get; init; }
     }
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
@@ -32,6 +37,12 @@ public sealed class RulesExplainCommand : Command<RulesExplainCommand.Settings>
         }
 
         var source = DescribeSource(rule.Id);
+
+        if (settings.Json)
+        {
+            Console.Out.WriteLine(RulesJson.Serialize(rule, source));
+            return ExitCodes.Ok;
+        }
 
         var grid = new Grid().AddColumn().AddColumn();
         void Row(string k, string v) => grid.AddRow($"[grey]{k}[/]", Markup.Escape(v));

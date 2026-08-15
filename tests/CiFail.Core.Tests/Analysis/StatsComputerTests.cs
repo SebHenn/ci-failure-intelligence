@@ -27,6 +27,43 @@ public class StatsComputerTests
         ResolvedAt = resolvedAt,
     };
 
+    /// <summary>
+    /// Aggregation loads whole rows and counts them in memory, so past the scan limit every
+    /// figure — the total, the recurrence rate, the mean time to resolution — silently describes
+    /// the newest rows only. "1,204 failures" when there are 40,000 is not a rounding error, so
+    /// the snapshot has to say when it was capped.
+    /// </summary>
+    [Fact]
+    public void A_capped_scan_reports_itself_as_truncated()
+    {
+        var rows = Enumerable.Range(1, 10).Select(i => Row(i, $"r:{i}", T0)).ToList();
+        var store = new FixedStore(rows);
+
+        var capped = StatsService.Compute(store, new StatsQuery { ScanLimit = 10 });
+        var roomy = StatsService.Compute(store, new StatsQuery { ScanLimit = 500 });
+
+        capped.Truncated.Should().BeTrue("the limit, not the data, decided where counting stopped");
+        roomy.Truncated.Should().BeFalse();
+        roomy.Total.Should().Be(10);
+    }
+
+    /// <summary>A store returning exactly what was asked for, to exercise the scan-limit edge.</summary>
+    private sealed class FixedStore : IAnalysisStore
+    {
+        private readonly IReadOnlyList<StoredAnalysis> _rows;
+        public FixedStore(IReadOnlyList<StoredAnalysis> rows) => _rows = rows;
+
+        public IReadOnlyList<StoredAnalysis> GetRecent(int limit) => _rows.Take(limit).ToList();
+
+        public long Save(AnalysisRecord record) => 0;
+        public StoredAnalysis? GetById(long id) => null;
+        public IReadOnlyList<CorpusEntry> LoadCorpus(int max) => Array.Empty<CorpusEntry>();
+        public bool SetResolution(long id, string note) => false;
+        public IReadOnlyList<StoredAnalysis> GetOpenFailures(string repoId) => Array.Empty<StoredAnalysis>();
+        public bool SetAutoResolution(long id, string commit, string note) => false;
+        public void Dispose() { }
+    }
+
     [Fact]
     public void Counts_open_resolved_and_unmatched()
     {

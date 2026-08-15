@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using CiFail.Cli.Output;
 using CiFail.Core;
+using CiFail.Core.Output;
 using CiFail.Core.Rules;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -15,12 +16,25 @@ public sealed class RulesListCommand : Command<RulesListCommand.Settings>
         [CommandOption("--rules <DIR>")]
         [Description("Extra directory of rule packs (repeatable). Adds to ~/.cifail/rules and .cifail/rules.")]
         public string[] Rules { get; init; } = Array.Empty<string>();
+
+        [CommandOption("--json")]
+        [Description("Print the rule inventory as JSON instead of a table.")]
+        public bool Json { get; init; }
     }
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         var searchPath = RuleSearchPath.Resolve(settings.Rules);
         var rules = RulePackLoader.LoadFrom(searchPath);
+
+        if (settings.Json)
+        {
+            // The search path travels with the inventory: "which rules do I have" and "where did
+            // they come from" are the same question when a repo ships its own packs.
+            Console.Out.WriteLine(RulesJson.Serialize(
+                rules.OrderBy(r => r.Ecosystem).ThenBy(r => r.Id), searchPath));
+            return ExitCodes.Ok;
+        }
 
         var table = new Table().Border(TableBorder.Rounded)
             .Title($"[bold]rules[/] [grey]({rules.Count} loaded)[/]");

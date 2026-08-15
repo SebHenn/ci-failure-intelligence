@@ -55,12 +55,17 @@ spec:
     CIFAIL_LOG: $[[ inputs.log ]]
   script:
     - set -o pipefail
-    - cifail analyze "$CIFAIL_LOG" $[[ inputs.args ]] | tee cifail-output.txt; code=${PIPESTATUS[0]}
+    # --report gitlab writes GitLab's Code Quality JSON alongside the normal output, so the
+    # findings appear in the merge-request widget. GitLab only ingests SARIF from its own
+    # security scanners, so this is the equivalent native surface there.
+    - cifail analyze "$CIFAIL_LOG" --report gitlab --report-out cifail-codequality.json $[[ inputs.args ]] | tee cifail-output.txt; code=${PIPESTATUS[0]}
     - if [ "$[[ inputs.fail ]]" = "true" ]; then exit "$code"; fi
   artifacts:
     when: always
     paths:
       - cifail-output.txt
+    reports:
+      codequality: cifail-codequality.json
     expire_in: 1 day
 
 "cifail-mr-comment":

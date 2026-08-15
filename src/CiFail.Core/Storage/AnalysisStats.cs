@@ -53,6 +53,19 @@ public sealed record StatsSnapshot
     /// query asked for no window.
     /// </summary>
     public IReadOnlyList<CountByDay> Daily { get; init; } = Array.Empty<CountByDay>();
+
+    /// <summary>
+    /// True when the scan hit <see cref="StatsQuery.ScanLimit"/>, so every number here describes
+    /// only the newest <c>ScanLimit</c> rows rather than the whole history.
+    ///
+    /// <para>
+    /// Aggregation loads whole rows and counts them in memory, so beyond that limit the totals,
+    /// the recurrence rate and the mean-time-to-resolution are all quietly partial. Reporting it
+    /// is the difference between a number that is approximate and a number that is wrong: a
+    /// dashboard reading "1,204 failures" when there are 40,000 is not a rounding error.
+    /// </para>
+    /// </summary>
+    public bool Truncated { get; init; }
 }
 
 /// <summary>A (key, count) pair, e.g. an ecosystem and how many analyses it has.</summary>

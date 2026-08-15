@@ -14,7 +14,11 @@ public static class StatsService
         if (store is IAnalysisStats capable)
             return capable.ComputeStats(query);
 
-        var rows = store.GetRecent(Math.Max(1, query.ScanLimit));
-        return StatsComputer.Compute(rows, query);
+        var limit = Math.Max(1, query.ScanLimit);
+        var rows = store.GetRecent(limit);
+
+        // A full page back means there is very likely more history than we counted; say so rather
+        // than presenting a partial total as the whole picture.
+        return StatsComputer.Compute(rows, query, truncated: rows.Count >= limit);
     }
 }

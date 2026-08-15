@@ -145,7 +145,8 @@ public sealed partial class StatsCommand : Command<StatsCommand.Settings>
 
         var summary = new Grid().AddColumn().AddColumn();
         void Row(string k, string v) => summary.AddRow($"[grey]{k}[/]", v);
-        Row("total failures", s.Total.ToString());
+        // "1,204" when the real number is 40,000 is not a rounding error — mark the ceiling.
+        Row("total failures", s.Truncated ? $"{s.Total}+" : s.Total.ToString());
         Row("open / resolved", $"[yellow]{s.Open}[/] / [green]{s.Resolved}[/]");
         Row("unmatched (coverage gaps)", s.Unmatched.ToString());
         Row("recurrence rate", $"{s.RecurrenceRate:P0} [grey]of distinct failures seen >1{Glyphs.Times}[/]");
@@ -153,6 +154,10 @@ public sealed partial class StatsCommand : Command<StatsCommand.Settings>
             ? $"{Humanize(m)} [grey](over {s.ResolvedWithTiming})[/]"
             : $"[grey]{Glyphs.Dash}[/]");
         CliConsole.Out.Write(new Panel(summary).Header($"[bold]cifail stats[/][grey]{scope}{repo}[/]").Border(BoxBorder.Rounded));
+
+        if (s.Truncated)
+            CliConsole.Hint("[grey]These figures cover the most recent analyses only — there is " +
+                            "more history than was scanned. Narrow it with [bold]--since[/] for exact numbers.[/]");
 
         if (s.ByEcosystem.Count > 0)
         {

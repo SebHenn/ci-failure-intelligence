@@ -416,13 +416,16 @@ Set `sarif` to a path and upload it — cifail's findings then show up in the re
 ```
 
 Or run the CLI directly: `cifail analyze --report sarif --report-out cifail.sarif build.log`
-(use `--report markdown` for a step-summary/PR-comment-friendly document instead).
+(use `--report markdown` for a step-summary/PR-comment-friendly document, or `--report gitlab`
+for a GitLab Code Quality report).
 
 ### GitLab CI
 
 Include the **CI/CD component** and point it at your log. It adds a `cifail-analyze` job that
 runs only `on_failure` and never fails the pipeline itself, plus an optional `cifail-mr-comment`
-job that posts the analysis on the merge request:
+job that posts the analysis on the merge request. The analyze job also publishes a
+**Code Quality** report, so findings show up in the merge-request widget (GitLab only ingests
+SARIF from its own security scanners, so that's the native surface here):
 
 ```yaml
 include:
@@ -882,7 +885,7 @@ What's in the box:
   noisiest tests, and `cifail clusters` groups near-duplicate failures into distinct root causes.
 - **Structured test reports** — `analyze --format junit|trx`, with GitHub Actions annotations.
 - **CI integration** — a GitHub Action and a GitLab component that explain failures and can
-  comment on the PR / MR, plus `analyze --report sarif|markdown` for GitHub Code Scanning
+  comment on the PR / MR, plus `analyze --report sarif|markdown|gitlab` for GitHub Code Scanning
   or a step summary.
 - **Optional AI** — local [Ollama](https://ollama.com) by default (or hosted Anthropic/OpenAI)
   when the rules are unsure, plus AI-assisted rule drafting with `cifail suggest-rule`.

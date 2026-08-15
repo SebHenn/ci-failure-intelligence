@@ -52,7 +52,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         public bool Annotations { get; init; }
 
         [CommandOption("--report <FORMAT>")]
-        [Description("Also produce a report: sarif (GitHub Code Scanning) or markdown (PR/step summary).")]
+        [Description("Also produce a report: sarif (GitHub Code Scanning), markdown (PR/step summary), or gitlab (Code Quality).")]
         public string? Report { get; init; }
 
         [CommandOption("--report-out <FILE>")]
@@ -195,7 +195,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         // R24: --report adds a SARIF/Markdown rendering.
         if (settings.Report is not null && ParseReportFormat(settings.Report) is null)
         {
-            CliConsole.Error($"unknown --report '{Markup.Escape(settings.Report)}' (use sarif or markdown).");
+            CliConsole.Error($"unknown --report '{Markup.Escape(settings.Report)}' (use sarif, markdown or gitlab).");
             return ExitCodes.Usage;
         }
 
@@ -435,6 +435,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         var content = ParseReportFormat(settings.Report) switch
         {
             ReportKind.Sarif => SarifOutput.Build(dtos),
+            ReportKind.CodeQuality => CodeQualityOutput.Build(dtos),
             _ => MarkdownOutput.Build(dtos),
         };
 
@@ -465,12 +466,15 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         }
     }
 
-    private enum ReportKind { Sarif, Markdown }
+    private enum ReportKind { Sarif, Markdown, CodeQuality }
 
     private static ReportKind? ParseReportFormat(string value) => value.Trim().ToLowerInvariant() switch
     {
         "sarif" => ReportKind.Sarif,
         "markdown" or "md" => ReportKind.Markdown,
+        // GitLab ingests SARIF only from its own scanners, so its Code Quality report is the
+        // equivalent native surface there.
+        "gitlab" or "codequality" or "code-quality" => ReportKind.CodeQuality,
         _ => null,
     };
 

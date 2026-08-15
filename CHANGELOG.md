@@ -11,6 +11,17 @@ after 1.0.
 
 ### Added
 
+- **`analyze --report gitlab`** writes a GitLab **Code Quality** report, so findings appear in
+  the merge-request widget. GitLab ingests SARIF only from its own security scanners, so the
+  SARIF cifail already produced was invisible there. GitLab dedupes across pipelines on the
+  issue fingerprint, which is exactly what cifail's fingerprint already is. The CI/CD component
+  emits it automatically as `artifacts:reports:codequality`.
+
+- **`cifail rules list --json` and `rules explain --json`.** The rule inventory wasn't
+  scriptable, so nothing could enumerate what a given cifail build actually knows. The listing
+  carries the resolved search path alongside the rules — "which rules do I have" and "where did
+  they come from" are the same question once a repository can ship its own packs.
+
 - **`analyze` and `gate` now accept a directory, a glob, or a gzipped log.** `cifail analyze
   logs/` used to report `file not found: logs/`, which is actively misleading, and a glob only
   worked when the shell had already expanded it — so the README's own
@@ -193,6 +204,12 @@ after 1.0.
   token.
 
 ### Fixed
+
+- **`cifail stats` no longer presents a capped scan as the whole picture.** Aggregation loads
+  whole rows and counts them in memory, so past the scan limit (5000) the total, the recurrence
+  rate and the mean time to resolution all silently described the newest rows only. The snapshot
+  now reports `Truncated`, the CLI shows `1204+` rather than `1204`, and `--json` carries the
+  flag. A count that is approximate is fine; one that looks exact and isn't is not.
 
 - **The GitHub Action's step summary and PR comment no longer paste box-drawing characters
   inside a code fence.** It now renders `--report markdown`, which existed for exactly this and

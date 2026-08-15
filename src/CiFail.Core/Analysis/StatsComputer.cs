@@ -10,7 +10,13 @@ namespace CiFail.Core.Analysis;
 public static class StatsComputer
 {
     /// <summary>Compute a <see cref="StatsSnapshot"/> from a set of rows, applying the query filters.</summary>
-    public static StatsSnapshot Compute(IEnumerable<StoredAnalysis> rows, StatsQuery query)
+    /// <param name="truncated">
+    /// True when the caller's scan hit <see cref="StatsQuery.ScanLimit"/>, so these numbers cover
+    /// only the newest rows. Passed in rather than inferred: only the caller knows whether the
+    /// sequence it handed over was the whole history or one page of it.
+    /// </param>
+    public static StatsSnapshot Compute(
+        IEnumerable<StoredAnalysis> rows, StatsQuery query, bool truncated = false)
     {
         var filtered = rows
             .Where(r => query.Since is null || r.AnalyzedAt >= query.Since)
@@ -69,6 +75,7 @@ public static class StatsComputer
             ResolvedWithTiming = durations.Count,
             Flaky = flaky,
             Daily = DailyBuckets(filtered, query.DailyDays),
+            Truncated = truncated,
         };
     }
 
