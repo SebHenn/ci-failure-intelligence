@@ -14,7 +14,7 @@
 
     <!-- EF Core SQLite (in-memory connection) lets the shared store contract run locally
          with no Docker, validating EfAnalysisStore end to end. -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.18" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.19" />
 
     <!-- Real-engine integration tests use Testcontainers; they skip when Docker is absent. -->
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
