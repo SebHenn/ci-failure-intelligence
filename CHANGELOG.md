@@ -9,6 +9,27 @@ after 1.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`analyze` now honours every `--report` / `--report-out` pair instead of only the last one.**
+  Both options repeat and are paired by position, so one analysis can produce a markdown report
+  for humans *and* a SARIF for Code Scanning. Previously the second pair silently replaced the
+  first: exit 0, empty stderr, and a file the caller explicitly asked for that was never written.
+  Combinations that cannot be paired unambiguously (more reports than destinations, a
+  `--report-out` with no `--report`, two reports aimed at the same file) are now usage errors
+  (exit 2) rather than a quiet guess. A single `--report` with no destination still takes over
+  stdout, as before.
+
+- **The GitHub Action no longer dies silently on the first non-zero command.** The runner invokes
+  a composite step as `bash --noprofile --norc -e -o pipefail`, and the script's `set -uo pipefail`
+  does not clear that inherited `errexit` — so `[ -n "$CIFAIL_DB_PROVIDER" ] && ...` with no
+  shared database configured (and cifail's own documented exit 1 for "nothing matched") ended the
+  step instantly, before `code=$?`, before cifail's stderr was echoed, and before the `fail:`
+  input could apply. `fail: false` was inoperative and the one step whose job is to explain a
+  failure went red without explaining itself. The script now sets `+e` explicitly, uses `if`
+  blocks rather than `&&` for its optional arguments, and warns when the markdown report is
+  missing instead of quietly falling back to raw JSON.
+
 ## [0.3.0] - 2026-08-15
 
 Two rounds of work in one release: `cifail gate`, server observability and the richer dashboard

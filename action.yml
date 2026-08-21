@@ -86,6 +86,14 @@ runs:
         INPUT_RULES: ${{ inputs.rules }}
       run: |
         set -uo pipefail
+        # The runner invokes this as `bash --noprofile --norc -e -o pipefail {0}`, so errexit is
+        # inherited and `set -uo pipefail` does not clear it. Every `[ -n "$X" ] && arr+=(...)`
+        # below returns 1 when X is empty, and cifail's own documented exit 1 ("nothing matched")
+        # is a normal outcome for this action — under errexit each of those killed the step
+        # instantly, before `code=$?`, before `cat /tmp/cifail.err`, and before the `fail:` input
+        # could apply. The one step whose job is to explain a failure failed without explaining
+        # itself. We check exit codes explicitly here, so turn errexit off.
+        set +e
 
         case "$INPUT_MODE" in
           analyze|gate) ;;
@@ -96,24 +104,29 @@ runs:
 
         run_args=(--rm -v "$PWD:/work" -w /work)
         # Pass shared-database config through to the container when configured.
-        [ -n "${CIFAIL_DB_PROVIDER:-}" ] && run_args+=(-e CIFAIL_DB_PROVIDER)
-        [ -n "${CIFAIL_DB_CONNECTION:-}" ] && run_args+=(-e CIFAIL_DB_CONNECTION)
+        if [ -n "${CIFAIL_DB_PROVIDER:-}" ]; then run_args+=(-e CIFAIL_DB_PROVIDER); fi
+        if [ -n "${CIFAIL_DB_CONNECTION:-}" ]; then run_args+=(-e CIFAIL_DB_CONNECTION); fi
 
         # A markdown report for humans, JSON on stdout for the outputs. Both come from one run:
         # --report-out writes the file *and* leaves stdout to --json.
         report=".cifail-report.md"
 
         cifail_args=("$INPUT_MODE" --json)
-        [ -n "$INPUT_LOG" ] && cifail_args+=("$INPUT_LOG")
-        # word-split extra args intentionally
-        # shellcheck disable=SC2206
-        [ -n "$INPUT_ARGS" ] && cifail_args+=($INPUT_ARGS)
-        [ -n "$INPUT_RULES" ] && cifail_args+=(--rules "$INPUT_RULES")
+        if [ -n "$INPUT_LOG" ]; then cifail_args+=("$INPUT_LOG"); fi
+        if [ -n "$INPUT_ARGS" ]; then
+          # word-split extra args intentionally
+          # shellcheck disable=SC2206
+          cifail_args+=($INPUT_ARGS)
+        fi
+        if [ -n "$INPUT_RULES" ]; then cifail_args+=(--rules "$INPUT_RULES"); fi
 
         # Reports are an analyze-only feature; gate's own --json carries the verdict.
+        # Both --report pairs are honoured in one run. Older images kept only the last pair, and
+        # ghcr.io/sebhenn/cifail:latest only moves on a release tag — hence the markdown guard
+        # below, which turns a pinned older image into a warning rather than a blank step.
         if [ "$INPUT_MODE" = "analyze" ]; then
           cifail_args+=(--report markdown --report-out "$report")
-          [ -n "$INPUT_SARIF" ] && cifail_args+=(--report sarif --report-out "$INPUT_SARIF")
+          if [ -n "$INPUT_SARIF" ]; then cifail_args+=(--report sarif --report-out "$INPUT_SARIF"); fi
         fi
 
         # stderr is kept separate so warnings can't corrupt the JSON document (the CLI is careful
@@ -154,6 +167,10 @@ runs:
         if [ "$INPUT_MODE" = "analyze" ] && [ -s "$report" ]; then
           body="$(cat "$report")"
         else
+          if [ "$INPUT_MODE" = "analyze" ]; then
+            echo "::warning::cifail produced no markdown report; showing raw JSON instead." \
+              "If you passed sarif:, the image may predate the fix for two --report pairs."
+          fi
           body="$(printf '%s' "$json")"
         fi
 

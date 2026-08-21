@@ -119,6 +119,40 @@ jobs:
           docker run --rm cifail:ci serve --help
           # Exactly the command the README gives (the image's WORKDIR is already /work).
           docker run --rm -v "$PWD:/work" cifail:ci analyze samples/nuget-nu1101.log
+          # Issue #19: every --report/--report-out pair must be honoured, not just the last.
+          docker run --rm -v "$PWD:/work" cifail:ci analyze samples/nuget-nu1101.log --json \
+            --report markdown --report-out reports/cifail.md \
+            --report sarif    --report-out reports/cifail.sarif > /dev/null
+          test -s reports/cifail.md
+          test -s reports/cifail.sarif
+
+      # The composite action's step script is what actually broke in the field, so run it the
+      # way the runner does: `bash --noprofile --norc -e -o pipefail`. That inherited errexit is
+      # the half of issue #19 that killed the step before it could report anything, and asking
+      # for `sarif:` is the half where the markdown report the summary and the PR comment are
+      # rendered from went missing. Neither is visible from the CLI alone.
+      - name: Run the action's own step script
+        run: |
+          python3 - <<'PY'
+          import io
+          lines = io.open('action.yml', encoding='utf-8').read().split('\n')
+          start = next(i for i, l in enumerate(lines) if l.strip() == 'run: |')
+          indent = len(lines[start]) - len(lines[start].lstrip()) + 2
+          body = []
+          for line in lines[start + 1:]:
+              if line.strip() and not line.startswith(' ' * indent):
+                  break
+              body.append(line[indent:])
+          io.open('action-step.sh', 'w', encoding='utf-8').write('\n'.join(body))
+          PY
+          INPUT_LOG=samples/nuget-nu1101.log INPUT_MODE=analyze INPUT_ARGS= \
+          INPUT_IMAGE=cifail:ci INPUT_SUMMARY=false INPUT_FAIL=true INPUT_COMMENT=false \
+          INPUT_SARIF=action.sarif INPUT_RULES= \
+            bash --noprofile --norc -e -o pipefail action-step.sh | tee action-out.txt
+          # The script deletes the markdown file after rendering it, so assert on what it printed
+          # — that text is the job summary and the PR comment.
+          grep -q 'cifail analysis' action-out.txt
+          test -s action.sarif
 
   # Real external databases (Postgres/MySQL/SQL Server/MongoDB) via Testcontainers. Kept in
   # a separate job so the heavier, container-pulling tests don't slow the core pipeline.

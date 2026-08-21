@@ -688,6 +688,24 @@ the file is written **and** the normal console/`--json` view still shows; withou
 takes over stdout and suppresses the normal view. The GitHub Action exposes it via a `sarif:`
 input (→ `--report sarif --report-out`), paired with `github/codeql-action/upload-sarif`.
 
+**Both options repeat and are paired by position (`PairReports`).** Spectre hands each option
+over as its own list, so the interleaving between the two is lost — which makes exactly two
+shapes readable: one report with no destination (it takes over stdout), or N reports with N
+destinations. Everything else (more reports than destinations, a `--report-out` with no
+`--report`, two reports aimed at one path) is a **usage error**, checked in `Validate` before any
+input is read, because the alternative is guessing and a dropped report is invisible to the
+caller. They used to be single-valued and the last pair silently won — and `action.yml` builds
+precisely the two-pair command line, so `sarif:` meant the markdown report it renders the job
+summary and the PR comment from was never written (issue #19).
+
+**`action.yml` runs under an inherited `errexit` and must clear it.** The runner invokes a
+composite step as `bash --noprofile --norc -e -o pipefail {0}`; the script's own
+`set -uo pipefail` reads like a full declaration of shell options but does **not** turn `-e` off.
+`[ -n "$X" ] && arr+=(...)` returns 1 when `X` is empty, and cifail's exit 1 ("nothing matched")
+is a normal outcome here — either one ended the step before `code=$?`, before cifail's stderr was
+echoed, and before the `fail:` input could apply, making `fail: false` inoperative. Hence the
+explicit `set +e` and `if` blocks rather than `&&`. Keep both when editing that script.
+
 ## Conventions / gotchas
 
 - Spectre.Console.Cli 0.55: `Command<T>.Execute` and `.Validate` overrides are

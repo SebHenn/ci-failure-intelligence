@@ -420,6 +420,18 @@ Or run the CLI directly: `cifail analyze --report sarif --report-out cifail.sari
 (use `--report markdown` for a step-summary/PR-comment-friendly document, or `--report gitlab`
 for a GitLab Code Quality report).
 
+Both options **repeat**, paired by position, so one analysis can produce several reports:
+
+```bash
+cifail analyze build.log \
+  --report markdown --report-out cifail.md \
+  --report sarif    --report-out cifail.sarif
+```
+
+Each `--report` needs its own `--report-out`; the only one that may go without is a single
+report, which then takes over stdout. Anything else is a usage error rather than a silently
+dropped file.
+
 ### GitLab CI
 
 Include the **CI/CD component** and point it at your log. It adds a `cifail-analyze` job that

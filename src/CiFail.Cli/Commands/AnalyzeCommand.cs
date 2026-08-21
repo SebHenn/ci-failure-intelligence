@@ -52,12 +52,12 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         public bool Annotations { get; init; }
 
         [CommandOption("--report <FORMAT>")]
-        [Description("Also produce a report: sarif (GitHub Code Scanning), markdown (PR/step summary), or gitlab (Code Quality).")]
-        public string? Report { get; init; }
+        [Description("Also produce a report: sarif (GitHub Code Scanning), markdown (PR/step summary), or gitlab (Code Quality). Repeatable.")]
+        public string[] Report { get; init; } = Array.Empty<string>();
 
         [CommandOption("--report-out <FILE>")]
-        [Description("Write the --report to this file (default: stdout, which suppresses the normal view).")]
-        public string? ReportOut { get; init; }
+        [Description("Write the preceding --report to this file (default: stdout, which suppresses the normal view).")]
+        public string[] ReportOut { get; init; } = Array.Empty<string>();
 
         [CommandOption("--ai")]
         [Description("Consult an AI model (default: local Ollama) when rule confidence is low.")]
@@ -192,12 +192,18 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             return ExitCodes.Usage;
         }
 
-        // R24: --report adds a SARIF/Markdown rendering.
-        if (settings.Report is not null && ParseReportFormat(settings.Report) is null)
+        // R24: --report adds a SARIF/Markdown/Code-Quality rendering. Both options repeat and are
+        // paired by position, so one analysis can produce a markdown report for humans and a SARIF
+        // for Code Scanning. They used to be single-valued, which meant a second pair silently
+        // replaced the first: exit 0, empty stderr, and a file the caller asked for that was
+        // never written. The shipped GitHub Action passes exactly that command line.
+        foreach (var format in settings.Report.Where(f => ParseReportFormat(f) is null))
         {
-            CliConsole.Error($"unknown --report '{Markup.Escape(settings.Report)}' (use sarif, markdown or gitlab).");
+            CliConsole.Error($"unknown --report '{Markup.Escape(format)}' (use sarif, markdown or gitlab).");
             return ExitCodes.Usage;
         }
+
+        if (PairReports(settings) is null) return ExitCodes.Usage;
 
         // A rules directory that isn't there loads nothing, and "no rule matched" looks exactly
         // the same as "the pack never loaded" — so say so rather than letting it pass silently.
@@ -413,15 +419,93 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
         return results.All(r => r.HasMatch) ? ExitMatched : ExitNoMatch;
     }
 
+    /// <summary>One requested report: a format, and where it goes (null = stdout).</summary>
+    private readonly record struct ReportRequest(ReportKind Kind, string? OutPath);
+
     /// <summary>
-    /// Render results: the normal console/--json view, plus an optional SARIF/Markdown report (R24).
-    /// When --report goes to stdout (no --report-out) it takes over stdout, so the normal view is
-    /// suppressed; with --report-out the report is written to the file and the normal view still shows.
+    /// Pair the repeated <c>--report</c>/<c>--report-out</c> options by position, or report the
+    /// combinations we refuse to guess at.
+    ///
+    /// <para>
+    /// Positional pairing is the only reading available: Spectre hands each option over as its own
+    /// list, so the interleaving between the two is lost. That is fine while the counts match and
+    /// unknowable when they don't — <c>--report sarif --report markdown --report-out x.md</c> could
+    /// mean either report goes to the file. So the accepted shapes are exactly: one report with no
+    /// destination (it takes over stdout), or N reports with N destinations. Anything else is a
+    /// usage error rather than a quiet guess, because a dropped report is invisible to the caller.
+    /// </para>
     /// </summary>
-    /// <returns>An exit code if writing the report failed, otherwise null.</returns>
+    /// <returns>The paired requests, or null when the combination is a usage error (already reported).</returns>
+    private static IReadOnlyList<ReportRequest>? PairReports(Settings settings)
+    {
+        var formats = settings.Report;
+        var outputs = settings.ReportOut;
+
+        if (formats.Length == 0)
+        {
+            if (outputs.Length == 0) return Array.Empty<ReportRequest>();
+
+            CliConsole.Error("--report-out needs a --report to write.");
+            CliConsole.Hint("[grey]Try [bold]--report markdown --report-out cifail.md[/].[/]");
+            return null;
+        }
+
+        if (outputs.Length != formats.Length && !(formats.Length == 1 && outputs.Length == 0))
+        {
+            CliConsole.Error($"--report was given {formats.Length} times but --report-out " +
+                $"{outputs.Length} — give each report its own --report-out.");
+            CliConsole.Hint("[grey]Only a single --report may be left without one, in which case " +
+                "it goes to stdout.[/]");
+            return null;
+        }
+
+        var requests = new List<ReportRequest>(formats.Length);
+        for (var i = 0; i < formats.Length; i++)
+        {
+            var destination = i < outputs.Length && !string.IsNullOrWhiteSpace(outputs[i])
+                ? outputs[i]
+                : null;
+            requests.Add(new ReportRequest(ParseReportFormat(formats[i])!.Value, destination));
+        }
+
+        // Two reports aimed at one file is the same silent loss in a different disguise: the
+        // second render overwrites the first, and the caller is left with a file of the wrong shape.
+        var seen = new HashSet<string>(OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal);
+        foreach (var request in requests.Where(r => r.OutPath is not null))
+        {
+            if (seen.Add(SafeFullPath(request.OutPath!))) continue;
+
+            CliConsole.Error("two reports would be written to " +
+                $"{Markup.Escape(request.OutPath!)} — the second would overwrite the first.");
+            return null;
+        }
+
+        return requests;
+    }
+
+    /// <summary>Normalize for comparison only; an unusable path is reported properly on write.</summary>
+    private static string SafeFullPath(string path)
+    {
+        try { return Path.GetFullPath(path); }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return path;
+        }
+    }
+
+    /// <summary>
+    /// Render results: the normal console/--json view, plus any SARIF/Markdown/Code-Quality
+    /// reports (R24). A --report with no --report-out takes over stdout, so the normal view is
+    /// suppressed; every --report-out is written to its file and the normal view still shows.
+    /// </summary>
+    /// <returns>An exit code if writing a report failed, otherwise null.</returns>
     private static int? EmitResults(Settings settings, IReadOnlyList<Analysis> results)
     {
-        var reportToStdout = settings.Report is not null && string.IsNullOrWhiteSpace(settings.ReportOut);
+        // Validate has already run this and rejected the combinations it refuses to guess at.
+        var reports = PairReports(settings) ?? Array.Empty<ReportRequest>();
+        var reportToStdout = reports.Any(r => r.OutPath is null);
 
         if (!reportToStdout)
         {
@@ -429,22 +513,35 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             else EmitConsole(results);
         }
 
-        if (settings.Report is null) return null;
+        if (reports.Count == 0) return null;
 
+        // One analysis, many renderings — the DTOs are built once and shared.
         var dtos = results.Select(AnalysisJson.ToDto).ToList();
-        var content = ParseReportFormat(settings.Report) switch
-        {
-            ReportKind.Sarif => SarifOutput.Build(dtos),
-            ReportKind.CodeQuality => CodeQualityOutput.Build(dtos),
-            _ => MarkdownOutput.Build(dtos),
-        };
 
-        if (string.IsNullOrWhiteSpace(settings.ReportOut))
+        foreach (var (kind, outPath) in reports)
         {
-            Console.Out.Write(content);
-            return null;
+            var content = kind switch
+            {
+                ReportKind.Sarif => SarifOutput.Build(dtos),
+                ReportKind.CodeQuality => CodeQualityOutput.Build(dtos),
+                _ => MarkdownOutput.Build(dtos),
+            };
+
+            if (outPath is null)
+            {
+                Console.Out.Write(content);
+                continue;
+            }
+
+            if (WriteReport(outPath, content) is { } writeError) return writeError;
         }
 
+        return null;
+    }
+
+    /// <returns>An exit code if the write failed, otherwise null.</returns>
+    private static int? WriteReport(string path, string content)
+    {
         try
         {
             // A missing directory or a read-only path is a user mistake, not a crash: an
@@ -452,16 +549,16 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
             // Create the parent directory as `gate --update` does — `--report-out out/x.sarif`
             // is the natural thing to write in CI, and failing because `out/` doesn't exist yet
             // is a papercut, not a safety property.
-            var directory = Path.GetDirectoryName(Path.GetFullPath(settings.ReportOut));
+            var directory = Path.GetDirectoryName(Path.GetFullPath(path));
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-            File.WriteAllText(settings.ReportOut, content);
+            File.WriteAllText(path, content);
             return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
             or NotSupportedException or ArgumentException)
         {
-            CliConsole.Error($"could not write the report to " +
-                $"{Markup.Escape(settings.ReportOut)} — {Markup.Escape(ex.Message)}");
+            CliConsole.Error("could not write the report to " +
+                $"{Markup.Escape(path)} — {Markup.Escape(ex.Message)}");
             return ExitCodes.Usage;
         }
     }
