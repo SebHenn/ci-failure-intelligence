@@ -9,6 +9,11 @@ after 1.0.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-21
+
+A fix release for the reporting path: the GitHub Action could not explain a failure, because
+two separate bugs met in the one place they both mattered.
+
 ### Fixed
 
 - **`analyze` now honours every `--report` / `--report-out` pair instead of only the last one.**
@@ -472,7 +477,8 @@ First tagged release. **Superseded — do not install it**: its assets are named
 `cifail-0.1.0-alpha-*` while the tag is `v0.1.0`, so nothing that follows the
 documented install instructions can find them. Fixed in 0.2.0.
 
-[Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SebHenn/ci-failure-intelligence/releases/tag/v0.1.0
