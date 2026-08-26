@@ -285,10 +285,36 @@ jobs:
 
       # The composite action's major version is tracked independently of the CLI version,
       # per the GitHub Actions convention. Prereleases (v0.2.0-rc1) must not move it.
+      #
+      # `@v1` is the ONLY pin the README documents, so it has one job: resolve to the newest
+      # release. Two ways that quietly stops being true, both guarded here — re-releasing an
+      # older patch line would drag it backwards, and a failed push would leave it behind
+      # while this job still went green.
       - name: Move the v1 major tag
         if: ${{ !contains(github.ref_name, '-') }}
         run: |
+          set -euo pipefail
+          # `|| true`: grep exits 1 on an all-prerelease list, and under pipefail that would
+          # read as "not the newest" — i.e. it would skip the move for the wrong reason.
+          newest="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | { grep -v -- '-' || true; } | sort -V | tail -1)"
+          if [ -z "$newest" ]; then
+            echo "error: this release's own tag is not visible; refusing to guess about v1." >&2
+            exit 1
+          fi
+          if [ "$newest" != "${{ github.ref_name }}" ]; then
+            echo "::notice::${{ github.ref_name }} is not the newest release ($newest); leaving v1 where it is."
+            exit 0
+          fi
+
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -f v1 "${{ github.sha }}"
           git push --force origin v1
+
+          landed="$(git ls-remote origin refs/tags/v1 | cut -f1)"
+          if [ "$landed" != "${{ github.sha }}" ]; then
+            echo "error: v1 is at ${landed:-nothing} but this release is ${{ github.sha }}." >&2
+            echo "Every documented 'uses: ...@v1' would still resolve to the previous build." >&2
+            exit 1
+          fi
+          echo "v1 -> ${{ github.ref_name }} (${{ github.sha }})"

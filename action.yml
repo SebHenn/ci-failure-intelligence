@@ -68,6 +68,12 @@ outputs:
   exit-code:
     description: "cifail's own exit code, whatever `fail` was set to. 0 ok, 1 negative result, 2 usage."
     value: ${{ steps.cifail.outputs.exit-code }}
+  action-version:
+    description: 'Version of this action itself — what `@v1` actually resolved to on this run.'
+    value: ${{ steps.cifail.outputs.action-version }}
+  image-digest:
+    description: 'Immutable digest of the image that ran (`name@sha256:…`), for pinning or for reproducing a run.'
+    value: ${{ steps.cifail.outputs.image-digest }}
 
 runs:
   using: 'composite'
@@ -84,6 +90,13 @@ runs:
         INPUT_COMMENT: ${{ inputs.comment }}
         INPUT_SARIF: ${{ inputs.sarif }}
         INPUT_RULES: ${{ inputs.rules }}
+        # Which build of this action is running. `@v1` is a moving tag, so the ref a consumer
+        # wrote does not identify a build — this stamp does. Bumped with <Version> in
+        # Directory.Build.props and enforced by scripts/check-versions.sh, so it cannot drift.
+        CIFAIL_ACTION_VERSION: '0.3.1'
+        # Empty for a local `uses: ./` checkout; that is reported as such rather than guessed.
+        CIFAIL_ACTION_REF: ${{ github.action_ref }}
+        CIFAIL_ACTION_REPO: ${{ github.action_repository }}
       run: |
         set -uo pipefail
         # The runner invokes this as `bash --noprofile --norc -e -o pipefail {0}`, so errexit is
@@ -101,6 +114,32 @@ runs:
         esac
 
         docker pull "$INPUT_IMAGE" >/dev/null 2>&1 || true
+
+        # ---- provenance ----------------------------------------------------------------
+        # Name the build that is running, before it runs anything (issue #21). Both things a
+        # consumer pins are MOVING references: `@v1` follows the newest release, and the default
+        # `:latest` image moves with it — and a runner can serve either from cache. So a log
+        # that shows only the analysis cannot answer "which cifail was this?", and a fix that
+        # shipped weeks ago looks like a fix that does not work. Printing this first also means
+        # it survives a `docker run` that dies.
+        if [ -n "${CIFAIL_ACTION_REPO:-}" ] && [ -n "${CIFAIL_ACTION_REF:-}" ]; then
+          pin="$CIFAIL_ACTION_REPO@$CIFAIL_ACTION_REF"
+        else
+          pin="local checkout"
+        fi
+
+        # RepoDigests is the immutable identity of what was actually pulled; the tag in
+        # $INPUT_IMAGE is not. Empty for a locally-built image that was never pushed.
+        image_digest="$(docker image inspect \
+          --format '{{ if .RepoDigests }}{{ index .RepoDigests 0 }}{{ end }}' \
+          "$INPUT_IMAGE" 2>/dev/null | tr -d '\r')"
+        image_desc="$INPUT_IMAGE"
+        if [ -n "$image_digest" ]; then image_desc="$INPUT_IMAGE@${image_digest#*@}"; fi
+
+        cli_version="$(docker run --rm "$INPUT_IMAGE" --version 2>/dev/null | tr -d '\r' | head -1)"
+        provenance="cifail action ${CIFAIL_ACTION_VERSION:+v}${CIFAIL_ACTION_VERSION:-of unknown version} ($pin)"
+        provenance="$provenance | cifail ${cli_version:-unknown} | image $image_desc"
+        echo "$provenance"
 
         run_args=(--rm -v "$PWD:/work" -w /work)
         # Pass shared-database config through to the container when configured.
@@ -144,6 +183,8 @@ runs:
             >> "${GITHUB_OUTPUT:-/dev/null}"
         }
         emit "exit-code" "$code"
+        emit "action-version" "${CIFAIL_ACTION_VERSION:-}"
+        emit "image-digest" "$image_digest"
 
         if [ "$INPUT_MODE" = "gate" ]; then
           emit "matched" "$(printf '%s' "$json" | jq -r '.Passed // false' 2>/dev/null || echo false)"
@@ -176,11 +217,16 @@ runs:
 
         echo "$body"
 
+        # The provenance line goes wherever the analysis goes — the summary and the PR comment
+        # are where someone reads this, and "which build ran?" is asked precisely when the
+        # analysis looks wrong.
         if [ "$INPUT_SUMMARY" = "true" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
           {
             echo "## cifail"
             echo ""
             echo "$body"
+            echo ""
+            echo "<sub>$provenance</sub>"
           } >> "$GITHUB_STEP_SUMMARY"
         fi
 
@@ -193,7 +239,7 @@ runs:
             echo "cifail: comment=true but no pull request in this event — skipping PR comment." >&2
           else
             marker="<!-- cifail -->"
-            comment_body="$(printf '%s\n## cifail\n\n%s\n' "$marker" "$body")"
+            comment_body="$(printf '%s\n## cifail\n\n%s\n\n<sub>%s</sub>\n' "$marker" "$body" "$provenance")"
             repo="$GITHUB_REPOSITORY"
             # Find our existing comment (by marker) and update it; otherwise create one.
             id="$(gh api "repos/$repo/issues/$pr/comments" --paginate \
