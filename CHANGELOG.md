@@ -9,6 +9,25 @@ after 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **The GitHub Action names the build that ran.** One line, printed before the analysis and
+  repeated at the foot of the step summary and the PR comment:
+  `cifail action v0.3.1 (SebHenn/ci-failure-intelligence@v1) | cifail 0.3.1 | image
+  ghcr.io/sebhenn/cifail:latest@sha256:…`. Both documented pins are *moving* references —
+  `@v1` follows the newest release and `:latest` moves with it, and a runner may serve either
+  from cache — so until now a log could not answer "which cifail was this?", and a fix that
+  shipped weeks ago was indistinguishable from a fix that does not work ([#21]). Also exposed
+  as the `action-version` and `image-digest` outputs. The version is stamped in `action.yml`
+  and `scripts/check-versions.sh` fails the build if it drifts from `Directory.Build.props`.
+
+### Fixed
+
+- **The release workflow now verifies the `v1` tag actually moved,** and refuses to move it
+  backwards when an older patch line is re-released. `@v1` is the only pin the README
+  documents, so "resolves to the newest release" is the one thing it must never quietly stop
+  doing; previously the push was fire-and-forget and the job went green either way.
+
 ## [0.3.1] - 2026-08-21
 
 A fix release for the reporting path: the GitHub Action could not explain a failure, because
@@ -478,6 +497,8 @@ First tagged release. **Superseded — do not install it**: its assets are named
 documented install instructions can find them. Fixed in 0.2.0.
 
 [Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.1...HEAD
+
+[#21]: https://github.com/SebHenn/ci-failure-intelligence/issues/21
 [0.3.1]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.1.0...v0.2.0
