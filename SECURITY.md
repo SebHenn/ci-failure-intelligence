@@ -101,8 +101,11 @@ See [deploy/README.md](deploy/README.md) for the deployment wiring.
   on GitHub-hosted runners from a tagged commit. Nothing is built or signed locally.
 - The tagged commit must be on `main`, and nothing is published to nuget.org or GHCR until the
   maintainer approves the run's deployment to a protected `release` environment, which
-  administrators cannot bypass. The jobs that build and test never hold a token that can
-  publish; each job is granted only the permissions it uses.
+  administrators cannot bypass, and that approval is only requested once the draft release has
+  installed and run on Linux and macOS. Each job is granted only the permissions it uses: the
+  jobs that build and test the binaries and the NuGet package never hold a token that can
+  publish. The Docker image is the exception — it is built in the approved job that pushes it,
+  inside BuildKit containers that do not see the registry login.
 - Version tags cannot be moved or deleted, and a published GitHub release is immutable, so a
   version number always refers to the same code and the same assets. A fix ships as a new
   version.

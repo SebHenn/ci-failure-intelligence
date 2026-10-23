@@ -17,9 +17,13 @@ name: Release
 # The two jobs that publish somewhere other than this repository — `nuget-publish` and
 # `docker` — run in the `release` environment, which waits for a maintainer to approve them.
 # Both depend on exactly the same jobs, so they start waiting at the same moment and one
-# approval releases both. `finalize`, the only job that makes anything public here, needs both
-# of them, so nothing becomes public before that approval. The draft release and the install
-# smoke test run without waiting for it: a draft is visible only to people with write access.
+# approval releases both. Those jobs include `smoke`, so the approval is only asked for once
+# the draft release exists and has installed and run on Linux and macOS: a release whose
+# install failed can never be approved. (The multi-arch image is the one thing not built
+# before the approval: `docker` builds it from scratch and pushes it in the same job.)
+# `finalize`, the only job that makes anything public here, needs both of them, so nothing
+# becomes public before that approval. The draft release and the install smoke test run
+# without waiting for it: a draft is visible only to people with write access.
 on:
   push:
     tags: ['v*']
@@ -28,6 +32,8 @@ on:
 # Nothing by default. Each job asks for exactly what it uses, so the jobs that build — and with
 # them every MSBuild target, analyser and package the build pulls in — never hold a token that
 # can publish, and the jobs that hold one run nothing from the repository they did not have to.
+# The one exception is `docker`: it holds `packages: write` while it builds the image it pushes.
+# The build itself runs inside BuildKit's containers, which never see the registry login.
 permissions: {}
 
 # Every action is pinned to a full commit SHA, because a tag is a pointer its owner can move. The
@@ -322,8 +328,11 @@ jobs:
   # https://learn.microsoft.com/nuget/nuget-org/trusted-publishing
   nuget-publish:
     # Exactly the same `needs` as `docker`, so both start waiting for approval together and
-    # one approval releases both.
-    needs: [verify, nuget-pack]
+    # one approval releases both. `smoke` (and through it `build` and the draft `release`) is
+    # in it so the approval is asked for only once everything that can be checked before
+    # publishing has passed: a reviewer cannot approve early, and a failed install leaves
+    # nuget.org and GHCR untouched.
+    needs: [nuget-pack, smoke]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     # Required reviewer, no admin bypass, v* tags only — see CONTRIBUTING.md.
@@ -441,7 +450,7 @@ jobs:
   docker:
     # Exactly the same `needs` as `nuget-publish`, so both start waiting for approval together
     # and one approval releases both. Nothing here uses nuget-pack's output.
-    needs: [verify, nuget-pack]
+    needs: [nuget-pack, smoke]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     environment:

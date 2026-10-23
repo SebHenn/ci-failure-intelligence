@@ -240,13 +240,15 @@ branch protection they sit beside.
    git push origin v0.4.0
    ```
 
-3. **Approve the deployment.** A few minutes in, the run shows *Waiting for review* on two jobs,
-   `nuget-publish` and `docker`, both in the `release` environment. They wait on the same jobs, so
-   they start waiting together: choose **Review deployments**, tick `release`, and **Approve and
-   deploy** once — that releases both. Before approving, the `nuget-pack` job summary lists the
-   SHA-256 of the package about to be pushed. The draft release and the install smoke test run
-   without waiting for you, so if you would rather nothing reach nuget.org or GHCR before the
-   macOS and Linux installs have passed, wait for `smoke` to go green and approve then.
+3. **Approve the deployment.** Once the draft release exists and `smoke` has installed and run
+   it on Linux and macOS, the run shows *Waiting for review* on two jobs, `nuget-publish` and
+   `docker`, both in the `release` environment. They wait on the same jobs, so they start waiting
+   together: choose **Review deployments**, tick `release`, and **Approve and deploy** once —
+   that releases both. Before approving, the `nuget-pack` job summary lists the SHA-256 of the
+   package about to be pushed, and the draft release is there to inspect. If `build` or `smoke`
+   fails, nothing asks for approval and nothing reaches nuget.org or GHCR (a flaky `smoke` leg
+   can be re-run from the run page). The multi-arch image is built from scratch only after you
+   approve, so allow some time for `docker`.
    **Rejecting** ends the run with nothing published; delete the draft release it left behind.
 4. `finalize` then publishes the release and moves the `v1` tag (not for a prerelease such as
    `v0.4.0-rc1`).

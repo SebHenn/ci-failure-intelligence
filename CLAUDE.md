@@ -60,8 +60,9 @@ docker compose -f docker-compose.test.yml up -d   # manual DBs for --db-* runs
 # RIDs (there is no build matrix; only `smoke` is a matrix, ubuntu + macos).
 ```
 
-**Release chain (`release.yml`): `verify → build → release(draft) → smoke → finalize`,** with
-`nuget-pack → {nuget-publish, docker}` off `verify`. The GitHub Release stays a **draft** until the real
+**Release chain (`release.yml`): `verify → build → release(draft) → smoke → {nuget-publish,
+docker} → finalize`,** with `nuget-pack` off `verify` feeding `nuget-publish`; the two publishing
+jobs wait for one approval. The GitHub Release stays a **draft** until the real
 `install.sh` has installed the real assets on Linux *and* macOS; `finalize` un-drafts it and
 force-moves the `v1` tag that `uses: SebHenn/ci-failure-intelligence@v1` resolves to.
 
@@ -93,8 +94,10 @@ permanent draft. A published NuGet version can only be unlisted, never replaced,
   only `docker` holds `packages: write`. Every checkout has `persist-credentials: false` — the
   `v1` push gets the token through `GIT_CONFIG_*` env vars for that one command.
 - `nuget-publish` and `docker` are the jobs in the `release` environment (required reviewer, no
-  admin bypass, `v*` tags only). They have **identical `needs`** so they start waiting together
-  and one approval releases both; `finalize` needs both, so nothing goes public unapproved.
+  admin bypass, `v*` tags only). They have **identical `needs`** (`[nuget-pack, smoke]`) so they
+  start waiting together and one approval releases both, and only after the draft has passed
+  `smoke`; `finalize` needs both, so nothing goes public unapproved. The `docker` job is the one
+  place a build runs beside a publishing token (BuildKit's containers never see the login).
   `environment:` cannot be made conditional (GitHub documents no meaning for an empty name), so
   the dry run's image build is a separate job, `docker-dryrun`, outside the environment.
 - **The `docker` push job reads no GitHub Actions cache.** A tag's cache scope is empty, so any
