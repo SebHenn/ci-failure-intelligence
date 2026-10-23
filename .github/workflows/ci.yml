@@ -145,13 +145,23 @@ jobs:
               body.append(line[indent:])
           io.open('action-step.sh', 'w', encoding='utf-8').write('\n'.join(body))
           PY
+          # The stamp is read from action.yml rather than hard-coded, so this asserts the line
+          # the action really renders. The `${{ github.action_ref }}` plumbing that fills these
+          # in can only be exercised by a real `uses:`, but the rendering can be pinned here.
+          stamp="$(sed -n "s/^ *CIFAIL_ACTION_VERSION: *'\(.*\)'.*/\1/p" action.yml | head -1)"
+          test -n "$stamp"
           INPUT_LOG=samples/nuget-nu1101.log INPUT_MODE=analyze INPUT_ARGS= \
           INPUT_IMAGE=cifail:ci INPUT_SUMMARY=false INPUT_FAIL=true INPUT_COMMENT=false \
           INPUT_SARIF=action.sarif INPUT_RULES= \
+          CIFAIL_ACTION_VERSION="$stamp" CIFAIL_ACTION_REF=v1 \
+          CIFAIL_ACTION_REPO=SebHenn/ci-failure-intelligence \
             bash --noprofile --norc -e -o pipefail action-step.sh | tee action-out.txt
           # The script deletes the markdown file after rendering it, so assert on what it printed
           # — that text is the job summary and the PR comment.
           grep -q 'cifail analysis' action-out.txt
+          # Issue #21: the log must name the build that produced that analysis. An unstamped or
+          # half-rendered line ("v unknown", a missing pin) is the state this guards against.
+          grep -q "cifail action v$stamp (SebHenn/ci-failure-intelligence@v1) | cifail " action-out.txt
           test -s action.sarif
 
   # Real external databases (Postgres/MySQL/SQL Server/MongoDB) via Testcontainers. Kept in

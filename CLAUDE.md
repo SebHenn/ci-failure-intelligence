@@ -62,7 +62,14 @@ docker compose -f docker-compose.test.yml up -d   # manual DBs for --db-* runs
 **Release chain (`release.yml`): `verify → build → release(draft) → smoke → finalize`,** with
 `nuget` and `docker` hanging off `verify`. The GitHub Release stays a **draft** until the real
 `install.sh` has installed the real assets on Linux *and* macOS; `finalize` un-drafts it and
-force-moves the `v1` tag that `uses: SebHenn/ci-failure-intelligence@v1` resolves to.
+force-moves the `v1` tag that `uses: SebHenn/ci-failure-intelligence@v1` resolves to. That move
+is now **guarded on both sides** (issue #21): it is skipped when the tag being released isn't the
+newest version tag (re-releasing an older patch line must not drag `v1` backwards), and the push
+is verified against `git ls-remote` afterwards, because a fire-and-forget force-push left every
+documented `@v1` on the previous build while the job went green. Note the mirror-image trap when
+*reading* that tag locally: `git fetch` does **not** move an existing tag, so a clone that has
+ever seen `v1` keeps reporting the old commit until `git fetch --tags --force` — which is what
+made #21 look like a workflow bug when the tag had in fact moved.
 
 **`main` is a protected branch.** PRs require the three `ci.yml` checks (`build-test`,
 `docker-smoke`, `db-integration`) and must be **up to date with `main`** before merging; force
@@ -705,6 +712,16 @@ composite step as `bash --noprofile --norc -e -o pipefail {0}`; the script's own
 is a normal outcome here — either one ended the step before `code=$?`, before cifail's stderr was
 echoed, and before the `fail:` input could apply, making `fail: false` inoperative. Hence the
 explicit `set +e` and `if` blocks rather than `&&`. Keep both when editing that script.
+
+**`action.yml` stamps its own version (`CIFAIL_ACTION_VERSION`) and prints a provenance line
+first thing** — `cifail action v0.3.1 (owner/repo@v1) | cifail 0.3.1 | image name:tag@sha256:…` —
+into the log, the step summary and the PR comment, plus the `action-version`/`image-digest`
+outputs. Both documented pins are *moving* references (`@v1` and `:latest`), so nothing else in
+the output identifies the build, and a shipped fix is indistinguishable from a broken one. The
+stamp is checked against `Directory.Build.props` by `scripts/check-versions.sh` (check 3) — bump
+it with the version, or the release fails at `verify`. `ci.yml`'s "Run the action's own step
+script" step asserts the rendered line; the `${{ github.action_ref }}` plumbing that fills it can
+only be exercised by a real `uses:`, so that test passes the vars in explicitly.
 
 ## Conventions / gotchas
 
