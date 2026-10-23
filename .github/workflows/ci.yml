@@ -6,14 +6,24 @@ on:
   pull_request:
     branches: [main]
 
+# Read-only, and nothing here needs more: no job comments on the PR, uploads SARIF or pushes.
+# Spelled out rather than left to the repository default, so a change to that setting cannot
+# quietly hand every pull-request build a token that can write.
+permissions:
+  contents: read
+
+# Every action is pinned to a full commit SHA, because a tag is a pointer its owner can move. The
+# comment names the release the SHA was taken from, and Dependabot updates both together.
 jobs:
   build-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             8.0.x
@@ -66,10 +76,12 @@ jobs:
   build-test-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             8.0.x
@@ -98,12 +110,20 @@ jobs:
   docker-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      # The layer cache is shared through GitHub's cache scopes: a pull request restores from
+      # its own scope and from main's, and saves only to its own, so a fork's PR cannot plant
+      # anything a later run on main or a release reads. What lands in main's scope comes from
+      # runs on main — merged code and the packages it restores, since any step in any job there
+      # could save an entry. The release workflow's push job reads no cache at all, so even that
+      # never reaches a published image.
       - name: Build the full image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           load: true
@@ -159,10 +179,12 @@ jobs:
   db-integration:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             8.0.x

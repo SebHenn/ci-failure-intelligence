@@ -52,9 +52,11 @@ updates:
     groups:
       actions:
         patterns: ["*"]
-    # Covers .github/workflows/*.yml and the composite action.yml at the repo root — both
-    # pin actions by major tag, and a runtime deprecation (Node 20 -> 24) has already bitten
-    # this repo once.
+    # Covers .github/workflows/*.yml and the composite action.yml at the repo root (which uses
+    # no actions today). The workflows pin every action to a full commit SHA with the release
+    # it came from in a trailing `# vX.Y.Z` comment; Dependabot moves the SHA and the comment
+    # together, so this entry is what keeps those pins from going stale — and a runtime
+    # deprecation (Node 20 -> 24) has already bitten this repo once.
 
   - package-ecosystem: docker
     directory: /

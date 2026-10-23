@@ -226,4 +226,51 @@ at the time were still reporting green against the base from before the fix.
 No approving review is required, so a green PR is mergeable as soon as the checks finish. You
 don't need write access to contribute — fork, branch, and open the PR from your fork.
 
+## Cutting a release (maintainers)
+
+Contributors never need this; it is here so the release settings are written down next to the
+branch protection they sit beside.
+
+1. Bump `<Version>` in `Directory.Build.props` (and the Helm chart's `appVersion`), close
+   `## [Unreleased]` in `CHANGELOG.md`, and merge that to `main` with CI green.
+2. Tag the merged commit **on `main`** and push the tag:
+
+   ```console
+   git tag v0.4.0
+   git push origin v0.4.0
+   ```
+
+3. **Approve the deployment.** A few minutes in, the run shows *Waiting for review* on two jobs,
+   `nuget-publish` and `docker`, both in the `release` environment. They wait on the same jobs, so
+   they start waiting together: choose **Review deployments**, tick `release`, and **Approve and
+   deploy** once — that releases both. Before approving, the `nuget-pack` job summary lists the
+   SHA-256 of the package about to be pushed. The draft release and the install smoke test run
+   without waiting for you, so if you would rather nothing reach nuget.org or GHCR before the
+   macOS and Linux installs have passed, wait for `smoke` to go green and approve then.
+   **Rejecting** ends the run with nothing published; delete the draft release it left behind.
+4. `finalize` then publishes the release and moves the `v1` tag (not for a prerelease such as
+   `v0.4.0-rc1`).
+
+`release.yml` refuses a tag that does not match `<Version>`, or whose commit is not on `main`,
+before it builds anything. **Either failure spends the tag:** version tags cannot be moved or
+deleted (see below), so the fix is a tag for a version that is not taken yet — bumping
+`<Version>` to match if need be — never a second push of the same tag. Nothing was published, so
+the skipped version costs only a gap in the numbering.
+
+**Rehearse it** with `gh workflow run release.yml --ref main`. A manual run is always a dry run,
+even when started from a tag: it builds every binary, renders the manifests, packs the NuGet
+package and builds the multi-arch image, and publishes nothing. It needs no approval, because
+the image build it runs (`docker-dryrun`) is a different job from the one that pushes.
+
+### Release settings
+
+| Setting | Value | Why |
+|---|---|---|
+| Environment `release` | required reviewer `SebHenn`; administrators cannot bypass; deployment tags `v*` only, no branches | The only jobs that publish outside this repository run in it, so a tag pushed by anything with write access does not publish on its own. With one maintainer the reviewer is usually whoever pushed the tag; the approval is still a deliberate pause between "a tag exists" and "nuget.org and GHCR have it". |
+| nuget.org trusted publishing policy | owner `SebHenn`, repository `ci-failure-intelligence`, workflow file `release.yml`, environment `release` | The environment is what ties the publishing key to an approved job. A policy with Environment blank still works with this workflow but accepts a token from any job in it, so set it. Renaming the workflow file or the environment breaks publishing. |
+| Tag ruleset `release tags` | `refs/tags/v*.*.*`: no update, no deletion, no force push, no bypass | A released version tag can never point at different code. The pattern must **not** match `v1`, which `finalize` force-moves on every release — `v*` would, and the move would fail. |
+| Immutable releases | on | Once `finalize` publishes a release, its assets and its tag cannot change. That is why it stays a draft until everything has passed. |
+| Workflow permissions | read-only by default | Every job in `release.yml` declares its own; `ci.yml` declares `contents: read`. |
+| Actions pinning | every `uses:` is a full commit SHA with a `# vX.Y.Z` comment | A tag is a pointer its owner can move. Dependabot updates the SHA and the comment together. |
+
 Thank you! 🛠️
