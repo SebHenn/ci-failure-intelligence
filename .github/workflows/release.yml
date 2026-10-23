@@ -574,6 +574,11 @@ jobs:
       # The composite action's major version is tracked independently of the CLI version,
       # per the GitHub Actions convention. Prereleases (v0.2.0-rc1) must not move it.
       #
+      # `@v1` is the ONLY pin the README documents, so it has one job: resolve to the newest
+      # release. Two ways that quietly stops being true, both guarded here — re-releasing an
+      # older patch line would drag it backwards, and a failed push would leave it behind
+      # while this job still went green.
+      #
       # v1 is the one tag this workflow moves, so the "release tags" ruleset must not cover it:
       # its pattern is v*.*.*, which protects every version tag and leaves v1 movable.
       #
@@ -592,8 +597,8 @@ jobs:
             echo "error: this release's own tag is not visible; refusing to guess about v1." >&2
             exit 1
           fi
-          if [ "$newest" != "${{ github.ref_name }}" ]; then
-            echo "::notice::${{ github.ref_name }} is not the newest release ($newest); leaving v1 where it is."
+          if [ "$newest" != "$GITHUB_REF_NAME" ]; then
+            echo "::notice::$GITHUB_REF_NAME is not the newest release ($newest); leaving v1 where it is."
             exit 0
           fi
 
@@ -606,3 +611,11 @@ jobs:
           GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
           GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
             git push --force origin v1
+
+          landed="$(git ls-remote origin refs/tags/v1 | cut -f1)"
+          if [ "$landed" != "$GITHUB_SHA" ]; then
+            echo "error: v1 is at ${landed:-nothing} but this release is $GITHUB_SHA." >&2
+            echo "Every documented 'uses: ...@v1' would still resolve to the previous build." >&2
+            exit 1
+          fi
+          echo "v1 -> $GITHUB_REF_NAME ($GITHUB_SHA)"

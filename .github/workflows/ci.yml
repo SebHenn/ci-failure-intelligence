@@ -166,7 +166,7 @@ jobs:
           io.open('action-step.sh', 'w', encoding='utf-8').write('\n'.join(body))
           PY
           # The stamp is read from action.yml rather than hard-coded, so this asserts the line
-          # the action really renders. The `${{ github.action_ref }}` plumbing that fills these
+          # the action really renders. The `github.action_ref` plumbing that fills these
           # in can only be exercised by a real `uses:`, but the rendering can be pinned here.
           stamp="$(sed -n "s/^ *CIFAIL_ACTION_VERSION: *'\(.*\)'.*/\1/p" action.yml | head -1)"
           test -n "$stamp"
