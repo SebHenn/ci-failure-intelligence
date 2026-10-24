@@ -63,7 +63,7 @@ public sealed class ConfigCommand : Command<ConfigCommand.Settings>
         };
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         var configPath = string.IsNullOrWhiteSpace(settings.Path) ? CiFailPaths.ConfigPath : settings.Path;
 

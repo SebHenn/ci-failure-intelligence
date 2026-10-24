@@ -22,12 +22,12 @@ public sealed class ResolveCommand : Command<ResolveCommand.Settings>
         public string? Note { get; init; }
     }
 
-    protected override ValidationResult Validate(CommandContext context, Settings settings)
+    public override ValidationResult Validate(CommandContext context, Settings settings)
         => string.IsNullOrWhiteSpace(settings.Note)
             ? ValidationResult.Error("a resolution note is required (--note \"...\").")
             : ValidationResult.Success();
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
         => StoreSupport.WithStore(settings, store =>
         {
             if (!store.SetResolution(settings.Id, settings.Note!.Trim()))

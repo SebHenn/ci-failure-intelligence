@@ -61,7 +61,7 @@ public sealed class SuggestRuleCommand : Command<SuggestRuleCommand.Settings>
         public bool Json { get; init; }
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         if (settings.Type is not null && !EcosystemDetector.TryParse(settings.Type, out _))
         {

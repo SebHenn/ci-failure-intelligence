@@ -17,7 +17,7 @@ public sealed class ReconcileCommand : Command<ReconcileCommand.Settings>
     {
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         // The repo lives on the client, so reconciliation always runs here — against either a
         // local database or a remote --server (R11). The git context is detected locally; the
