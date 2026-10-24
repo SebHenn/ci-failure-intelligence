@@ -97,7 +97,7 @@ public sealed class AnalyzeCommand : Command<AnalyzeCommand.Settings>
     /// <summary>Shared by the option default and the "--top is ignored with --server" check.</summary>
     internal const int DefaultTopSimilar = 3;
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         // Validate every flag before touching input, so a typo costs nothing and reports all
         // at once rather than after a slow read.

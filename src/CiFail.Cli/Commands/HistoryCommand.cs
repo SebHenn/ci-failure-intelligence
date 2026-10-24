@@ -63,7 +63,7 @@ public sealed class HistoryCommand : Command<HistoryCommand.Settings>
         public bool Json { get; init; }
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         if (settings.Open && settings.Resolved)
         {

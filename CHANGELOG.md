@@ -14,12 +14,23 @@ after 1.0.
 - **The GitHub Action names the build that ran.** One line, printed before the analysis and
   repeated at the foot of the step summary and the PR comment:
   `cifail action v0.3.1 (SebHenn/ci-failure-intelligence@v1) | cifail 0.3.1 | image
-  ghcr.io/sebhenn/cifail:latest@sha256:…`. Both documented pins are *moving* references —
+  ghcr.io/sebhenn/cifail:0.3.1@sha256:…`. Both documented pins are *moving* references —
   `@v1` follows the newest release and `:latest` moves with it, and a runner may serve either
   from cache — so until now a log could not answer "which cifail was this?", and a fix that
   shipped weeks ago was indistinguishable from a fix that does not work ([#21]). Also exposed
   as the `action-version` and `image-digest` outputs. The version is stamped in `action.yml`
   and `scripts/check-versions.sh` fails the build if it drifts from `Directory.Build.props`.
+
+### Changed
+
+- **The GitHub Action runs the image of its own release, not `:latest`.** With no `image:`
+  input it now runs `ghcr.io/sebhenn/cifail:<version>`, the image built from the same release
+  as the action. Before, pinning the action — to `@v1`, a version or even a commit — pinned
+  only the wrapper script, and the code that read the log was whatever `:latest` pointed at
+  when the runner pulled it ([#37]). `@v1` still follows the newest release, wrapper and image
+  together. The release workflow now refuses to publish a release whose image cannot be
+  pulled anonymously for both linux/amd64 and linux/arm64. Passing `image:` overrides it as
+  before.
 
 ### Fixed
 
@@ -499,6 +510,7 @@ documented install instructions can find them. Fixed in 0.2.0.
 [Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.1...HEAD
 
 [#21]: https://github.com/SebHenn/ci-failure-intelligence/issues/21
+[#37]: https://github.com/SebHenn/ci-failure-intelligence/issues/37
 [0.3.1]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.1.0...v0.2.0

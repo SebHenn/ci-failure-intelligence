@@ -444,8 +444,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # On a tag push: build and push. This job's image is what every consumer of the action pulls
-  # as :latest, so it runs in the `release` environment and waits for the same approval as
+  # On a tag push: build and push. This job's image is what every consumer of the action runs
+  # (as :<version>, #37), so it runs in the `release` environment and waits for the same approval as
   # nuget-publish.
   docker:
     # Exactly the same `needs` as `nuget-publish`, so both start waiting for approval together
@@ -563,6 +563,32 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+
+      # The action runs ghcr.io/sebhenn/cifail:<version> unless given an `image:` (#37), so a
+      # release whose image cannot be pulled is a release whose action cannot run. Checked
+      # anonymously, the way every consumer pulls: a private package or a push that landed only
+      # one platform fails here, before the release is public and before v1 points at it,
+      # rather than on someone's runner.
+      - name: The action's image must be pullable
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY_OWNER,,}/cifail"
+          tag="${GITHUB_REF_NAME#v}"
+          token="$(curl -fsS "https://ghcr.io/token?scope=repository:$repo:pull" | jq -r .token)"
+          if ! index="$(curl -fsS -H "Authorization: Bearer $token" \
+              -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+              "https://ghcr.io/v2/$repo/manifests/$tag")"; then
+            echo "error: ghcr.io/$repo:$tag cannot be pulled anonymously." >&2
+            exit 1
+          fi
+          for platform in linux/amd64 linux/arm64; do
+            if ! printf '%s' "$index" | jq -e --arg p "$platform" \
+                'any(.manifests[]?; "\(.platform.os)/\(.platform.architecture)" == $p)' >/dev/null; then
+              echo "error: ghcr.io/$repo:$tag has no $platform image." >&2
+              exit 1
+            fi
+          done
+          echo "ghcr.io/$repo:$tag is pullable for linux/amd64 and linux/arm64"
 
       # Releases are immutable once published: neither the assets nor the vX.Y.Z tag can change
       # afterwards. That is why the release stays a draft until here.
