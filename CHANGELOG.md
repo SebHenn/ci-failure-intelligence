@@ -39,6 +39,13 @@ after 1.0.
   documents, so "resolves to the newest release" is the one thing it must never quietly stop
   doing; previously the push was fire-and-forget and the job went green either way.
 
+- **A release candidate no longer becomes `:latest` or the repository's Latest release.** A
+  tag such as `v0.4.0-rc1` is now published as a prerelease, and its image gets only its own
+  version tag. Before, it moved `ghcr.io/sebhenn/cifail:latest` and became the release that
+  `.../releases/latest/download/` serves, which is where the Scoop install reads from
+  ([#38]). The same check stops an older patch line, re-released after a newer one, from
+  becoming Latest. `v1` already refused to move backwards for that case.
+
 ## [0.3.1] - 2026-08-21
 
 A fix release for the reporting path: the GitHub Action could not explain a failure, because
@@ -511,6 +518,7 @@ documented install instructions can find them. Fixed in 0.2.0.
 
 [#21]: https://github.com/SebHenn/ci-failure-intelligence/issues/21
 [#37]: https://github.com/SebHenn/ci-failure-intelligence/issues/37
+[#38]: https://github.com/SebHenn/ci-failure-intelligence/issues/38
 [0.3.1]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.1.0...v0.2.0

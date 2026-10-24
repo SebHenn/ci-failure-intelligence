@@ -195,6 +195,9 @@ jobs:
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           draft: true
+          # Marked here rather than by `finalize`, so the draft smoke installs from is already
+          # what gets published (#38).
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
@@ -482,10 +485,14 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/${{ github.repository_owner }}/cifail
+          # A prerelease gets only its own {{version}} tag: metadata-action already skips
+          # {{major}}.{{minor}} for one, and `latest` must skip it too (#38). Not covered: an
+          # older patch line re-released after a newer one still moves `latest` backwards, since
+          # this job has no tag history to compare against. The action does not use `latest`.
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       # No GitHub Actions layer cache, on purpose. A tag's own cache scope is always empty, so
       # every entry this build could restore was saved by a run on main — ci.yml's docker-smoke,
@@ -590,20 +597,52 @@ jobs:
           done
           echo "ghcr.io/$repo:$tag is pullable for linux/amd64 and linux/arm64"
 
+      # Whether this tag is the newest stable release decides two things below: whether it
+      # becomes the repository's "Latest" release, and whether v1 moves to it (#38). Worked out
+      # once, so the two cannot disagree. A prerelease (v0.4.0-rc1) is never the newest stable
+      # release, and neither is an older patch line re-released after a newer one.
+      - name: Is this the newest stable release?
+        id: newest
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            echo "$GITHUB_REF_NAME is a prerelease: it will not be Latest, and v1 stays where it is."
+            echo "newest=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # `|| true`: grep exits 1 on an all-prerelease list, and under pipefail that would
+          # read as "not the newest" — i.e. it would answer for the wrong reason.
+          newest="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | { grep -v -- '-' || true; } | sort -V | tail -1)"
+          if [ -z "$newest" ]; then
+            echo "error: this release's own tag is not visible; refusing to guess about Latest and v1." >&2
+            exit 1
+          fi
+          if [ "$newest" != "$GITHUB_REF_NAME" ]; then
+            echo "::notice::$GITHUB_REF_NAME is not the newest release ($newest): it will not be Latest, and v1 stays where it is."
+            echo "newest=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "newest=true" >> "$GITHUB_OUTPUT"
+          fi
+
       # Releases are immutable once published: neither the assets nor the vX.Y.Z tag can change
       # afterwards. That is why the release stays a draft until here.
+      #
+      # `--latest=false` rather than leaving the flag off: GitHub makes a newly published
+      # release Latest unless told otherwise, and `.../releases/latest/download/` is where the
+      # README's Scoop install reads from.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          NEWEST: ${{ steps.newest.outputs.newest }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest="$NEWEST"
 
       # The composite action's major version is tracked independently of the CLI version,
       # per the GitHub Actions convention. Prereleases (v0.2.0-rc1) must not move it.
       #
       # `@v1` is the ONLY pin the README documents, so it has one job: resolve to the newest
-      # release. Two ways that quietly stops being true, both guarded here — re-releasing an
-      # older patch line would drag it backwards, and a failed push would leave it behind
-      # while this job still went green.
+      # release. Two ways that quietly stops being true, both guarded — re-releasing an older
+      # patch line would drag it backwards (the `newest` step above), and a failed push would
+      # leave it behind while this job still went green (below).
       #
       # v1 is the one tag this workflow moves, so the "release tags" ruleset must not cover it:
       # its pattern is v*.*.*, which protects every version tag and leaves v1 movable.
@@ -611,22 +650,11 @@ jobs:
       # The token reaches git through GIT_CONFIG_* for this one command only — not persisted in
       # .git/config, and not on a command line where `ps` would show it.
       - name: Move the v1 major tag
-        if: ${{ !contains(github.ref_name, '-') }}
+        if: steps.newest.outputs.newest == 'true'
         env:
           PUSH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # `|| true`: grep exits 1 on an all-prerelease list, and under pipefail that would
-          # read as "not the newest" — i.e. it would skip the move for the wrong reason.
-          newest="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | { grep -v -- '-' || true; } | sort -V | tail -1)"
-          if [ -z "$newest" ]; then
-            echo "error: this release's own tag is not visible; refusing to guess about v1." >&2
-            exit 1
-          fi
-          if [ "$newest" != "$GITHUB_REF_NAME" ]; then
-            echo "::notice::$GITHUB_REF_NAME is not the newest release ($newest); leaving v1 where it is."
-            exit 0
-          fi
 
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
