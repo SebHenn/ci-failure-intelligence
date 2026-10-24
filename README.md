@@ -346,18 +346,18 @@ prints one line naming what actually ran, first thing in its log and at the foot
 summary:
 
 ```
-cifail action v0.3.1 (SebHenn/ci-failure-intelligence@v1) | cifail 0.3.1 | image ghcr.io/sebhenn/cifail:latest@sha256:…
+cifail action v0.3.1 (SebHenn/ci-failure-intelligence@v1) | cifail 0.3.1 | image ghcr.io/sebhenn/cifail:0.3.1@sha256:…
 ```
 
 If a fix listed in the [changelog](CHANGELOG.md) doesn't seem to be there, read that line
 before anything else — it names the action build, the CLI inside it, and the exact image
-digest your runner used (`:latest` moves too, and runners cache). Pin either one by version
-if you'd rather upgrade deliberately: `uses: SebHenn/ci-failure-intelligence@v0.3.1`, and
-`image: ghcr.io/sebhenn/cifail:0.3.1`.
+digest your runner used (runners cache). The action runs the image built from its own
+release, so one pin covers both: pin by version if you'd rather upgrade deliberately, and
+`uses: SebHenn/ci-failure-intelligence@v0.3.1` runs `ghcr.io/sebhenn/cifail:0.3.1`.
 
 Inputs: `log` (file, **directory or glob** to analyze), `mode` (`analyze`, the default, or
-`gate`), `args` (extra flags, e.g. `--type node`), `image` (pin a version instead of
-`:latest`), `summary` (write to the step summary, default `true`), `fail` (propagate cifail's
+`gate`), `args` (extra flags, e.g. `--type node`), `image` (run a different image; by
+default, the one from the action's own release), `summary` (write to the step summary, default `true`), `fail` (propagate cifail's
 exit code; off by default since it runs after a failed build), `comment` (post the analysis as
 a pull-request comment, default `false`), and `sarif` (also write a SARIF report to that path).
 For shared history, set `CIFAIL_DB_PROVIDER` / `CIFAIL_DB_CONNECTION` in the job env.
