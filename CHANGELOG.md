@@ -9,6 +9,13 @@ after 1.0.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-24
+
+One new command, for repositories whose pull requests run a test selection with
+[dotnet-tia](https://github.com/SebHenn/dotnet-tia): `cifail selection-misses` names the failures
+of tests that the selection had skipped. Nothing else changes. Minor rather than patch, because a
+command was added.
+
 ### Added
 
 - **`cifail selection-misses --tia <report.json> <test reports>`** names the failing tests that
@@ -551,7 +558,8 @@ First tagged release. **Superseded — do not install it**: its assets are named
 `cifail-0.1.0-alpha-*` while the tag is `v0.1.0`, so nothing that follows the
 documented install instructions can find them. Fixed in 0.2.0.
 
-[Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.2...v0.4.0
 
 [#21]: https://github.com/SebHenn/ci-failure-intelligence/issues/21
 [#34]: https://github.com/SebHenn/ci-failure-intelligence/pull/34

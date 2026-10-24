@@ -22,7 +22,8 @@ release from `main`**. Only the latest release is supported.
 
 | Version | Supported |
 | --- | --- |
-| 0.3.x   | ✅ |
+| 0.4.x   | ✅ |
+| 0.3.x   | ❌ — superseded |
 | 0.2.x   | ❌ — superseded. Note 0.2.x runs rule-pack regexes with **no timeout**; see [Rule packs execute nothing — but their regexes do run](#rule-packs-execute-nothing--but-their-regexes-do-run). |
 | 0.1.0   | ❌ — superseded, and its release assets never resolved (see [CHANGELOG.md](CHANGELOG.md)) |
 
