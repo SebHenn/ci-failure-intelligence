@@ -24,7 +24,7 @@ public sealed class RulesExplainCommand : Command<RulesExplainCommand.Settings>
         public bool Json { get; init; }
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         var rule = RulePackLoader.LoadAll()
             .FirstOrDefault(r => string.Equals(r.Id, settings.Id, StringComparison.OrdinalIgnoreCase));

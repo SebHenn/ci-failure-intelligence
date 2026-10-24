@@ -31,7 +31,7 @@ public sealed class RulesTestCommand : Command<RulesTestCommand.Settings>
         public bool Stdin { get; init; }
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         Regex regex;
         try

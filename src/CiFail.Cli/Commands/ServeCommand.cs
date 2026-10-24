@@ -54,7 +54,7 @@ public sealed class ServeCommand : Command<ServeCommand.Settings>
         public string? TlsPassword { get; init; }
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         // Resolve config the same way every other command does (CLI > env > config > defaults).
         var config = ConfigLoader.Load(settings.DbProvider, settings.DbConnection);

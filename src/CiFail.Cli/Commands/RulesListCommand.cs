@@ -22,7 +22,7 @@ public sealed class RulesListCommand : Command<RulesListCommand.Settings>
         public bool Json { get; init; }
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         var searchPath = RuleSearchPath.Resolve(settings.Rules);
         var rules = RulePackLoader.LoadFrom(searchPath);

@@ -20,7 +20,7 @@ public sealed class InitCommand : Command<InitCommand.Settings>
     {
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         var hooksDir = ResolveHooksDir(Directory.GetCurrentDirectory());
         if (hooksDir is null)
