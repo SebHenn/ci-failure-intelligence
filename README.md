@@ -326,6 +326,10 @@ Capture a failing step's output, then let the action explain it — the analysis
 the job's **step summary**. No install needed; it runs the Docker image for you.
 
 ```yaml
+- uses: actions/checkout@v7
+  with:
+    persist-credentials: false
+
 - name: Build
   run: dotnet build 2>&1 | tee build.log
 
@@ -339,6 +343,12 @@ the job's **step summary**. No install needed; it runs the Docker image for you.
 > **The action runs on Linux runners only.** It works by running the cifail Docker image, and
 > `windows-*` / `macos-*` runners have no Docker daemon. On those, install the binary and call
 > it directly — see [Anywhere else](#anywhere-else-plain-pipe).
+
+> **Check out with `persist-credentials: false`.** The action mounts the workspace into the
+> cifail container, so the image can read everything in it. That includes the job token that
+> `actions/checkout` v5 and earlier store in `.git/config` by default. v6 and later keep the
+> token outside the workspace, so the setting matters less there, but it costs nothing. The
+> action warns when it finds a token in the workspace's `.git/config`.
 
 **`@v1` is a moving tag**: it follows the newest release, so you get fixes without editing
 your workflow. The flip side is that the ref you wrote doesn't identify a build — so the step
@@ -357,8 +367,9 @@ release, so one pin covers both: pin by version if you'd rather upgrade delibera
 
 Inputs: `log` (file, **directory or glob** to analyze), `mode` (`analyze`, the default, or
 `gate`), `args` (extra flags, e.g. `--type node`), `image` (run a different image; by
-default, the one from the action's own release), `summary` (write to the step summary, default `true`), `fail` (propagate cifail's
-exit code; off by default since it runs after a failed build), `comment` (post the analysis as
+default, the one from the action's own release), `summary` (write to the step summary,
+default `true`), `fail` (propagate cifail's exit code; off by default since it runs after a
+failed build), `comment` (post the analysis as
 a pull-request comment, default `false`), and `sarif` (also write a SARIF report to that path).
 For shared history, set `CIFAIL_DB_PROVIDER` / `CIFAIL_DB_CONNECTION` in the job env.
 

@@ -126,6 +126,19 @@ runs:
           INPUT_IMAGE="ghcr.io/sebhenn/cifail:$CIFAIL_ACTION_VERSION"
         fi
 
+        # The whole workspace is mounted into the container below, so a token persisted in it is
+        # readable by the image (#39). actions/checkout v5 and earlier write the job token into
+        # .git/config unless given `persist-credentials: false`. v6 and later keep it under
+        # $RUNNER_TEMP, which is not mounted, so only config files inside the workspace are
+        # checked: the root checkout and one level down, for `path:` checkouts. The container
+        # needs the workspace (the log, the reports, git history), so this warns rather than
+        # hiding .git.
+        for git_config in .git/config ./*/.git/config; do
+          if [ -f "$git_config" ] && grep -qi 'extraheader' "$git_config"; then
+            echo "::warning::cifail: $git_config holds a persisted credential, and the workspace is mounted into the cifail container, so the image can read it. Check out with 'persist-credentials: false', or use actions/checkout v6 or later."
+          fi
+        done
+
         docker pull "$INPUT_IMAGE" >/dev/null 2>&1 || true
 
         # ---- provenance ----------------------------------------------------------------
