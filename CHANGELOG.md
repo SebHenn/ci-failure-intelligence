@@ -9,6 +9,15 @@ after 1.0.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-24
+
+The GitHub Action now runs the build you pinned, and says which build that was. Pinning the
+action, whether to `@v1`, `@v0.3.2` or a commit, now pins the image too: the action runs the
+image from its own release instead of `:latest`. Its output names the action version, the CLI
+version and the image digest. The release pipeline behind it now waits for a maintainer's
+approval before anything reaches nuget.org or GHCR, and keeps release candidates off `:latest`
+and off the Latest release. The CLI itself changes only through dependency updates.
+
 ### Added
 
 - **The GitHub Action names the build that ran.** One line, printed before the analysis and
@@ -32,6 +41,9 @@ after 1.0.
   pulled anonymously for both linux/amd64 and linux/arm64. Passing `image:` overrides it as
   before.
 
+- **Dependencies:** Spectre.Console.Cli 0.57.2, Entity Framework Core 9.0.21, MongoDB.Driver
+  3.13.0 and Microsoft.Data.Sqlite 10.0.13.
+
 ### Fixed
 
 - **The release workflow now verifies the `v1` tag actually moved,** and refuses to move it
@@ -47,6 +59,12 @@ after 1.0.
   becoming Latest. `v1` already refused to move backwards for that case.
 
 ### Security
+
+- **A release now waits for a maintainer's approval before anything is published,** and each
+  job of the release workflow holds only the permissions it uses. The NuGet package and the
+  Docker image are pushed only after the draft release has installed and run on Linux and
+  macOS. A tag whose commit is not on `main` publishes nothing, and every action the
+  workflows use is pinned to a full commit SHA ([#34]).
 
 - **The GitHub Action warns when the job token is readable by the cifail image.** The action
   mounts the workspace into the container, and `actions/checkout` v5 and earlier store the
@@ -524,12 +542,14 @@ First tagged release. **Superseded — do not install it**: its assets are named
 `cifail-0.1.0-alpha-*` while the tag is `v0.1.0`, so nothing that follows the
 documented install instructions can find them. Fixed in 0.2.0.
 
-[Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.2...HEAD
 
 [#21]: https://github.com/SebHenn/ci-failure-intelligence/issues/21
+[#34]: https://github.com/SebHenn/ci-failure-intelligence/pull/34
 [#37]: https://github.com/SebHenn/ci-failure-intelligence/issues/37
 [#38]: https://github.com/SebHenn/ci-failure-intelligence/issues/38
 [#39]: https://github.com/SebHenn/ci-failure-intelligence/issues/39
+[0.3.2]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.1.0...v0.2.0

@@ -117,17 +117,19 @@ See [deploy/README.md](deploy/README.md) for the deployment wiring.
   API key exists for this repository, so there is none to leak.
 - Binaries are **not** code-signed or notarized yet. macOS Gatekeeper and Windows
   SmartScreen will warn on first run.
-- **The GitHub Action runs `ghcr.io/sebhenn/cifail:latest` unless you say otherwise.** Pinning
-  the action — to `@v1`, to a release tag, or even to a commit SHA — pins the script that runs
-  the container, not the container: `:latest` moves with every release. To pin what actually
-  analyses your logs, also pass `image:` with a version tag (`ghcr.io/sebhenn/cifail:0.3.1`) or,
-  stronger, a digest (`ghcr.io/sebhenn/cifail@sha256:…`).
+- **The GitHub Action runs the image of its own release.** With no `image:` input it runs
+  `ghcr.io/sebhenn/cifail:<version>`, built from the same release as the action, so pinning the
+  action to a release tag or a commit SHA pins the container too. `@v1` moves both with every
+  release. A registry tag can be moved by whoever can push to it, so the strongest pin is
+  `image:` with a digest (`ghcr.io/sebhenn/cifail@sha256:…`). The step prints the digest it
+  ran, and exposes it as the `image-digest` output.
 - The container never receives `GITHUB_TOKEN` in its environment — with `comment: true` the
   comment is posted from the runner, outside it — but it runs with your workspace mounted at
-  `/work`, and `actions/checkout` by default writes the job's token into `.git/config` there.
-  So whatever image you run can reach whatever that token can. Check out with
-  `persist-credentials: false` before this action, and give the job only the permissions it
-  needs: `contents: read`, plus `pull-requests: write` only if it comments.
+  `/work`, and `actions/checkout` v5 and earlier write the job's token into `.git/config` there
+  by default. Then whatever image you run can reach whatever that token can, and the action
+  warns when it finds one. (Checkout v6 and later keep the token outside the workspace.) Check
+  out with `persist-credentials: false` before this action, and give the job only the
+  permissions it needs: `contents: read`, plus `pull-requests: write` only if it comments.
 
 ### Rule packs execute nothing — but their regexes do run
 
