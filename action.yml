@@ -22,9 +22,9 @@ inputs:
     required: false
     default: ''
   image:
-    description: 'cifail Docker image to use.'
+    description: "cifail Docker image to use. Empty runs the image built from this action's own release (ghcr.io/sebhenn/cifail:<version>), so pinning the action pins the code that runs."
     required: false
-    default: 'ghcr.io/sebhenn/cifail:latest'
+    default: ''
   summary:
     description: 'Write the analysis to the GitHub Actions step summary.'
     required: false
@@ -113,12 +113,25 @@ runs:
           *) echo "cifail: unknown mode '$INPUT_MODE' (use analyze or gate)." >&2; exit 2 ;;
         esac
 
+        # The image of this action's own release, not `:latest` (#37). With `:latest`, pinning
+        # the action — to `@v1`, a version or a commit — pinned only this wrapper, and the code
+        # that read the log was whatever `:latest` was when the runner pulled it. The stamp is
+        # checked against the release tag, and `finalize` refuses to publish a release whose
+        # image cannot be pulled, so this tag exists for every release.
+        if [ -z "$INPUT_IMAGE" ]; then
+          if [ -z "${CIFAIL_ACTION_VERSION:-}" ]; then
+            echo "cifail: no image: input and no version stamp to derive one from." >&2
+            exit 2
+          fi
+          INPUT_IMAGE="ghcr.io/sebhenn/cifail:$CIFAIL_ACTION_VERSION"
+        fi
+
         docker pull "$INPUT_IMAGE" >/dev/null 2>&1 || true
 
         # ---- provenance ----------------------------------------------------------------
-        # Name the build that is running, before it runs anything (issue #21). Both things a
-        # consumer pins are MOVING references: `@v1` follows the newest release, and the default
-        # `:latest` image moves with it — and a runner can serve either from cache. So a log
+        # Name the build that is running, before it runs anything (issue #21). `@v1` is a
+        # MOVING reference that follows the newest release, an `image:` input can be one too
+        # (`:latest`), and a runner can serve either from cache. So a log
         # that shows only the analysis cannot answer "which cifail was this?", and a fix that
         # shipped weeks ago looks like a fix that does not work. Printing this first also means
         # it survives a `docker run` that dies.
@@ -160,9 +173,9 @@ runs:
         if [ -n "$INPUT_RULES" ]; then cifail_args+=(--rules "$INPUT_RULES"); fi
 
         # Reports are an analyze-only feature; gate's own --json carries the verdict.
-        # Both --report pairs are honoured in one run. Older images kept only the last pair, and
-        # ghcr.io/sebhenn/cifail:latest only moves on a release tag — hence the markdown guard
-        # below, which turns a pinned older image into a warning rather than a blank step.
+        # Both --report pairs are honoured in one run. Images before 0.3.1 kept only the last
+        # pair — hence the markdown guard below, which turns an older image passed as `image:`
+        # into a warning rather than a blank step.
         if [ "$INPUT_MODE" = "analyze" ]; then
           cifail_args+=(--report markdown --report-out "$report")
           if [ -n "$INPUT_SARIF" ]; then cifail_args+=(--report sarif --report-out "$INPUT_SARIF"); fi
