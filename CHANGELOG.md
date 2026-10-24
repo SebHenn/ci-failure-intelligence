@@ -9,6 +9,15 @@ after 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`cifail selection-misses --tia <report.json> <test reports>`** names the failing tests that
+  dotnet-tia's selection had skipped on the pull request: candidate test-selection misses
+  ([dotnet-tia#75](https://github.com/SebHenn/dotnet-tia/issues/75)). It reads the report written
+  by `dotnet tia run --report <file> --report-skipped`, and JUnit or TRX results of the run that
+  failed. It exits 1 when a failure was a skipped test, and refuses input that contains no test
+  report rather than reporting "no miss".
+
 ## [0.3.2] - 2026-10-24
 
 The GitHub Action now runs the build you pinned, and says which build that was. Pinning the

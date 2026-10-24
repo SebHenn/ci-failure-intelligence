@@ -143,6 +143,10 @@ public static class CliApp
                 .WithExample("gate", "build.log")
                 .WithExample("gate", "--update", "build.log");
 
+            config.AddCommand<SelectionMissesCommand>("selection-misses")
+                .WithDescription("Which failing tests had dotnet-tia's selection skipped: candidate selection misses.")
+                .WithExample("selection-misses", "--tia", "tia-report.json", "TestResults/*.trx");
+
             config.AddCommand<HistoryCommand>("history")
                 .WithDescription("List the failures you've analyzed before (or show one by its number).")
                 .WithExample("history")

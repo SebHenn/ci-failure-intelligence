@@ -61,6 +61,7 @@ Saved as #1. Once you've fixed it, record how so future-you remembers:
 - [Teach it a new failure](#teach-it-a-new-failure)
 - [Use cifail in CI](#use-cifail-in-ci) — [GitHub Actions](#github-actions-the-ready-made-action) · [GitLab CI](#gitlab-ci) · [Exit codes](#exit-codes)
 - [Fail CI on *new* failures only: `cifail gate`](#fail-ci-on-new-failures-only-cifail-gate)
+- [Was it a test-selection miss? `cifail selection-misses`](#was-it-a-test-selection-miss-cifail-selection-misses)
 - [What do the words mean?](#what-do-the-words-mean)
 - [Check your setup: `cifail config`](#check-your-setup-cifail-config)
 - [Where your data is kept](#where-your-data-is-kept)
@@ -668,6 +669,40 @@ Flags: `--baseline <file>` (default `.cifail/baseline.txt`), `--update`, `--json
 `--format`, `--type`.
 
 ---
+
+## Was it a test-selection miss? `cifail selection-misses`
+
+If your pull requests run only the tests a change can affect, with
+[dotnet-tia](https://github.com/SebHenn/dotnet-tia), the risk is a test the selection skipped
+that would have failed. The place that shows up for real is the next full run, on the default
+branch or a nightly. `cifail selection-misses` compares that run's failures with what the pull
+request skipped:
+
+```bash
+cifail selection-misses --tia tia-report.json TestResults/
+```
+
+```
+1 of 3 failing test(s) were skipped by dotnet-tia at f55d4daff — candidate selection misses:
+
+  App.Tests.CalculatorTests.Subtracts (App.Tests)
+    Assert.Equal() Failure: Values differ
+```
+
+- `--tia` is the pull request's report, written by `dotnet tia run --report tia-report.json
+  --report-skipped`. The dotnet-tia action's `report:` input does that. Keep it as an artifact.
+- The other arguments are JUnit or TRX reports from the run that failed: files, directories or
+  globs. A log beside them (a results directory has one) is skipped with a warning. Inputs with no
+  report at all are refused rather than reported as "no miss".
+- Names are compared at method level, so a parameterised case matches its method. A report that
+  records only the method name, like TRX from MSTest, matches only when exactly one skipped test
+  ends with that name.
+- Exit **0** when no failure was a skipped test, **1** when some were, **2** for unusable input.
+  `--json` prints `{tia, failingTests, misses[]}`.
+
+It names **candidates**: a skipped test can also fail for a reason the change had nothing to do
+with. `dotnet tia explain <test>` at the pull request's commit says whether anything connected the
+two.
 
 ## What do the words mean?
 

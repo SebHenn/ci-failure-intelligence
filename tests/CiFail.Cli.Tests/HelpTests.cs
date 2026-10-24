@@ -33,6 +33,7 @@ public sealed class HelpTests
         new[] { "clusters" },
         new[] { "resolve" },
         new[] { "suggest-rule" },
+        new[] { "selection-misses" },
         new[] { "reconcile" },
         new[] { "init" },
         new[] { "config" },
