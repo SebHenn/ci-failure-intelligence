@@ -46,6 +46,16 @@ after 1.0.
   ([#38]). The same check stops an older patch line, re-released after a newer one, from
   becoming Latest. `v1` already refused to move backwards for that case.
 
+### Security
+
+- **The GitHub Action warns when the job token is readable by the cifail image.** The action
+  mounts the workspace into the container, and `actions/checkout` v5 and earlier store the
+  job token in `.git/config` unless given `persist-credentials: false`. The action now checks
+  the workspace's `.git/config`, and those of `path:` checkouts one level down, and warns
+  when it finds a persisted credential ([#39]). Checkout v6 and later keep the token outside
+  the workspace and do not trigger it. The README's example now checks out with
+  `persist-credentials: false`.
+
 ## [0.3.1] - 2026-08-21
 
 A fix release for the reporting path: the GitHub Action could not explain a failure, because
@@ -519,6 +529,7 @@ documented install instructions can find them. Fixed in 0.2.0.
 [#21]: https://github.com/SebHenn/ci-failure-intelligence/issues/21
 [#37]: https://github.com/SebHenn/ci-failure-intelligence/issues/37
 [#38]: https://github.com/SebHenn/ci-failure-intelligence/issues/38
+[#39]: https://github.com/SebHenn/ci-failure-intelligence/issues/39
 [0.3.1]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.1.0...v0.2.0
