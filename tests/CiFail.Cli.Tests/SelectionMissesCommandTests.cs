@@ -47,7 +47,9 @@ public sealed class SelectionMissesCommandTests
         var result = cli.Run("selection-misses", "--tia", tia, results);
 
         result.ExitCode.Should().Be(ExitCodes.Negative);
-        result.StdoutFlat.Should().Contain("1 of 2 failing test(s) were skipped by dotnet-tia at 012345678");
+        // Separately: in CI the console is coloured, and the commit is in bold.
+        result.StdoutFlat.Should().Contain("1 of 2 failing test(s) were skipped by dotnet-tia at");
+        result.StdoutFlat.Should().Contain("012345678");
         result.StdoutFlat.Should().Contain("App.Tests.GridTests.Wraps");
         result.StdoutFlat.Should().NotContain("GridTests.Draws", "that test ran, so its failure is not a selection miss");
     }
