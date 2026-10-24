@@ -340,6 +340,21 @@ the job's **step summary**. No install needed; it runs the Docker image for you.
 > `windows-*` / `macos-*` runners have no Docker daemon. On those, install the binary and call
 > it directly — see [Anywhere else](#anywhere-else-plain-pipe).
 
+**`@v1` is a moving tag**: it follows the newest release, so you get fixes without editing
+your workflow. The flip side is that the ref you wrote doesn't identify a build — so the step
+prints one line naming what actually ran, first thing in its log and at the foot of the step
+summary:
+
+```
+cifail action v0.3.1 (SebHenn/ci-failure-intelligence@v1) | cifail 0.3.1 | image ghcr.io/sebhenn/cifail:latest@sha256:…
+```
+
+If a fix listed in the [changelog](CHANGELOG.md) doesn't seem to be there, read that line
+before anything else — it names the action build, the CLI inside it, and the exact image
+digest your runner used (`:latest` moves too, and runners cache). Pin either one by version
+if you'd rather upgrade deliberately: `uses: SebHenn/ci-failure-intelligence@v0.3.1`, and
+`image: ghcr.io/sebhenn/cifail:0.3.1`.
+
 Inputs: `log` (file, **directory or glob** to analyze), `mode` (`analyze`, the default, or
 `gate`), `args` (extra flags, e.g. `--type node`), `image` (pin a version instead of
 `:latest`), `summary` (write to the step summary, default `true`), `fail` (propagate cifail's
@@ -358,6 +373,8 @@ For shared history, set `CIFAIL_DB_PROVIDER` / `CIFAIL_DB_CONNECTION` in the job
 | `count` | how many things were analyzed |
 | `new-failures` | `gate` mode: how many failures weren't in the baseline |
 | `exit-code` | cifail's own exit code, whatever `fail` was set to |
+| `action-version` | version of the action itself — what `@v1` resolved to on this run |
+| `image-digest` | immutable digest of the image that ran (`name@sha256:…`) |
 
 ```yaml
 - name: Explain failures

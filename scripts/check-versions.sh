@@ -37,7 +37,19 @@ if [ "$chart_app" != "$version" ]; then
   note "$chart_file appVersion is '$chart_app' but the version is '$version'"
 fi
 
-# 3. On a release, the tag must match the version. Accepts v-prefixed and bare tags.
+# 3. The composite action stamps its own version so its output can name the build that ran
+#    (issue #21 — `@v1` and `:latest` are both moving references, so neither identifies one).
+#    A stamp nobody checks is a stamp that lies, and it would lie in exactly the situation it
+#    exists for: someone trying to work out which build they are on.
+action_file="action.yml"
+action_stamp="$(sed -n "s/^[[:space:]]*CIFAIL_ACTION_VERSION:[[:space:]]*['\"]\{0,1\}\([^'\"]*\)['\"]\{0,1\}[[:space:]]*$/\1/p" "$action_file" | head -1)"
+if [ -z "$action_stamp" ]; then
+  note "$action_file has no CIFAIL_ACTION_VERSION stamp; the action could not report its version"
+elif [ "$action_stamp" != "$version" ]; then
+  note "$action_file CIFAIL_ACTION_VERSION is '$action_stamp' but the version is '$version'"
+fi
+
+# 4. On a release, the tag must match the version. Accepts v-prefixed and bare tags.
 #    An empty argument means "not a tag build" (the release workflow passes "" on a manual
 #    dispatch), so it must be treated as no-tag rather than as a tag that matches nothing.
 if [ "${1:-}" != "" ]; then

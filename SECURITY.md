@@ -99,6 +99,17 @@ See [deploy/README.md](deploy/README.md) for the deployment wiring.
 
 - Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml)
   on GitHub-hosted runners from a tagged commit. Nothing is built or signed locally.
+- The tagged commit must be on `main`, and nothing is published to nuget.org or GHCR until the
+  maintainer approves the run's deployment to a protected `release` environment, which
+  administrators cannot bypass, and that approval is only requested once the draft release has
+  installed and run on Linux and macOS. Each job is granted only the permissions it uses: the
+  jobs that build and test the binaries and the NuGet package never hold a token that can
+  publish. The Docker image is the exception — it is built in the approved job that pushes it,
+  inside BuildKit containers that do not see the registry login.
+- Version tags cannot be moved or deleted, and a published GitHub release is immutable, so a
+  version number always refers to the same code and the same assets. A fix ships as a new
+  version.
+- Every action the workflows use is pinned to a full commit SHA, not a tag.
 - Every binary archive ships a `.sha256`, and each release an aggregate `SHA256SUMS`.
   `scripts/install.sh` **verifies the checksum and refuses to install without it**
   (override only with `CIFAIL_SKIP_CHECKSUM=1`).
@@ -106,6 +117,17 @@ See [deploy/README.md](deploy/README.md) for the deployment wiring.
   API key exists for this repository, so there is none to leak.
 - Binaries are **not** code-signed or notarized yet. macOS Gatekeeper and Windows
   SmartScreen will warn on first run.
+- **The GitHub Action runs `ghcr.io/sebhenn/cifail:latest` unless you say otherwise.** Pinning
+  the action — to `@v1`, to a release tag, or even to a commit SHA — pins the script that runs
+  the container, not the container: `:latest` moves with every release. To pin what actually
+  analyses your logs, also pass `image:` with a version tag (`ghcr.io/sebhenn/cifail:0.3.1`) or,
+  stronger, a digest (`ghcr.io/sebhenn/cifail@sha256:…`).
+- The container never receives `GITHUB_TOKEN` in its environment — with `comment: true` the
+  comment is posted from the runner, outside it — but it runs with your workspace mounted at
+  `/work`, and `actions/checkout` by default writes the job's token into `.git/config` there.
+  So whatever image you run can reach whatever that token can. Check out with
+  `persist-credentials: false` before this action, and give the job only the permissions it
+  needs: `contents: read`, plus `pull-requests: write` only if it comments.
 
 ### Rule packs execute nothing — but their regexes do run
 

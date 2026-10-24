@@ -1,40 +1,97 @@
 name: Release
 
-# Cut a release by pushing a version tag, e.g.:
+# Cut a release by pushing a version tag on a commit that is already on main, e.g.:
 #   git tag v0.2.0 && git push origin v0.2.0
 #
 # The tag must match <Version> in Directory.Build.props — the `verify` job enforces that
 # before anything is built, because a mismatch is what made every 0.1.0 install path 404.
+# The tagged commit must also be on main. A version tag is permanent once pushed (the
+# "release tags" ruleset blocks moving or deleting it), so a tag that fails either check is
+# spent: bump <Version> and tag the next version instead.
 #
 # The GitHub Release is created as a DRAFT and only published by `finalize`, after the
 # binaries, the NuGet package, the Docker image, the packaging manifests and a real
 # end-to-end install smoke test have all succeeded. Nobody's `install.sh` can ever see a
 # half-published release.
+#
+# The two jobs that publish somewhere other than this repository — `nuget-publish` and
+# `docker` — run in the `release` environment, which waits for a maintainer to approve them.
+# Both depend on exactly the same jobs, so they start waiting at the same moment and one
+# approval releases both. Those jobs include `smoke`, so the approval is only asked for once
+# the draft release exists and has installed and run on Linux and macOS: a release whose
+# install failed can never be approved. (The multi-arch image is the one thing not built
+# before the approval: `docker` builds it from scratch and pushes it in the same job.)
+# `finalize`, the only job that makes anything public here, needs both of them, so nothing
+# becomes public before that approval. The draft release and the install smoke test run
+# without waiting for it: a draft is visible only to people with write access.
 on:
   push:
     tags: ['v*']
   workflow_dispatch: {}   # manual dry-run: builds and renders everything, publishes nothing
 
-permissions:
-  contents: write
+# Nothing by default. Each job asks for exactly what it uses, so the jobs that build — and with
+# them every MSBuild target, analyser and package the build pulls in — never hold a token that
+# can publish, and the jobs that hold one run nothing from the repository they did not have to.
+# The one exception is `docker`: it holds `packages: write` while it builds the image it pushes.
+# The build itself runs inside BuildKit's containers, which never see the registry login.
+permissions: {}
 
+# Every action is pinned to a full commit SHA, because a tag is a pointer its owner can move. The
+# comment names the release the SHA was taken from, and Dependabot updates both together.
+#
+# "Publishing" below always means: a push of a version tag. A manual dispatch is a dry run even
+# when it is started from a tag, because every publishing job is guarded on
+# `github.event_name == 'push'` as well as on the ref.
 jobs:
-  # Gate everything on the version/tag agreeing and the shell scripts linting. Runs first so
-  # a mistyped tag publishes nothing at all.
+  # Gate everything on the tagged commit being on main, the version/tag agreeing and the shell
+  # scripts linting. Runs first so a mistyped tag publishes nothing at all.
   verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The main-ancestry check needs origin/main. A full clone fetches every branch, so it
+          # is there without a second, authenticated fetch.
+          fetch-depth: 0
+
+      # A tag can be pushed on any commit, including one on a branch that was never reviewed or
+      # merged. The tag ruleset stops a v* tag from being moved or deleted once it exists, not
+      # from being created somewhere it should not be, so this is what ties a release to code
+      # that went through main.
+      - name: The tagged commit must be on main
+        if: github.ref_type == 'tag'
+        run: |
+          if ! git rev-parse --verify --quiet refs/remotes/origin/main > /dev/null; then
+            echo "::error::origin/main is not in the clone, so $GITHUB_REF_NAME cannot be checked against it."
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor HEAD refs/remotes/origin/main; then
+            echo "::error::$GITHUB_REF_NAME points at $(git rev-parse --short HEAD), which is not on main. Merge it first, then bump <Version> in Directory.Build.props and tag the merged commit with the new version: the 'release tags' ruleset stops a v* tag being moved or deleted, so $GITHUB_REF_NAME stays where it is."
+            exit 1
+          fi
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             8.0.x
             9.0.x
 
+      # An empty TAG means "not a tag build", which check-versions.sh treats as no tag at all.
       - name: Check version matches the tag
-        run: bash scripts/check-versions.sh "${{ github.ref_type == 'tag' && github.ref_name || '' }}"
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          if ! bash scripts/check-versions.sh "$TAG"; then
+            if [ -n "$TAG" ]; then
+              echo "::error::$TAG does not match <Version> in Directory.Build.props. Push a tag that matches it, bumping it first if need be. The 'release tags' ruleset stops a v* tag being moved or deleted, so $TAG itself cannot be reused."
+            fi
+            exit 1
+          fi
 
       - name: Lint shell scripts
         run: shellcheck scripts/*.sh
@@ -42,11 +99,17 @@ jobs:
   build:
     needs: verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      checksums: ${{ steps.checksums.outputs.checksums }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             8.0.x
@@ -70,10 +133,26 @@ jobs:
       - name: Render packaging manifests
         run: bash scripts/render-packaging.sh "$(bash scripts/version.sh)" dist dist
 
+      # Exactly the files uploaded below. The release job checks what it downloaded against
+      # these before attaching it, and checks the draft's assets against them again afterwards,
+      # so the release carries byte for byte what this job built — and the checksums travel as a
+      # job output, a separate channel from the artifact they describe.
+      - name: Record the artifact checksums
+        id: checksums
+        working-directory: dist
+        run: |
+          sums="$(sha256sum -- *.tar.gz *.zip *.sha256 SHA256SUMS cifail.rb cifail.json)"
+          echo "$sums"
+          {
+            echo 'checksums<<CHECKSUMS_END'
+            echo "$sums"
+            echo 'CHECKSUMS_END'
+          } >> "$GITHUB_OUTPUT"
+
       # Every pattern sits under dist/, so the artifact is flat. Listing files explicitly
       # also keeps the six unpacked per-RID binaries (dist/<rid>/cifail) out of it.
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cifail-binaries
           if-no-files-found: error
@@ -87,58 +166,97 @@ jobs:
 
   # Create the release as a draft. Assets include the rendered Scoop manifest, which the
   # README installs via .../releases/latest/download/cifail.json.
+  #
+  # A draft is visible only to people with write access, so this needs no approval: nothing
+  # here is public until `finalize` publishes it, and `finalize` needs the approved jobs. If the
+  # deployment is rejected the draft stays behind; delete it by hand.
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    # Creating the draft and reading it back are all this job does, so it is one of only two
+    # jobs that can write to the repository.
+    permissions:
+      contents: write
+    # No checkout: everything here is the artifact and the API.
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cifail-binaries
+          path: dist
+
+      - name: The artifact must be the one build produced
+        working-directory: dist
+        env:
+          CHECKSUMS: ${{ needs.build.outputs.checksums }}
+        run: printf '%s\n' "$CHECKSUMS" | sha256sum --check --strict
 
       - name: Publish GitHub Release (draft)
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           draft: true
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            *.tar.gz
-            *.zip
-            *.sha256
-            SHA256SUMS
-            cifail.rb
-            cifail.json
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+            dist/SHA256SUMS
+            dist/cifail.rb
+            dist/cifail.json
+
+      # A draft release is not downloadable anonymously, and reading one at all takes a token
+      # that can write to the repository. Rather than hand that to the smoke matrix — which runs
+      # this repository's install script on two more machines — this job, which already holds
+      # it, reads the draft's assets back and passes them on as an artifact. They are checked
+      # against build's checksums first, so smoke installs exactly what the draft serves and the
+      # draft serves exactly what build produced, with nothing missing and nothing extra.
+      - name: Read the draft's assets back
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECKSUMS: ${{ needs.build.outputs.checksums }}
+        run: |
+          mkdir -p draft
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir draft --pattern '*' --clobber
+          cd draft
+          printf '%s\n' "$CHECKSUMS" | sha256sum --check --strict
+
+          expected=$(printf '%s\n' "$CHECKSUMS" | wc -l)
+          actual=$(find . -type f | wc -l)
+          if [ "$actual" -ne "$expected" ]; then
+            echo "::error::the draft release holds $actual assets but build produced $expected."
+            ls -1
+            exit 1
+          fi
+
+      - name: Hand the draft's assets to smoke
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: draft-release-assets
+          path: draft/*
+          if-no-files-found: error
+          retention-days: 7
 
   # Packed from a clean checkout with no RuntimeIdentifier: PackAsTool and SelfContained are
   # mutually exclusive, so this must not reuse the publish workspace.
   #
-  # Publishing uses nuget.org TRUSTED PUBLISHING (OIDC) — there is no long-lived API key in
-  # this repo's secrets. The job asks GitHub for a short-lived signed token describing this
-  # workflow run; nuget.org verifies that signature with GitHub, matches the claims against
-  # the policy registered on the account, and returns an API key valid for one hour.
-  #
-  # The policy on nuget.org must name exactly:
-  #   Repository Owner: SebHenn · Repository: ci-failure-intelligence · Workflow File: release.yml
-  # with Environment left blank (this job declares none). Renaming this file breaks publishing.
-  # https://learn.microsoft.com/nuget/nuget-org/trusted-publishing
-  nuget:
+  # Packing is unprivileged and runs on a dry run too; publishing is the separate
+  # `nuget-publish` job below, which never checks out or builds anything.
+  nuget-pack:
     needs: verify
-    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
-    # A job-level block replaces the workflow-level one, so contents must be restated.
     permissions:
       contents: read
-      id-token: write   # lets this job mint the OIDC token nuget.org verifies. Required.
-    env:
-      # The `secrets` context is not available in a step-level `if`, so the presence check
-      # reads it through `env`. NUGET_USER is the nuget.org profile name, not an email.
-      NUGET_USER: ${{ secrets.NUGET_USER }}
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+      checksums: ${{ steps.checksums.outputs.checksums }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             8.0.x
@@ -150,6 +268,7 @@ jobs:
       # A published NuGet version can only ever be unlisted — never deleted, never replaced.
       # So assert the artifact is the one we mean before it becomes permanent.
       - name: Check the package identity
+        id: package
         run: |
           version="$(bash scripts/version.sh)"
           expected="nupkg/cifail.$version.nupkg"
@@ -159,48 +278,200 @@ jobs:
             exit 1
           fi
           echo "packing $expected"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Recorded straight after packing. nuget-publish checks what it downloaded against these,
+      # so the bytes pushed to nuget.org are provably the bytes packed here — not merely an
+      # artifact with the right name. The summary is for a human comparing the run with what
+      # nuget.org later serves, and for the reviewer approving the deployment.
+      - name: Record the package checksums
+        id: checksums
+        working-directory: nupkg
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          sums="$(sha256sum -- *)"
+          echo "$sums"
+          {
+            echo 'checksums<<CHECKSUMS_END'
+            echo "$sums"
+            echo 'CHECKSUMS_END'
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### cifail $VERSION (NuGet)"
+            echo
+            echo '| File | SHA-256 |'
+            echo '|---|---|'
+            echo "$sums" | awk '{ sub(/^\*/, "", $2); printf "| `%s` | `%s` |\n", $2, $1 }'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Everything pack produced, so a .snupkg would travel beside the .nupkg if symbols are
+      # ever turned on.
+      - name: Upload the package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nupkg
+          path: nupkg/*
+          if-no-files-found: error
+
+  # Publishing uses nuget.org TRUSTED PUBLISHING (OIDC) — there is no long-lived API key in
+  # this repo's secrets. The job asks GitHub for a short-lived signed token describing this
+  # workflow run; nuget.org verifies that signature with GitHub, matches the claims against
+  # the policy registered on the account, and returns an API key valid for one hour.
+  #
+  # The policy on nuget.org must name exactly:
+  #   Repository Owner: SebHenn · Repository: ci-failure-intelligence ·
+  #   Workflow File: release.yml · Environment: release
+  # The token this job is issued names the `release` environment, so a policy with Environment
+  # left blank accepts it too; setting it is what makes nuget.org insist on an approved job.
+  # Renaming this file or the environment breaks publishing.
+  # https://learn.microsoft.com/nuget/nuget-org/trusted-publishing
+  nuget-publish:
+    # Exactly the same `needs` as `docker`, so both start waiting for approval together and
+    # one approval releases both. `smoke` (and through it `build` and the draft `release`) is
+    # in it so the approval is asked for only once everything that can be checked before
+    # publishing has passed: a reviewer cannot approve early, and a failed install leaves
+    # nuget.org and GHCR untouched.
+    needs: [nuget-pack, smoke]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    # Required reviewer, no admin bypass, v* tags only — see CONTRIBUTING.md.
+    environment:
+      name: release
+      url: https://www.nuget.org/packages/cifail/${{ needs.nuget-pack.outputs.version }}
+    # The only permission this job has: it lets the job mint the OIDC token nuget.org verifies.
+    permissions:
+      id-token: write
+    env:
+      # The `secrets` context is not available in a step-level `if`, so the presence check
+      # reads it through `env`. NUGET_USER is the nuget.org profile name, not an email.
+      NUGET_USER: ${{ secrets.NUGET_USER }}
+    # No checkout, no restore, no build: everything that executes code from the repository or
+    # its dependencies ran in nuget-pack, which never had this token. The runner image's own
+    # .NET SDK is enough to push a package.
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nupkg
+          path: nupkg
+
+      # download-artifact already fails on a digest mismatch with the artifact service. This
+      # checks something it cannot: that the artifact holds what nuget-pack packed, and nothing
+      # else.
+      - name: The package must be the one nuget-pack produced
+        working-directory: nupkg
+        env:
+          CHECKSUMS: ${{ needs.nuget-pack.outputs.checksums }}
+        run: |
+          printf '%s\n' "$CHECKSUMS" | sha256sum --check --strict
+
+          expected=$(printf '%s\n' "$CHECKSUMS" | wc -l)
+          actual=$(find . -type f | wc -l)
+          if [ "$actual" -ne "$expected" ]; then
+            echo "::error::the artifact holds $actual files but nuget-pack recorded $expected."
+            find . -type f
+            exit 1
+          fi
 
       # Must run immediately before the push: the key lasts an hour and each OIDC token can
       # be exchanged exactly once.
       #
       # Step-level (not job-level) gating on NUGET_USER: a skipped JOB would also skip
       # `finalize` through `needs`, stranding the release as a permanent draft. A fork or a
-      # clone without the secret still gets a green `verify → build → release` chain.
+      # clone without the secret still gets a green chain through to `finalize`.
       - name: Log in to nuget.org (OIDC)
         id: login
         if: env.NUGET_USER != ''
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: ${{ secrets.NUGET_USER }}
 
+      # The .snupkg, if there ever is one, is pushed by the same command because it sits beside
+      # the .nupkg.
       - name: Push to nuget.org
         if: env.NUGET_USER != ''
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+          VERSION: ${{ needs.nuget-pack.outputs.version }}
         run: >
-          dotnet nuget push "nupkg/*.nupkg"
-          --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
+          dotnet nuget push "nupkg/cifail.$VERSION.nupkg"
+          --api-key "$NUGET_API_KEY"
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
 
-  # The FULL Docker image (all DB providers + git) is published to GHCR. On a tag push it
-  # is pushed; on a manual dispatch it's built only (dry-run), to validate the Dockerfile.
-  docker:
+  # The FULL Docker image (all DB providers + git) is published to GHCR. It is two jobs because
+  # the push needs the `release` environment and the dry run must not: `environment:` cannot be
+  # switched off by an expression (GitHub documents no meaning for an empty name), and a dry run
+  # from a branch would otherwise wait for an approval its ref is not even allowed to receive.
+  #
+  # On a manual dispatch: build only, to validate the Dockerfile. No login, no push, no approval.
+  docker-dryrun:
     needs: verify
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/cifail
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=ci-dryrun
+
+      # The layer cache is fine here: nothing built in this job is pushed anywhere.
+      - name: Build (no push)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # On a tag push: build and push. This job's image is what every consumer of the action pulls
+  # as :latest, so it runs in the `release` environment and waits for the same approval as
+  # nuget-publish.
+  docker:
+    # Exactly the same `needs` as `nuget-publish`, so both start waiting for approval together
+    # and one approval releases both. Nothing here uses nuget-pack's output.
+    needs: [nuget-pack, smoke]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: ${{ github.server_url }}/${{ github.repository }}/pkgs/container/cifail
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -208,57 +479,64 @@ jobs:
 
       - name: Image metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/${{ github.repository_owner }}/cifail
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=raw,value=ci-dryrun,enable=${{ !startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=latest
 
+      # No GitHub Actions layer cache, on purpose. A tag's own cache scope is always empty, so
+      # every entry this build could restore was saved by a run on main — ci.yml's docker-smoke,
+      # or a dry run — and any code executing in a job can save an entry under any key in its
+      # scope, whatever that job's permissions say. Restoring one here would bake whatever main
+      # last cached into the image pushed as :latest. Building from scratch costs minutes per
+      # release; nothing else can write into this image. (Saving to the tag's scope would be
+      # pointless too: no other run ever reads it.)
       - name: Build and push
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   # Install from the real (still-draft) release using the exact command the README gives.
   # The macOS leg is the point: it is the only thing that catches BSD-vs-GNU breakage in
   # install.sh, which is how `grep -oP` and `sha256sum` shipped broken.
   smoke:
     needs: release
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      # A draft release is not downloadable anonymously, so fetch its assets with the
-      # workflow token and let install.sh read them over file:// via CIFAIL_BASE_URL.
-      # This runs the REAL script — its RID detection, its BSD/GNU checksum shim, its
-      # extract and install — which is the only way the macOS leg is worth anything.
+      # The draft's assets as the `release` job read them back from the draft and checked them
+      # against build's checksums. install.sh reads them over file:// via CIFAIL_BASE_URL. This
+      # runs the REAL script — its RID detection, its BSD/GNU checksum shim, its extract and
+      # install — which is the only way the macOS leg is worth anything.
       - name: Download the draft release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/assets"
-          gh release download "${{ github.ref_name }}" --dir "$RUNNER_TEMP/assets" --pattern '*' --clobber
-          ls -1 "$RUNNER_TEMP/assets"
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: draft-release-assets
+          path: ${{ runner.temp }}/assets
 
       - name: Install via scripts/install.sh
         env:
           CIFAIL_VERSION: ${{ github.ref_name }}
           CIFAIL_INSTALL_DIR: ${{ runner.temp }}/bin
         run: |
+          ls -1 "$RUNNER_TEMP/assets"
           export CIFAIL_BASE_URL="file://$RUNNER_TEMP/assets"
           bash scripts/install.sh
 
@@ -268,27 +546,76 @@ jobs:
           "$RUNNER_TEMP/bin/cifail" analyze samples/nuget-nu1101.log
 
   # Only once everything is green: publish the release and move the major tag that the
-  # documented `uses: SebHenn/ci-failure-intelligence@v1` resolves to.
+  # documented `uses: SebHenn/ci-failure-intelligence@v1` resolves to. Not in the environment
+  # itself — it cannot start until nuget-publish and docker, which are, have been approved and
+  # have succeeded, so a second approval here would add a wait and no protection.
   finalize:
-    needs: [release, nuget, docker, smoke]
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [release, nuget-publish, docker, smoke]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    # Publishing the release and pushing v1 both write to the repository.
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v7
+      # Credentials are not persisted into .git/config: the only step that pushes is handed
+      # the token itself, below.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
+      # Releases are immutable once published: neither the assets nor the vX.Y.Z tag can change
+      # afterwards. That is why the release stays a draft until here.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit "${{ github.ref_name }}" --draft=false --latest
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
 
       # The composite action's major version is tracked independently of the CLI version,
       # per the GitHub Actions convention. Prereleases (v0.2.0-rc1) must not move it.
+      #
+      # `@v1` is the ONLY pin the README documents, so it has one job: resolve to the newest
+      # release. Two ways that quietly stops being true, both guarded here — re-releasing an
+      # older patch line would drag it backwards, and a failed push would leave it behind
+      # while this job still went green.
+      #
+      # v1 is the one tag this workflow moves, so the "release tags" ruleset must not cover it:
+      # its pattern is v*.*.*, which protects every version tag and leaves v1 movable.
+      #
+      # The token reaches git through GIT_CONFIG_* for this one command only — not persisted in
+      # .git/config, and not on a command line where `ps` would show it.
       - name: Move the v1 major tag
         if: ${{ !contains(github.ref_name, '-') }}
+        env:
+          PUSH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          # `|| true`: grep exits 1 on an all-prerelease list, and under pipefail that would
+          # read as "not the newest" — i.e. it would skip the move for the wrong reason.
+          newest="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | { grep -v -- '-' || true; } | sort -V | tail -1)"
+          if [ -z "$newest" ]; then
+            echo "error: this release's own tag is not visible; refusing to guess about v1." >&2
+            exit 1
+          fi
+          if [ "$newest" != "$GITHUB_REF_NAME" ]; then
+            echo "::notice::$GITHUB_REF_NAME is not the newest release ($newest); leaving v1 where it is."
+            exit 0
+          fi
+
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f v1 "${{ github.sha }}"
-          git push --force origin v1
+          git tag -f v1 "$GITHUB_SHA"
+          auth="$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$auth"
+          GIT_CONFIG_COUNT=1 \
+          GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
+            git push --force origin v1
+
+          landed="$(git ls-remote origin refs/tags/v1 | cut -f1)"
+          if [ "$landed" != "$GITHUB_SHA" ]; then
+            echo "error: v1 is at ${landed:-nothing} but this release is $GITHUB_SHA." >&2
+            echo "Every documented 'uses: ...@v1' would still resolve to the previous build." >&2
+            exit 1
+          fi
+          echo "v1 -> $GITHUB_REF_NAME ($GITHUB_SHA)"

@@ -53,33 +53,72 @@ docker run --rm -v "$PWD:/work" cifail analyze build.log
 # Run the external-DB contract tests against real engines (needs Docker):
 CIFAIL_DB_IT=1 dotnet test tests/CiFail.Providers.Tests
 docker compose -f docker-compose.test.yml up -d   # manual DBs for --db-* runs
-# Releases are cut by pushing a tag (git tag v0.2.0 && git push origin v0.2.0). The tag must
+# Releases are cut by pushing a tag on a commit already on main (git tag v0.2.0 && git push
+# origin v0.2.0), then approving the `release` environment in the run. The tag must
 # equal <Version> in Directory.Build.props — release.yml's `verify` job enforces it, because a
 # mismatch is what made every 0.1.0 install path 404. One Linux runner cross-publishes all 6
 # RIDs (there is no build matrix; only `smoke` is a matrix, ubuntu + macos).
 ```
 
-**Release chain (`release.yml`): `verify → build → release(draft) → smoke → finalize`,** with
-`nuget` and `docker` hanging off `verify`. The GitHub Release stays a **draft** until the real
+**Release chain (`release.yml`): `verify → build → release(draft) → smoke → {nuget-publish,
+docker} → finalize`,** with `nuget-pack` off `verify` feeding `nuget-publish`; the two publishing
+jobs wait for one approval. The GitHub Release stays a **draft** until the real
 `install.sh` has installed the real assets on Linux *and* macOS; `finalize` un-drafts it and
-force-moves the `v1` tag that `uses: SebHenn/ci-failure-intelligence@v1` resolves to.
+force-moves the `v1` tag that `uses: SebHenn/ci-failure-intelligence@v1` resolves to. That move
+is now **guarded on both sides** (issue #21): it is skipped when the tag being released isn't the
+newest version tag (re-releasing an older patch line must not drag `v1` backwards), and the push
+is verified against `git ls-remote` afterwards, because a fire-and-forget force-push left every
+documented `@v1` on the previous build while the job went green. Note the mirror-image trap when
+*reading* that tag locally: `git fetch` does **not** move an existing tag, so a clone that has
+ever seen `v1` keeps reporting the old commit until `git fetch --tags --force` — which is what
+made #21 look like a workflow bug when the tag had in fact moved.
 
 **`main` is a protected branch.** PRs require the three `ci.yml` checks (`build-test`,
 `docker-smoke`, `db-integration`) and must be **up to date with `main`** before merging; force
 pushes and deletion are blocked. **Admins are exempt** (`enforce_admins: false`), so a direct
 `git push origin main` by the owner still works — protection is a floor for contributors and
 dependabot, not a workflow change for the maintainer. It does **not** constrain the release
-chain: `release.yml`'s only force-push targets the `v1` *tag*, and tags aren't branch-protected.
+chain: `release.yml`'s only force-push targets the `v1` *tag*, which branch protection doesn't
+cover and the `release tags` ruleset deliberately leaves out (its pattern is `v*.*.*`).
 Don't add a workflow that commits to `main` without revisiting this.
 
-**NuGet publishing uses trusted publishing (OIDC) — there is no `NUGET_API_KEY` secret.** The
-`nuget` job declares `id-token: write`, and `NuGet/login@v1` exchanges a GitHub-signed token for
-an API key valid one hour. nuget.org matches the token's claims against a policy naming the repo
-owner, the repo, and **the workflow file name** (`release.yml`) — so renaming that file silently
-breaks publishing. The push is gated at **step** level on `secrets.NUGET_USER` (the nuget.org
+**NuGet publishing uses trusted publishing (OIDC) — there is no `NUGET_API_KEY` secret.**
+`nuget-pack` (unprivileged) packs, records the SHA-256 of what it packed and uploads it;
+`nuget-publish` declares only `id-token: write`, runs in the `release` environment, never checks
+out or builds anything, re-checks the downloaded package against those checksums, and
+`NuGet/login` exchanges a GitHub-signed token for an API key valid one hour. nuget.org matches
+the token's claims against a policy naming the repo owner, the repo, **the workflow file name**
+(`release.yml`) and the environment (`release`) — so renaming either silently breaks publishing.
+A policy with Environment blank also accepts the token; `release` is what makes nuget.org insist
+on an approved job. The push is gated at **step** level on `secrets.NUGET_USER` (the nuget.org
 profile name): a skipped *job* would skip `finalize` through `needs` and strand the release as a
 permanent draft. A published NuGet version can only be unlisted, never replaced, which is why
 `Check the package identity` asserts the packed file name before the push.
+
+**Release hardening — keep these when editing `release.yml`:**
+- Workflow-level `permissions: {}`; every job declares only what it uses. Only `release` (the
+  draft) and `finalize` hold `contents: write`; only `nuget-publish` holds `id-token: write`;
+  only `docker` holds `packages: write`. Every checkout has `persist-credentials: false` — the
+  `v1` push gets the token through `GIT_CONFIG_*` env vars for that one command.
+- `nuget-publish` and `docker` are the jobs in the `release` environment (required reviewer, no
+  admin bypass, `v*` tags only). They have **identical `needs`** (`[nuget-pack, smoke]`) so they
+  start waiting together and one approval releases both, and only after the draft has passed
+  `smoke`; `finalize` needs both, so nothing goes public unapproved. The `docker` job is the one
+  place a build runs beside a publishing token (BuildKit's containers never see the login).
+  `environment:` cannot be made conditional (GitHub documents no meaning for an empty name), so
+  the dry run's image build is a separate job, `docker-dryrun`, outside the environment.
+- **The `docker` push job reads no GitHub Actions cache.** A tag's cache scope is empty, so any
+  hit would come from main's scope, where any step of any job can save under any key.
+- `smoke` holds `contents: read` only: reading a *draft* release takes a token that can write,
+  so `release` reads the draft's assets back, checks them against `build`'s checksums and hands
+  them on as the `draft-release-assets` artifact.
+- Every publishing job is guarded on `github.event_name == 'push'`, so a manual dispatch is a dry
+  run even from a tag. `verify` refuses a tag whose commit is not on `origin/main`.
+- No `${{ }}` inside `run:` — pass values through `env:`. Every `uses:` is a full commit SHA with
+  a `# vX.Y.Z` comment, which Dependabot keeps current.
+- Version tags are permanent (the `release tags` ruleset on `refs/tags/v*.*.*`, plus immutable
+  releases once published), so no message or doc may suggest retagging: a bad tag is spent and
+  the fix is the next version.
 
 The published executable is named **`cifail`** (set via `<AssemblyName>`), not
 `CiFail.Cli`. Self-contained/single-file props in `CiFail.Cli.csproj` are gated on
@@ -705,6 +744,16 @@ composite step as `bash --noprofile --norc -e -o pipefail {0}`; the script's own
 is a normal outcome here — either one ended the step before `code=$?`, before cifail's stderr was
 echoed, and before the `fail:` input could apply, making `fail: false` inoperative. Hence the
 explicit `set +e` and `if` blocks rather than `&&`. Keep both when editing that script.
+
+**`action.yml` stamps its own version (`CIFAIL_ACTION_VERSION`) and prints a provenance line
+first thing** — `cifail action v0.3.1 (owner/repo@v1) | cifail 0.3.1 | image name:tag@sha256:…` —
+into the log, the step summary and the PR comment, plus the `action-version`/`image-digest`
+outputs. Both documented pins are *moving* references (`@v1` and `:latest`), so nothing else in
+the output identifies the build, and a shipped fix is indistinguishable from a broken one. The
+stamp is checked against `Directory.Build.props` by `scripts/check-versions.sh` (check 3) — bump
+it with the version, or the release fails at `verify`. `ci.yml`'s "Run the action's own step
+script" step asserts the rendered line; the `${{ github.action_ref }}` plumbing that fills it can
+only be exercised by a real `uses:`, so that test passes the vars in explicitly.
 
 ## Conventions / gotchas
 
