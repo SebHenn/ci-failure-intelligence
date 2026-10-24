@@ -63,7 +63,7 @@ public sealed class GateCommand : Command<GateCommand.Settings>
         public bool Json { get; init; }
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
         if (Validate(settings) is { } invalid) return invalid;
 

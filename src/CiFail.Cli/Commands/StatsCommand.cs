@@ -42,7 +42,7 @@ public sealed partial class StatsCommand : Command<StatsCommand.Settings>
         public bool Json { get; init; }
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         DateTimeOffset? since;
         try

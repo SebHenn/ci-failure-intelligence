@@ -34,7 +34,7 @@ public sealed class PruneCommand : Command<PruneCommand.Settings>
         public bool DryRun { get; init; }
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         if (string.IsNullOrWhiteSpace(settings.OlderThan))
         {

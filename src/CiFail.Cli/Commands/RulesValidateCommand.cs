@@ -20,7 +20,7 @@ public sealed class RulesValidateCommand : Command<RulesValidateCommand.Settings
         public string? Path { get; init; }
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
     {
         RulePackValidator.Result result;
         if (string.IsNullOrWhiteSpace(settings.Path))
