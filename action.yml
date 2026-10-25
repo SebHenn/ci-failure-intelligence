@@ -238,21 +238,28 @@ runs:
 
         # ---- selection misses (dotnet-tia) ---------------------------------------------
         # The full run's failures against what the pull request's selection skipped (#46). A
-        # report that is missing, or inputs with no JUnit or TRX in them, are a warning and an
-        # empty output, never "no miss": the command refuses to conclude anything from nothing,
-        # and so does this.
+        # report that is missing, or inputs with no JUnit or TRX in them, are a warning, an
+        # empty output and a "Not checked" section, never "no miss" and never silence: a
+        # comment without the section would read as "no miss" too (#50).
         misses_md=""
         misses_code=0
         INPUT_TIA_REPORT="${INPUT_TIA_REPORT:-}"
+        misses_unchecked() {
+          echo "::warning::cifail: selection misses were not checked: ${1//%/%25}"
+          emit "selection-misses" ""
+          misses_md="$(printf '### Candidate selection misses\n\nNot checked: %s' "$1")"
+        }
         if [ -n "$INPUT_TIA_REPORT" ]; then
           if [ ! -f "$INPUT_TIA_REPORT" ]; then
-            echo "::warning::cifail: tia-report '$INPUT_TIA_REPORT' does not exist, so selection misses were not checked."
-            emit "selection-misses" ""
+            misses_unchecked "tia-report '$INPUT_TIA_REPORT' does not exist. Was the pull request's report downloaded?"
           elif [ -z "$INPUT_LOG" ]; then
-            echo "::warning::cifail: tia-report is set but log: is empty, so there were no test reports to check."
-            emit "selection-misses" ""
+            misses_unchecked "tia-report is set but log: is empty, so there were no test reports to check."
           else
-            misses_json="$(docker run "${run_args[@]}" "$INPUT_IMAGE" selection-misses --tia "$INPUT_TIA_REPORT" --json "$INPUT_LOG" 2>/tmp/cifail-misses.err)"
+            # Mounted on its own, read-only, so an absolute path works too: the container sees
+            # only the workspace, at /work, and runner.temp is outside it (#50).
+            tia_abs="$(cd "$(dirname -- "$INPUT_TIA_REPORT")" && pwd -P)/$(basename -- "$INPUT_TIA_REPORT")"
+            tia_mount=/cifail-tia/report.json
+            misses_json="$(docker run "${run_args[@]}" -v "$tia_abs:$tia_mount:ro" "$INPUT_IMAGE" selection-misses --tia "$tia_mount" --json "$INPUT_LOG" 2>/tmp/cifail-misses.err)"
             misses_code=$?
             cat /tmp/cifail-misses.err >&2 || true
             misses_count="$(printf '%s' "$misses_json" | jq -r '.misses | length' 2>/dev/null)"
@@ -262,13 +269,15 @@ runs:
               if [ "$misses_count" -gt 0 ]; then
                 misses_md="$(printf '### Candidate selection misses\n\n%s of %s failing test(s) were skipped by the dotnet-tia selection. A skipped test can fail for an unrelated reason; `dotnet tia explain <test>` at the pull request'"'"'s commit says whether the change reached it.' "$misses_count" "$failing")"
                 # $(...) drops trailing newlines, so the blank line before the list is added here.
-                misses_md="$misses_md"$'\n\n'"$(printf '%s' "$misses_json" | jq -r '.misses[] | "- `\(.test)` (\(.project))" + (if (.message // "") != "" then ": " + (.message | split("\n")[0]) else "" end)')"
+                # Names and messages come from the pull request's code, so both go in code spans,
+                # where markdown stays inert; a backtick in them would end the span, so it becomes
+                # an apostrophe ([39] | implode, since this program can't contain a quote).
+                misses_md="$misses_md"$'\n\n'"$(printf '%s' "$misses_json" | jq -r 'def span: "`" + (gsub("`"; [39] | implode)) + "`"; .misses[] | "- " + (.test // "" | span) + " (" + (.project // "" | span) + ")" + (if (.message // "") != "" then ": " + (.message | split("\n")[0] | .[0:300] | span) else "" end)')"
               else
                 misses_md="$(printf '### Selection misses\n\nNone: no failing test of the %s was skipped by the dotnet-tia selection.' "$failing")"
               fi
             else
-              echo "::warning::cifail: selection-misses could not check the reports (exit $misses_code)."
-              emit "selection-misses" ""
+              misses_unchecked "selection-misses could not check the reports (exit $misses_code)."
               misses_code=0
             fi
           fi

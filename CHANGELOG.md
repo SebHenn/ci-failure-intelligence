@@ -9,6 +9,17 @@ after 1.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The action's `tia-report` works with an absolute path, and says when it could not check**
+  ([#50](https://github.com/SebHenn/ci-failure-intelligence/issues/50)). The container saw only the
+  workspace, so a report under `runner.temp`, or given as `${{ github.workspace }}/...`, was never
+  found. The report is now mounted on its own, read-only. A check that did not run, because the
+  report is missing, `log:` is empty, or `selection-misses` refused the input, now adds a
+  "Not checked" section to the step summary and PR comment instead of only a warning, which a
+  reader of the comment could not tell from "no miss". Test names, projects and failure messages
+  in that section are code spans, so markdown from the pull request's code stays inert.
+
 ## [0.5.0] - 2026-10-25
 
 The GitHub Action learns what 0.4.0 added to the CLI: with `tia-report:` set, it checks the

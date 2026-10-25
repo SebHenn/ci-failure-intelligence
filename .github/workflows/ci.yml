@@ -196,6 +196,28 @@ jobs:
           grep -q 'com.example.OrderTests.applies_discount' tia-out.txt
           grep -qx 'selection-misses=1' tia-outputs.txt
 
+          # Issue #50: a report outside the workspace, where a downloaded artifact often lands,
+          # is mounted on its own and checked; one that is missing is a "Not checked" section
+          # and an empty output, never silence.
+          cp samples/tia-report.json "$RUNNER_TEMP/tia-report.json"
+          : > tia-outputs.txt
+          INPUT_LOG=samples/junit-report.xml INPUT_MODE=analyze INPUT_ARGS='' \
+          INPUT_IMAGE=cifail:ci INPUT_SUMMARY=false INPUT_FAIL=false INPUT_COMMENT=false \
+          INPUT_SARIF='' INPUT_RULES='' INPUT_TIA_REPORT="$RUNNER_TEMP/tia-report.json" \
+          CIFAIL_ACTION_VERSION="$stamp" GITHUB_OUTPUT=tia-outputs.txt \
+            bash --noprofile --norc -e -o pipefail action-step.sh | tee tia-out.txt
+          grep -q 'com.example.OrderTests.applies_discount' tia-out.txt
+          grep -qx 'selection-misses=1' tia-outputs.txt
+
+          : > tia-outputs.txt
+          INPUT_LOG=samples/junit-report.xml INPUT_MODE=analyze INPUT_ARGS='' \
+          INPUT_IMAGE=cifail:ci INPUT_SUMMARY=false INPUT_FAIL=false INPUT_COMMENT=false \
+          INPUT_SARIF='' INPUT_RULES='' INPUT_TIA_REPORT=no-such-report.json \
+          CIFAIL_ACTION_VERSION="$stamp" GITHUB_OUTPUT=tia-outputs.txt \
+            bash --noprofile --norc -e -o pipefail action-step.sh | tee tia-out.txt
+          grep -q 'Not checked: tia-report' tia-out.txt
+          grep -qx 'selection-misses=' tia-outputs.txt
+
   # Real external databases (Postgres/MySQL/SQL Server/MongoDB) via Testcontainers. Kept in
   # a separate job so the heavier, container-pulling tests don't slow the core pipeline.
   db-integration:
