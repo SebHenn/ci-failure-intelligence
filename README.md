@@ -714,8 +714,9 @@ TRX files of the full run as `log:`:
 It adds a **Candidate selection misses** section to the step summary and to the PR comment
 (`comment: true`), and sets the output `selection-misses` to the count. It is informational like
 the rest of the action. With `fail: true`, a miss fails the step. A missing `tia-report`, or a
-`log:` with no JUnit or TRX report in it, is a warning and leaves the output empty. It is never
-read as "no miss".
+`log:` with no JUnit or TRX report in it, is a warning, a "Not checked" section and an empty
+output. It is never read as "no miss". The report may be anywhere on the runner, `runner.temp`
+included: it is mounted into the container on its own.
 
 It names **candidates**: a skipped test can also fail for a reason the change had nothing to do
 with. `dotnet tia explain <test>` at the pull request's commit says whether anything connected the
