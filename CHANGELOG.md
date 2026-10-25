@@ -9,6 +9,13 @@ after 1.0.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-25
+
+The GitHub Action learns what 0.4.0 added to the CLI: with `tia-report:` set, it checks the
+failures for dotnet-tia selection misses and reports them in the step summary, the PR comment and
+a new `selection-misses` output. Nothing else changes. Minor rather than patch, because the action
+gained an input and an output.
+
 ### Added
 
 - **The action checks for selection misses** ([#46](https://github.com/SebHenn/ci-failure-intelligence/issues/46)).
@@ -567,7 +574,8 @@ First tagged release. **Superseded — do not install it**: its assets are named
 `cifail-0.1.0-alpha-*` while the tag is `v0.1.0`, so nothing that follows the
 documented install instructions can find them. Fixed in 0.2.0.
 
-[Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.2...v0.4.0
 
 [#21]: https://github.com/SebHenn/ci-failure-intelligence/issues/21
