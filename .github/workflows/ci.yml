@@ -203,9 +203,14 @@ jobs:
             INPUT_SARIF= INPUT_RULES= CIFAIL_ACTION_VERSION="$stamp" GITHUB_OUTPUT=tia-out.txt \
               bash --noprofile --norc -e -o pipefail action-step.sh
           }
+          # No `| tee` here: a plain `run:` step is `bash -e` without pipefail, so a pipeline
+          # would report tee's status rather than the script's.
           : > tia-out.txt
-          if tia_step "$RUNNER_TEMP/tia-report.json" | tee tia-action-out.txt; then
-            echo "a selection miss under fail: true must fail the step" >&2
+          status=0
+          tia_step "$RUNNER_TEMP/tia-report.json" > tia-action-out.txt || status=$?
+          cat tia-action-out.txt
+          if [ "$status" -ne 1 ]; then
+            echo "a selection miss under fail: true must fail the step with 1, got $status" >&2
             exit 1
           fi
           grep -q '### Candidate selection misses' tia-action-out.txt
@@ -216,7 +221,8 @@ jobs:
           # A report that is not there warns and says "Not checked": never a silent pass, and
           # never a red step either.
           : > tia-out.txt
-          tia_step tia-fixture/missing.json | tee tia-action-out.txt
+          tia_step tia-fixture/missing.json > tia-action-out.txt
+          cat tia-action-out.txt
           grep -q '::warning::cifail: selection misses not checked' tia-action-out.txt
           grep -q '^Not checked: ' tia-action-out.txt
           grep -qx 'selection-misses=' tia-out.txt
