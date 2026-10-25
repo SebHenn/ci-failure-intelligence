@@ -45,6 +45,10 @@ inputs:
     description: 'Extra directory of rule packs shipped by this repo (relative to the workspace). A pack committed at .cifail/rules is loaded automatically and needs no input.'
     required: false
     default: ''
+  tia-report:
+    description: "dotnet-tia report of the pull request's selective run (dotnet-tia's report: input). When set, the JUnit/TRX reports in log are also checked for failing tests that the selection had skipped."
+    required: false
+    default: ''
 
 outputs:
   matched:
@@ -65,6 +69,9 @@ outputs:
   new-failures:
     description: 'gate mode only: how many failures were absent from the baseline.'
     value: ${{ steps.cifail.outputs.new-failures }}
+  selection-misses:
+    description: 'tia-report only: how many failing tests the selection had skipped. Empty when the check did not run.'
+    value: ${{ steps.cifail.outputs.selection-misses }}
   exit-code:
     description: "cifail's own exit code, whatever `fail` was set to. 0 ok, 1 negative result, 2 usage."
     value: ${{ steps.cifail.outputs.exit-code }}
@@ -90,6 +97,7 @@ runs:
         INPUT_COMMENT: ${{ inputs.comment }}
         INPUT_SARIF: ${{ inputs.sarif }}
         INPUT_RULES: ${{ inputs.rules }}
+        INPUT_TIA_REPORT: ${{ inputs.tia-report }}
         # Which build of this action is running. `@v1` is a moving tag, so the ref a consumer
         # wrote does not identify a build — this stamp does. Bumped with <Version> in
         # Directory.Build.props and enforced by scripts/check-versions.sh, so it cannot drift.
@@ -200,6 +208,71 @@ runs:
         code=$?
         cat /tmp/cifail.err >&2 || true
 
+        # ---- test-selection misses (issue #46) -------------------------------------------
+        # The same reports, checked against what dotnet-tia's selection skipped on the pull
+        # request. Whatever stops the check is a warning and a "Not checked" section, never
+        # silence: a missing section would read as "no miss", which cannot be said without
+        # having looked. `args` is not passed on; it belongs to analyze/gate.
+        tia_code=""
+        tia_count=""
+        tia_section=""
+        tia_unchecked() {
+          echo "::warning::cifail: selection misses not checked: ${1//%/%25}"
+          tia_section="$(printf '### Candidate selection misses\n\nNot checked: %s' "$1")"
+        }
+        if [ -n "$INPUT_TIA_REPORT" ]; then
+          if [ -z "$INPUT_LOG" ]; then
+            tia_unchecked "tia-report is set but log is empty. Point log at the run's JUnit or TRX reports."
+          elif [ ! -f "$INPUT_TIA_REPORT" ]; then
+            tia_unchecked "tia-report '$INPUT_TIA_REPORT' does not exist. Was the pull request's artifact downloaded?"
+          else
+            # Mounted on its own, so a path outside the workspace (under runner.temp, say) works.
+            tia_abs="$(cd "$(dirname -- "$INPUT_TIA_REPORT")" && pwd -P)/$(basename -- "$INPUT_TIA_REPORT")"
+            tia_mount="/cifail-tia/report.json"
+            tia_json="$(docker run "${run_args[@]}" -v "$tia_abs:$tia_mount:ro" "$INPUT_IMAGE" \
+              selection-misses --json --tia "$tia_mount" "$INPUT_LOG" 2>/tmp/cifail-tia.err)"
+            tia_code=$?
+            cat /tmp/cifail-tia.err >&2 || true
+            if [ "$tia_code" = "0" ] || [ "$tia_code" = "1" ]; then
+              tia_count="$(printf '%s' "$tia_json" | jq -r '.misses | length' 2>/dev/null)"
+              # Test names and messages go in code spans, so markdown in them stays inert. The
+              # program is a single-quoted shell string, so it must not contain a quote itself:
+              # a backtick inside a span becomes one via `[39] | implode`.
+              tia_section="$(printf '%s' "$tia_json" | jq -r '
+                def code: "`" + (gsub("[\r\n]+"; " ") | gsub("`"; [39] | implode)) + "`";
+                (.tia.HeadCommit // "") as $head
+                | (if $head == "" then "" else " at " + ($head[0:9] | code) end) as $at
+                | (.misses | length) as $n
+                | "### Candidate selection misses\n\n"
+                + if $n == 0 then
+                    "No selection miss: none of the \(.failingTests) failing test(s) was skipped by dotnet-tia\($at)."
+                  else
+                    "**\($n) of \(.failingTests) failing test(s) were skipped by dotnet-tia\($at):**\n\n"
+                    + ([.misses[]
+                        | ((.message // "") | split("\n")[0] | gsub("\r"; "") | .[0:200]) as $m
+                        | "- " + (.test | code) + " (" + (.project // "") + ")"
+                          + (if $m == "" then "" else " — " + ($m | code) end)]
+                       | join("\n"))
+                    + "\n\nA skipped test can also fail for a reason the change had nothing to do with."
+                    + " At the commit the selection ran on, `dotnet tia explain <test>` says whether"
+                    + " anything connected the two."
+                  end' 2>/dev/null)"
+              if [ -z "$tia_count" ] || [ -z "$tia_section" ]; then
+                tia_code=""
+                tia_count=""
+                tia_unchecked "selection-misses printed no readable result."
+              fi
+            else
+              # Exit 2: an unusable report, no JUnit/TRX among the inputs, or an image older than
+              # 0.4.0, which has no such command. cifail's own message says which.
+              tia_err="$(tr '\r\n' '  ' < /tmp/cifail-tia.err | tr -s ' ' | sed 's/^ *//; s/ *$//')"
+              tia_err="${tia_err//$tia_mount/$INPUT_TIA_REPORT}"
+              tia_unchecked "selection-misses exited $tia_code${tia_err:+: $tia_err}"
+              tia_code=""
+            fi
+          fi
+        fi
+
         # ---- outputs -------------------------------------------------------------------
         # A step output is a single `key=value` line, so any newline in a value would corrupt the
         # file and silently swallow the outputs after it — squash them. GITHUB_OUTPUT is defaulted
@@ -211,6 +284,7 @@ runs:
         emit "exit-code" "$code"
         emit "action-version" "${CIFAIL_ACTION_VERSION:-}"
         emit "image-digest" "$image_digest"
+        emit "selection-misses" "$tia_count"
 
         if [ "$INPUT_MODE" = "gate" ]; then
           emit "matched" "$(printf '%s' "$json" | jq -r '.Passed // false' 2>/dev/null || echo false)"
@@ -240,6 +314,7 @@ runs:
           fi
           body="$(printf '%s' "$json")"
         fi
+        if [ -n "$tia_section" ]; then body="$(printf '%s\n\n%s' "$body" "$tia_section")"; fi
 
         echo "$body"
 
@@ -283,8 +358,10 @@ runs:
         rm -f "$report"
 
         # cifail exit codes: 0 ok, 1 negative result (no rule matched / gate found something
-        # new), 2 usage error.
+        # new), 2 usage error. A selection miss is a negative result too; a check that could not
+        # run is not (it warned above), so it never turns a passing step red.
         if [ "$INPUT_FAIL" = "true" ]; then
+          if [ "$code" -eq 0 ] && [ "$tia_code" = "1" ]; then exit 1; fi
           exit $code
         fi
         exit 0

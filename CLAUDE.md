@@ -755,6 +755,15 @@ it with the version, or the release fails at `verify`. `ci.yml`'s "Run the actio
 script" step asserts the rendered line; the `${{ github.action_ref }}` plumbing that fills it can
 only be exercised by a real `uses:`, so that test passes the vars in explicitly.
 
+**`action.yml`'s `tia-report` input (issue #46)** runs `selection-misses` in a second `docker run`
+over the same `log`, with the tia report bind-mounted on its own (so a path under `runner.temp`
+works) and `args` not passed on (it belongs to analyze/gate). A check that couldn't run (report
+missing or unusable, no JUnit/TRX in `log`, an image older than 0.4.0) is a `::warning::` plus a
+"Not checked" section, with the `selection-misses` output empty. It never reads as "no miss" and
+never turns the step red; only a real miss (exit 1) fails it, under `fail: true`. The jq that
+renders the section sits inside a single-quoted shell string, so it must not contain `'` (hence
+`[39] | implode`).
+
 ## Conventions / gotchas
 
 - Spectre.Console.Cli 0.55: `Command<T>.Execute` and `.Validate` overrides are

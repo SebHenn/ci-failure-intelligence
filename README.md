@@ -371,7 +371,8 @@ Inputs: `log` (file, **directory or glob** to analyze), `mode` (`analyze`, the d
 default, the one from the action's own release), `summary` (write to the step summary,
 default `true`), `fail` (propagate cifail's exit code; off by default since it runs after a
 failed build), `comment` (post the analysis as
-a pull-request comment, default `false`), and `sarif` (also write a SARIF report to that path).
+a pull-request comment, default `false`), `sarif` (also write a SARIF report to that path), and
+`tia-report` (also check the test reports for [selection misses](#test-selection-misses-dotnet-tia)).
 For shared history, set `CIFAIL_DB_PROVIDER` / `CIFAIL_DB_CONNECTION` in the job env.
 
 **Outputs** let a later step branch on the result instead of re-parsing the text:
@@ -384,6 +385,7 @@ For shared history, set `CIFAIL_DB_PROVIDER` / `CIFAIL_DB_CONNECTION` in the job
 | `title` | human-readable title of the first root cause |
 | `count` | how many things were analyzed |
 | `new-failures` | `gate` mode: how many failures weren't in the baseline |
+| `selection-misses` | with `tia-report`: how many failing tests the selection had skipped; empty when the check couldn't run |
 | `exit-code` | cifail's own exit code, whatever `fail` was set to |
 | `action-version` | version of the action itself — what `@v1` resolved to on this run |
 | `image-digest` | immutable digest of the image that ran (`name@sha256:…`) |
@@ -460,6 +462,95 @@ cifail analyze build.log \
 Each `--report` needs its own `--report-out`; the only one that may go without is a single
 report, which then takes over stdout. Anything else is a usage error rather than a silently
 dropped file.
+
+#### Test-selection misses (dotnet-tia)
+
+If pull requests run only the tests a change can affect, with
+[dotnet-tia](https://github.com/SebHenn/dotnet-tia), set `tia-report` on the full run that
+follows, and the action also runs [`cifail selection-misses`](#was-it-a-test-selection-miss-cifail-selection-misses)
+over the same JUnit/TRX reports. The step summary and the PR comment get a **Candidate selection
+misses** section, and the `selection-misses` output holds the count.
+
+It takes two jobs: the pull request keeps its dotnet-tia report as an artifact, and the full run
+on the default branch fetches it from the merged pull request's run:
+
+```yaml
+on: [pull_request, push]
+
+jobs:
+  # The pull request runs the selection and keeps the report of what it skipped.
+  selected-tests:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 9.0.x
+      - uses: SebHenn/dotnet-tia@v0.6.0
+        with:
+          report: tia-report.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: tia-report
+          path: tia-report.json
+
+  # The default branch runs everything. When something fails, compare with what was skipped.
+  all-tests:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read          # to download another run's artifact
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 9.0.x
+      - run: dotnet test --logger trx --results-directory TestResults
+
+      - name: Find the merged pull request's run
+        id: pr-run
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '.[0].head.sha // empty')"
+          if [ -n "$head" ]; then
+            id="$(gh run list --repo "$GITHUB_REPOSITORY" --commit "$head" --event pull_request \
+              --json databaseId --jq '.[0].databaseId // empty')"
+            echo "id=$id" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v8
+        if: failure() && steps.pr-run.outputs.id != ''
+        continue-on-error: true
+        with:
+          name: tia-report
+          run-id: ${{ steps.pr-run.outputs.id }}
+          github-token: ${{ github.token }}
+
+      - name: Explain failures
+        if: failure()
+        uses: SebHenn/ci-failure-intelligence@v1
+        with:
+          log: TestResults/
+          tia-report: tia-report.json
+```
+
+- It is informational, like the rest of the action. With `fail: true`, a miss fails the step the
+  way any other negative result does.
+- When the check can't run — the report is missing (a direct push to `main`, or the artifact
+  expired), unusable, or `log` holds no JUnit/TRX report — the step warns and the section says
+  **Not checked** and why. It never shows up as "no miss", and it never fails the step on its own.
+  `selection-misses` is then empty, not `0`.
+- `tia-report` can be anywhere on the runner, including outside the workspace. `args` applies to
+  the analysis only and isn't passed on.
 
 ### GitLab CI
 
@@ -703,6 +794,9 @@ cifail selection-misses --tia tia-report.json TestResults/
 It names **candidates**: a skipped test can also fail for a reason the change had nothing to do
 with. `dotnet tia explain <test>` at the pull request's commit says whether anything connected the
 two.
+
+On GitHub Actions, the action's `tia-report` input runs this for you; see
+[Test-selection misses](#test-selection-misses-dotnet-tia) for the workflow.
 
 ## What do the words mean?
 

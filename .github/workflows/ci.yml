@@ -172,7 +172,7 @@ jobs:
           test -n "$stamp"
           INPUT_LOG=samples/nuget-nu1101.log INPUT_MODE=analyze INPUT_ARGS= \
           INPUT_IMAGE=cifail:ci INPUT_SUMMARY=false INPUT_FAIL=true INPUT_COMMENT=false \
-          INPUT_SARIF=action.sarif INPUT_RULES= \
+          INPUT_SARIF=action.sarif INPUT_RULES= INPUT_TIA_REPORT= \
           CIFAIL_ACTION_VERSION="$stamp" CIFAIL_ACTION_REF=v1 \
           CIFAIL_ACTION_REPO=SebHenn/ci-failure-intelligence \
             bash --noprofile --norc -e -o pipefail action-step.sh | tee action-out.txt
@@ -183,6 +183,43 @@ jobs:
           # half-rendered line ("v unknown", a missing pin) is the state this guards against.
           grep -q "cifail action v$stamp (SebHenn/ci-failure-intelligence@v1) | cifail " action-out.txt
           test -s action.sarif
+
+          # Issue #46: tia-report runs selection-misses over the same reports. The failure below
+          # matches a rule, so analyze exits 0 and only the miss can fail the step. The tia report
+          # sits under RUNNER_TEMP, outside the mounted workspace, so its own mount is exercised.
+          mkdir -p tia-fixture
+          cat > tia-fixture/results.xml <<'XML'
+          <testsuites><testsuite name="App.Tests">
+            <testcase classname="App.Tests.RestoreTests" name="Restores"><failure message="restore failed">/src/App.csproj : error NU1101: Unable to find package Contoso.Missing. No packages exist with this id in source(s): nuget.org</failure></testcase>
+          </testsuite></testsuites>
+          XML
+          cat > "$RUNNER_TEMP/tia-report.json" <<'JSON'
+          { "schemaVersion": 1, "headCommit": "f55d4daff0123456",
+            "skippedTests": [ { "project": "App.Tests", "tests": ["App.Tests.RestoreTests.Restores"] } ] }
+          JSON
+          tia_step() {
+            INPUT_LOG=tia-fixture/results.xml INPUT_TIA_REPORT="$1" INPUT_MODE=analyze INPUT_ARGS= \
+            INPUT_IMAGE=cifail:ci INPUT_SUMMARY=false INPUT_FAIL=true INPUT_COMMENT=false \
+            INPUT_SARIF= INPUT_RULES= CIFAIL_ACTION_VERSION="$stamp" GITHUB_OUTPUT=tia-out.txt \
+              bash --noprofile --norc -e -o pipefail action-step.sh
+          }
+          : > tia-out.txt
+          if tia_step "$RUNNER_TEMP/tia-report.json" | tee tia-action-out.txt; then
+            echo "a selection miss under fail: true must fail the step" >&2
+            exit 1
+          fi
+          grep -q '### Candidate selection misses' tia-action-out.txt
+          grep -q '1 of 1 failing test(s) were skipped by dotnet-tia at `f55d4daff`' tia-action-out.txt
+          grep -q '^- `App.Tests.RestoreTests.Restores` (App.Tests)' tia-action-out.txt
+          grep -qx 'selection-misses=1' tia-out.txt
+          grep -qx 'exit-code=0' tia-out.txt
+          # A report that is not there warns and says "Not checked": never a silent pass, and
+          # never a red step either.
+          : > tia-out.txt
+          tia_step tia-fixture/missing.json | tee tia-action-out.txt
+          grep -q '::warning::cifail: selection misses not checked' tia-action-out.txt
+          grep -q '^Not checked: ' tia-action-out.txt
+          grep -qx 'selection-misses=' tia-out.txt
 
   # Real external databases (Postgres/MySQL/SQL Server/MongoDB) via Testcontainers. Kept in
   # a separate job so the heavier, container-pulling tests don't slow the core pipeline.

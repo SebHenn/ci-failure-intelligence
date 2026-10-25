@@ -9,6 +9,18 @@ after 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **The GitHub Action checks for test-selection misses: a `tia-report` input**
+  ([#46](https://github.com/SebHenn/ci-failure-intelligence/issues/46)). Point it at the dotnet-tia
+  report the pull request kept (dotnet-tia's `report:` input), and the action also runs
+  `cifail selection-misses` over the JUnit/TRX reports in `log`. The step summary and the PR
+  comment get a "Candidate selection misses" section, and a new `selection-misses` output holds
+  the count. With `fail: true`, a miss fails the step. A report that is missing or unusable, or a
+  `log` with no test report in it, is a warning and a "Not checked" section, never a silent pass,
+  and never a failed step on its own. The README shows the two-job workflow that passes the report
+  from the pull request to the run on the default branch.
+
 ## [0.4.0] - 2026-10-24
 
 One new command, for repositories whose pull requests run a test selection with
