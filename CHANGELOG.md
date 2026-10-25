@@ -9,6 +9,15 @@ after 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **The action checks for selection misses** ([#46](https://github.com/SebHenn/ci-failure-intelligence/issues/46)).
+  With `tia-report:` set to a dotnet-tia report, the action also runs `selection-misses` over the
+  JUnit or TRX reports in `log:`. It adds a "Candidate selection misses" section to the step
+  summary and PR comment, and a `selection-misses` output with the count. Informational unless
+  `fail: true`. A missing report or no test reports is a warning and an empty output, never
+  "no miss".
+
 ## [0.4.0] - 2026-10-24
 
 One new command, for repositories whose pull requests run a test selection with

@@ -184,6 +184,18 @@ jobs:
           grep -q "cifail action v$stamp (SebHenn/ci-failure-intelligence@v1) | cifail " action-out.txt
           test -s action.sarif
 
+          # Issue #46: with tia-report, the JUnit report's failure of a test the sample report
+          # skipped is a candidate selection miss, in the rendered text and in the output.
+          : > tia-outputs.txt
+          INPUT_LOG=samples/junit-report.xml INPUT_MODE=analyze INPUT_ARGS='' \
+          INPUT_IMAGE=cifail:ci INPUT_SUMMARY=false INPUT_FAIL=false INPUT_COMMENT=false \
+          INPUT_SARIF='' INPUT_RULES='' INPUT_TIA_REPORT=samples/tia-report.json \
+          CIFAIL_ACTION_VERSION="$stamp" GITHUB_OUTPUT=tia-outputs.txt \
+            bash --noprofile --norc -e -o pipefail action-step.sh | tee tia-out.txt
+          grep -q 'Candidate selection misses' tia-out.txt
+          grep -q 'com.example.OrderTests.applies_discount' tia-out.txt
+          grep -qx 'selection-misses=1' tia-outputs.txt
+
   # Real external databases (Postgres/MySQL/SQL Server/MongoDB) via Testcontainers. Kept in
   # a separate job so the heavier, container-pulling tests don't slow the core pipeline.
   db-integration:

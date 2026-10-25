@@ -45,6 +45,10 @@ inputs:
     description: 'Extra directory of rule packs shipped by this repo (relative to the workspace). A pack committed at .cifail/rules is loaded automatically and needs no input.'
     required: false
     default: ''
+  tia-report:
+    description: "A dotnet-tia report from the pull request's selective run (dotnet-tia's report: input). When set, the JUnit or TRX reports in log: are also checked for failures of tests that selection skipped."
+    required: false
+    default: ''
 
 outputs:
   matched:
@@ -71,6 +75,9 @@ outputs:
   action-version:
     description: 'Version of this action itself — what `@v1` actually resolved to on this run.'
     value: ${{ steps.cifail.outputs.action-version }}
+  selection-misses:
+    description: 'With tia-report: how many failing tests the selection had skipped. Empty when they could not be checked.'
+    value: ${{ steps.cifail.outputs.selection-misses }}
   image-digest:
     description: 'Immutable digest of the image that ran (`name@sha256:…`), for pinning or for reproducing a run.'
     value: ${{ steps.cifail.outputs.image-digest }}
@@ -90,6 +97,7 @@ runs:
         INPUT_COMMENT: ${{ inputs.comment }}
         INPUT_SARIF: ${{ inputs.sarif }}
         INPUT_RULES: ${{ inputs.rules }}
+        INPUT_TIA_REPORT: ${{ inputs.tia-report }}
         # Which build of this action is running. `@v1` is a moving tag, so the ref a consumer
         # wrote does not identify a build — this stamp does. Bumped with <Version> in
         # Directory.Build.props and enforced by scripts/check-versions.sh, so it cannot drift.
@@ -228,6 +236,44 @@ runs:
           emit "new-failures" ""
         fi
 
+        # ---- selection misses (dotnet-tia) ---------------------------------------------
+        # The full run's failures against what the pull request's selection skipped (#46). A
+        # report that is missing, or inputs with no JUnit or TRX in them, are a warning and an
+        # empty output, never "no miss": the command refuses to conclude anything from nothing,
+        # and so does this.
+        misses_md=""
+        misses_code=0
+        INPUT_TIA_REPORT="${INPUT_TIA_REPORT:-}"
+        if [ -n "$INPUT_TIA_REPORT" ]; then
+          if [ ! -f "$INPUT_TIA_REPORT" ]; then
+            echo "::warning::cifail: tia-report '$INPUT_TIA_REPORT' does not exist, so selection misses were not checked."
+            emit "selection-misses" ""
+          elif [ -z "$INPUT_LOG" ]; then
+            echo "::warning::cifail: tia-report is set but log: is empty, so there were no test reports to check."
+            emit "selection-misses" ""
+          else
+            misses_json="$(docker run "${run_args[@]}" "$INPUT_IMAGE" selection-misses --tia "$INPUT_TIA_REPORT" --json "$INPUT_LOG" 2>/tmp/cifail-misses.err)"
+            misses_code=$?
+            cat /tmp/cifail-misses.err >&2 || true
+            misses_count="$(printf '%s' "$misses_json" | jq -r '.misses | length' 2>/dev/null)"
+            if [ "$misses_code" -le 1 ] && [ -n "$misses_count" ]; then
+              emit "selection-misses" "$misses_count"
+              failing="$(printf '%s' "$misses_json" | jq -r '.failingTests // 0')"
+              if [ "$misses_count" -gt 0 ]; then
+                misses_md="$(printf '### Candidate selection misses\n\n%s of %s failing test(s) were skipped by the dotnet-tia selection. A skipped test can fail for an unrelated reason; `dotnet tia explain <test>` at the pull request'"'"'s commit says whether the change reached it.' "$misses_count" "$failing")"
+                # $(...) drops trailing newlines, so the blank line before the list is added here.
+                misses_md="$misses_md"$'\n\n'"$(printf '%s' "$misses_json" | jq -r '.misses[] | "- `\(.test)` (\(.project))" + (if (.message // "") != "" then ": " + (.message | split("\n")[0]) else "" end)')"
+              else
+                misses_md="$(printf '### Selection misses\n\nNone: no failing test of the %s was skipped by the dotnet-tia selection.' "$failing")"
+              fi
+            else
+              echo "::warning::cifail: selection-misses could not check the reports (exit $misses_code)."
+              emit "selection-misses" ""
+              misses_code=0
+            fi
+          fi
+        fi
+
         # ---- human-readable rendering --------------------------------------------------
         # The markdown report, not the console panels: box-drawing characters inside a code
         # fence is what a step summary used to be, and it reads badly everywhere it lands.
@@ -239,6 +285,10 @@ runs:
               "If you passed sarif:, the image may predate the fix for two --report pairs."
           fi
           body="$(printf '%s' "$json")"
+        fi
+
+        if [ -n "$misses_md" ]; then
+          body="$(printf '%s\n\n%s' "$body" "$misses_md")"
         fi
 
         echo "$body"
@@ -284,7 +334,11 @@ runs:
 
         # cifail exit codes: 0 ok, 1 negative result (no rule matched / gate found something
         # new), 2 usage error.
+        # A selection miss is a negative result like any other, once the analysis itself passed.
         if [ "$INPUT_FAIL" = "true" ]; then
+          if [ "$code" -eq 0 ] && [ "$misses_code" -ne 0 ]; then
+            exit "$misses_code"
+          fi
           exit $code
         fi
         exit 0

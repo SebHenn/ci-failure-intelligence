@@ -700,6 +700,23 @@ cifail selection-misses --tia tia-report.json TestResults/
 - Exit **0** when no failure was a skipped test, **1** when some were, **2** for unusable input.
   `--json` prints `{tia, failingTests, misses[]}`.
 
+The action does the same with `tia-report:`. Give it the pull request's report, and the JUnit or
+TRX files of the full run as `log:`:
+
+```yaml
+- uses: SebHenn/ci-failure-intelligence@v1
+  if: failure()
+  with:
+    log: TestResults/
+    tia-report: tia-report.json   # downloaded from the pull request's run
+```
+
+It adds a **Candidate selection misses** section to the step summary and to the PR comment
+(`comment: true`), and sets the output `selection-misses` to the count. It is informational like
+the rest of the action. With `fail: true`, a miss fails the step. A missing `tia-report`, or a
+`log:` with no JUnit or TRX report in it, is a warning and leaves the output empty. It is never
+read as "no miss".
+
 It names **candidates**: a skipped test can also fail for a reason the change had nothing to do
 with. `dotnet tia explain <test>` at the pull request's commit says whether anything connected the
 two.
