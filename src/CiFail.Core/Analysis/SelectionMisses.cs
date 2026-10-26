@@ -19,6 +19,19 @@ public sealed record TiaSelection(
 public sealed record SelectionMiss(TestFailure Failure, string Test, string Project);
 
 /// <summary>
+/// A failure whose report names it too loosely to say which skipped test it is: more than one
+/// skipped test ends with its name.
+/// </summary>
+/// <param name="Candidates">Some of the skipped tests it could be.</param>
+public sealed record UnmatchedFailure(TestFailure Failure, IReadOnlyList<string> Candidates);
+
+/// <summary>
+/// The outcome of a check. A check with <see cref="Unmatched"/> failures is not a clean one, even
+/// with no misses: those failures may be skipped tests, and it is not known which.
+/// </summary>
+public sealed record SelectionCheck(IReadOnlyList<SelectionMiss> Misses, IReadOnlyList<UnmatchedFailure> Unmatched);
+
+/// <summary>
 /// Failures that dotnet-tia's selection had skipped - a test it decided the change could not
 /// affect, which then failed once it did run.
 ///
@@ -94,45 +107,73 @@ public static class SelectionMisses
         }
     }
 
+    /// <summary>The failures whose test the selection skipped. See <see cref="Check"/>.</summary>
+    public static IReadOnlyList<SelectionMiss> Find(TiaSelection selection, IEnumerable<TestFailure> failures) =>
+        Check(selection, failures).Misses;
+
     /// <summary>
-    /// The failures whose test the selection skipped. A name is matched exactly, with a
-    /// parameterised test's arguments ignored - the selection works at method granularity. A report
-    /// that records only a method name (TRX from MSTest does) is matched on the class-qualified
-    /// suffix, and only when exactly one skipped test ends with it: a guess between two would be a
-    /// claim this cannot back.
+    /// The failures whose test the selection skipped, and those that could not be told apart. A
+    /// name is matched exactly, with a parameterised test's arguments ignored - the selection works
+    /// at method granularity. A report that records only a method name is matched on the
+    /// class-qualified suffix, and only when exactly one skipped test ends with it: a guess between
+    /// two would be a claim this cannot back. Such a failure is returned as unmatched rather than
+    /// dropped, because leaving it out would make the check read as clean (#56).
     /// </summary>
-    public static IReadOnlyList<SelectionMiss> Find(TiaSelection selection, IEnumerable<TestFailure> failures)
+    public static SelectionCheck Check(TiaSelection selection, IEnumerable<TestFailure> failures)
     {
         ArgumentNullException.ThrowIfNull(selection);
         ArgumentNullException.ThrowIfNull(failures);
 
         var misses = new List<SelectionMiss>();
+        var unmatched = new List<UnmatchedFailure>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var failure in failures)
         {
-            if (Match(selection.Skipped, failure) is { } test && seen.Add(test))
-                misses.Add(new SelectionMiss(failure, test, selection.Skipped[test]));
+            var (test, candidates) = Match(selection.Skipped, failure);
+            if (test is not null)
+            {
+                if (seen.Add(test))
+                    misses.Add(new SelectionMiss(failure, test, selection.Skipped[test]));
+            }
+            else if (candidates.Count > 1 && seen.Add("?" + failure.FullName))
+            {
+                unmatched.Add(new UnmatchedFailure(failure, candidates));
+            }
         }
 
-        return misses;
+        return new SelectionCheck(misses, unmatched);
     }
 
-    private static string? Match(IReadOnlyDictionary<string, string> skipped, TestFailure failure)
+    /// <summary>How many of an unmatched failure's candidates are kept to show.</summary>
+    private const int CandidatesShown = 5;
+
+    private static (string? Test, IReadOnlyList<string> Candidates) Match(IReadOnlyDictionary<string, string> skipped, TestFailure failure)
     {
-        foreach (var candidate in new[] { failure.FullName, failure.Name }.Select(WithoutArguments).Distinct(StringComparer.Ordinal))
+        // The method a TRX definition names is what ran; the class beside it makes it exact.
+        var qualifiedMethod = failure is { Classname: { Length: > 0 } cls, Method: { Length: > 0 } method } ? $"{cls}.{method}" : null;
+
+        foreach (var candidate in new[] { failure.FullName, failure.Name, qualifiedMethod }
+                     .OfType<string>().Select(WithoutArguments).Distinct(StringComparer.Ordinal))
         {
             if (skipped.ContainsKey(candidate))
-                return candidate;
+                return (candidate, []);
         }
 
-        var name = WithoutArguments(failure.Name);
+        // A TRX definition's class is the class that ran, so a failure it names that is not among
+        // the skipped tests ran, whatever other class has a method of the same name. A JUnit
+        // classname is not that reliable (some converters write the suite or the assembly there),
+        // so a JUnit failure still falls back to the suffix.
+        if (failure.Method is not null && !string.IsNullOrWhiteSpace(failure.Classname))
+            return (null, []);
+
+        var name = WithoutArguments(failure.Method is { Length: > 0 } m ? m : failure.Name);
         if (name.Length == 0)
-            return null;
+            return (null, []);
 
         var suffix = "." + name;
-        var endingWith = skipped.Keys.Where(k => k.EndsWith(suffix, StringComparison.Ordinal)).Take(2).ToList();
-        return endingWith.Count == 1 ? endingWith[0] : null;
+        var endingWith = skipped.Keys.Where(k => k.EndsWith(suffix, StringComparison.Ordinal)).Take(CandidatesShown).ToList();
+        return endingWith.Count == 1 ? (endingWith[0], []) : (null, endingWith);
     }
 
     /// <summary><c>Ns.Cls.Adds(x: 1, y: 2)</c> is the method <c>Ns.Cls.Adds</c>.</summary>

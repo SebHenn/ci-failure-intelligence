@@ -19,6 +19,19 @@ after 1.0.
   "Not checked" section to the step summary and PR comment instead of only a warning, which a
   reader of the comment could not tell from "no miss". Test names, projects and failure messages
   in that section are code spans, so markdown from the pull request's code stays inert.
+- **`selection-misses` no longer reports "None" for a failure it could not match**
+  ([#56](https://github.com/SebHenn/ci-failure-intelligence/issues/56)). TRX from NUnit and MSTest
+  names a failure by its method alone, so when two skipped tests in different classes shared that
+  name, the failure was silently dropped and the result read as clean. TRX failures now take their
+  class and method from the report's test definitions and match exactly. A failure that still
+  cannot be matched to one test is listed as not checked, with its candidates, in the text, in the
+  JSON (`unmatched[]`) and in the action's section, which then says "Not certain" instead of
+  "None". The exit code is unchanged.
+- **TRX results with the outcome `Timeout`, `Error` or `Aborted` count as failures**, in `analyze`
+  and `gate` as well as `selection-misses`. Only `Failed` did, so a test that timed out was never
+  reported. For NUnit and MSTest TRX, a failing test's name now includes its class. Test history
+  recorded before this keys those tests by the method name alone, so their history starts again
+  under the full name.
 
 ## [0.5.0] - 2026-10-25
 
