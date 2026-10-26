@@ -21,13 +21,20 @@ public enum ReportFormat
 
 /// <summary>One failing test extracted from a structured report.</summary>
 /// <param name="Name">The test method/case name.</param>
-/// <param name="Classname">Owning class/suite, when the format records it (JUnit).</param>
+/// <param name="Classname">Owning class/suite, when the format records it (JUnit, and TRX through its test definitions).</param>
 /// <param name="Message">The assertion/error message.</param>
 /// <param name="Details">Stack trace or extra detail, when present.</param>
 public sealed record TestFailure(string Name, string? Classname, string Message, string? Details)
 {
     /// <summary>The fully-qualified test name (class + method when both are known).</summary>
     public string FullName => string.IsNullOrWhiteSpace(Classname) ? Name : $"{Classname}.{Name}";
+
+    /// <summary>
+    /// The test method, when the report names it apart from <see cref="Name"/>. TRX does: a
+    /// display name or a data row's name can stand in <see cref="Name"/>, and only this is the
+    /// method that ran.
+    /// </summary>
+    public string? Method { get; init; }
 
     /// <summary>
     /// Render this failure as the normalized log text fed into the analysis pipeline, so the
@@ -120,24 +127,66 @@ public static class TestReportParser
         return failures;
     }
 
+    /// <summary>
+    /// TRX outcomes that are a failing test. A timeout, an error outside the assertion and an
+    /// aborted test are as red as an assertion failure; a test that was not executed is not.
+    /// </summary>
+    private static readonly HashSet<string> FailedOutcomes = new(StringComparer.OrdinalIgnoreCase)
+        { "Failed", "Error", "Timeout", "Aborted" };
+
     private static List<TestFailure> ParseTrx(string content)
     {
-        var failures = new List<TestFailure>();
-        foreach (var r in XDocument.Parse(content).Descendants().Where(e => e.Name.LocalName == "UnitTestResult"))
+        var document = XDocument.Parse(content);
+
+        // A result names its test by testName, which is only the method for NUnit and MSTest, and a
+        // display name wherever one is set. The class and the method are in the test's definition,
+        // joined on the test id (#56). Without them, two tests with one method name in different
+        // classes are one name, and matching or keying on it merges them.
+        var definitions = new Dictionary<string, (string? Class, string? Method)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var test in document.Descendants().Where(e => e.Name.LocalName == "UnitTest"))
         {
-            if (!string.Equals(r.Attribute("outcome")?.Value, "Failed", StringComparison.OrdinalIgnoreCase))
+            var method = test.Elements().FirstOrDefault(e => e.Name.LocalName == "TestMethod");
+            if (test.Attribute("id")?.Value is { Length: > 0 } id && method is not null)
+                definitions.TryAdd(id, (ClassName(method.Attribute("className")?.Value), method.Attribute("name")?.Value));
+        }
+
+        var failures = new List<TestFailure>();
+        foreach (var r in document.Descendants().Where(e => e.Name.LocalName == "UnitTestResult"))
+        {
+            if (r.Attribute("outcome")?.Value is not { } outcome || !FailedOutcomes.Contains(outcome))
                 continue;
 
             var errorInfo = r.Descendants().FirstOrDefault(e => e.Name.LocalName == "ErrorInfo");
             var message = errorInfo?.Elements().FirstOrDefault(e => e.Name.LocalName == "Message")?.Value;
             var stack = errorInfo?.Elements().FirstOrDefault(e => e.Name.LocalName == "StackTrace")?.Value;
 
+            var name = r.Attribute("testName")?.Value ?? "(unknown)";
+            var (className, methodName) = r.Attribute("testId")?.Value is { } testId
+                ? definitions.GetValueOrDefault(testId)
+                : default;
+
+            // xUnit already writes the qualified name. It is split rather than qualified twice, so
+            // the full name stays what it was and the class is still known.
+            if (className is not null && name.StartsWith(className + ".", StringComparison.Ordinal))
+                name = name[(className.Length + 1)..];
+
             failures.Add(new TestFailure(
-                Name: r.Attribute("testName")?.Value ?? "(unknown)",
-                Classname: null,
+                Name: name,
+                Classname: className,
                 Message: message?.Trim() ?? "",
-                Details: string.IsNullOrWhiteSpace(stack) ? null : stack.Trim()));
+                Details: string.IsNullOrWhiteSpace(stack) ? null : stack.Trim())
+            {
+                Method = methodName,
+            });
         }
         return failures;
+    }
+
+    /// <summary>MSTest has written <c>Ns.Class, Assembly, Version=...</c>; the class is the part before the comma.</summary>
+    private static string? ClassName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var comma = value.IndexOf(',', StringComparison.Ordinal);
+        return (comma < 0 ? value : value[..comma]).Trim();
     }
 }

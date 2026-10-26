@@ -91,6 +91,57 @@ public sealed class SelectionMissesTests
     }
 
     [Fact]
+    public void An_ambiguous_bare_name_is_reported_as_not_checked()
+    {
+        // Dropping it would make the check read as clean when one of the two may be a miss (#56).
+        var selection = SelectionMisses.ReadReport("""
+            { "schemaVersion": 1, "skippedTests": [ { "project": "P", "tests": ["A.Tests.Runs", "B.Tests.Runs"] } ] }
+            """);
+
+        var check = SelectionMisses.Check(selection, [Failure("Runs")]);
+
+        Assert.Empty(check.Misses);
+        var unmatched = Assert.Single(check.Unmatched);
+        Assert.Equal(["A.Tests.Runs", "B.Tests.Runs"], unmatched.Candidates.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void A_bare_name_no_skipped_test_has_is_neither_a_miss_nor_unmatched()
+    {
+        // The test ran: nothing the selection skipped is called that.
+        var check = SelectionMisses.Check(SelectionMisses.ReadReport(Report), [Failure("Draws")]);
+
+        Assert.Empty(check.Misses);
+        Assert.Empty(check.Unmatched);
+    }
+
+    [Fact]
+    public void A_trx_failure_whose_class_is_known_is_matched_on_its_class()
+    {
+        var selection = SelectionMisses.ReadReport("""
+            { "schemaVersion": 1, "skippedTests": [ { "project": "P", "tests": ["A.Tests.Runs", "B.Tests.Runs"] } ] }
+            """);
+
+        // Two skipped tests share the method name, and the definition says which class ran.
+        var check = SelectionMisses.Check(selection, [new TestFailure("Runs", "B.Tests", "boom", null) { Method = "Runs" }]);
+        Assert.Equal("B.Tests.Runs", Assert.Single(check.Misses).Test);
+        Assert.Empty(check.Unmatched);
+
+        // A class that is not among them ran, whatever else has a method of that name.
+        var ran = SelectionMisses.Check(selection, [new TestFailure("Runs", "C.Tests", "boom", null) { Method = "Runs" }]);
+        Assert.Empty(ran.Misses);
+        Assert.Empty(ran.Unmatched);
+    }
+
+    [Fact]
+    public void A_display_name_is_matched_through_the_method_that_ran()
+    {
+        var failure = new TestFailure("wraps at the edge", "App.Tests.GridTests", "boom", null) { Method = "Wraps" };
+
+        Assert.Equal("App.Tests.GridTests.Wraps", Assert.Single(SelectionMisses.Find(SelectionMisses.ReadReport(Report), [failure])).Test);
+    }
+
+    [Fact]
     public void Each_test_is_reported_once()
     {
         // Two frameworks of one project fail the same test.

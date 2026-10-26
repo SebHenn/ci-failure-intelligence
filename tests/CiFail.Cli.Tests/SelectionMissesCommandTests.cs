@@ -71,6 +71,32 @@ public sealed class SelectionMissesCommandTests
     }
 
     [Fact]
+    public void A_failure_that_cannot_be_told_apart_is_not_reported_as_no_miss()
+    {
+        // MSTest without definitions names a failure by its method alone, and two skipped tests
+        // end with it. That is not a clean result, and the output must not read as one (#56).
+        using var cli = new CliHarness();
+        var tia = TiaReport.Replace("[\"App.Tests.GridTests.Wraps\"]", "[\"App.Tests.GridTests.Wraps\", \"App.Tests.RowTests.Wraps\"]", StringComparison.Ordinal);
+        var (tiaPath, results) = Write(cli, tia, """
+            <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+              <Results><UnitTestResult testName="Wraps" outcome="Failed" /></Results>
+            </TestRun>
+            """);
+
+        var text = cli.Run("selection-misses", "--tia", tiaPath, results);
+        text.ExitCode.Should().Be(ExitCodes.Ok);
+        text.StdoutFlat.Should().NotContain("No selection miss:");
+        text.StdoutFlat.Should().Contain("could not be checked");
+        text.StdoutFlat.Should().Contain("App.Tests.RowTests.Wraps");
+
+        var json = cli.Run("selection-misses", "--tia", tiaPath, results, "--json");
+        using var document = JsonDocument.Parse(json.Stdout);
+        var unmatched = document.RootElement.GetProperty("unmatched").EnumerateArray().Single();
+        unmatched.GetProperty("test").GetString().Should().Be("Wraps");
+        unmatched.GetProperty("candidates").GetArrayLength().Should().Be(2);
+    }
+
+    [Fact]
     public void No_skipped_test_failed_exits_zero()
     {
         using var cli = new CliHarness();
