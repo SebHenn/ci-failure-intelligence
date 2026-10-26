@@ -68,6 +68,50 @@ public class TestReportParserTests
         f.Details.Should().Contain("OrderTests.cs:line 42");
     }
 
+    // NUnit and MSTest write the bare method as testName; the class is only in the definition.
+    // xUnit writes the qualified name. One TRX of each, plus outcomes that are and are not a failure.
+    private const string TrxWithDefinitions = """
+        <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+          <TestDefinitions>
+            <UnitTest name="Parses" id="a1"><TestMethod className="Lib.Tests.ParserTests, Lib.Tests, Version=1.0.0.0" name="Parses" /></UnitTest>
+            <UnitTest name="App.Tests.GridTests.Wraps" id="b2"><TestMethod className="App.Tests.GridTests" name="Wraps" /></UnitTest>
+            <UnitTest name="wraps at the edge" id="c3"><TestMethod className="App.Tests.GridTests" name="WrapsAtEdge" /></UnitTest>
+            <UnitTest name="Slow" id="d4"><TestMethod className="App.Tests.SlowTests" name="Slow" /></UnitTest>
+            <UnitTest name="Skipped" id="e5"><TestMethod className="App.Tests.SlowTests" name="Skipped" /></UnitTest>
+          </TestDefinitions>
+          <Results>
+            <UnitTestResult testId="a1" testName="Parses" outcome="Failed"><Output><ErrorInfo><Message>boom</Message></ErrorInfo></Output></UnitTestResult>
+            <UnitTestResult testId="b2" testName="App.Tests.GridTests.Wraps" outcome="Failed" />
+            <UnitTestResult testId="c3" testName="wraps at the edge" outcome="Failed" />
+            <UnitTestResult testId="d4" testName="Slow" outcome="Timeout" />
+            <UnitTestResult testId="e5" testName="Skipped" outcome="NotExecuted" />
+          </Results>
+        </TestRun>
+        """;
+
+    [Fact]
+    public void ParseTrx_takes_the_class_and_method_from_the_test_definition()
+    {
+        var failures = TestReportParser.ParseFailures(ReportFormat.Trx, TrxWithDefinitions);
+
+        // The class, without the assembly MSTest has appended to it.
+        failures.Should().Contain(f => f.FullName == "Lib.Tests.ParserTests.Parses" && f.Method == "Parses");
+        // Already qualified: split, not qualified twice, so the full name is what it was.
+        failures.Should().Contain(f => f.FullName == "App.Tests.GridTests.Wraps" && f.Classname == "App.Tests.GridTests");
+        // A display name keeps its text, and the method that ran is beside it.
+        failures.Should().Contain(f => f.FullName == "App.Tests.GridTests.wraps at the edge" && f.Method == "WrapsAtEdge");
+    }
+
+    [Fact]
+    public void ParseTrx_counts_a_timeout_as_a_failure_and_a_test_not_executed_as_none()
+    {
+        var failures = TestReportParser.ParseFailures(ReportFormat.Trx, TrxWithDefinitions);
+
+        failures.Should().Contain(f => f.FullName == "App.Tests.SlowTests.Slow");
+        failures.Should().NotContain(f => f.Name == "Skipped");
+        failures.Should().HaveCount(4);
+    }
+
     [Fact]
     public void ParseFailures_throws_on_malformed_xml()
     {
