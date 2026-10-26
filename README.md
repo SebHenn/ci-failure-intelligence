@@ -357,14 +357,14 @@ prints one line naming what actually ran, first thing in its log and at the foot
 summary:
 
 ```
-cifail action v0.5.0 (SebHenn/ci-failure-intelligence@v1) | cifail 0.5.0 | image ghcr.io/sebhenn/cifail:0.5.0@sha256:…
+cifail action v0.6.0 (SebHenn/ci-failure-intelligence@v1) | cifail 0.6.0 | image ghcr.io/sebhenn/cifail:0.6.0@sha256:…
 ```
 
 If a fix listed in the [changelog](CHANGELOG.md) doesn't seem to be there, read that line
 before anything else — it names the action build, the CLI inside it, and the exact image
 digest your runner used (runners cache). The action runs the image built from its own
 release, so one pin covers both: pin by version if you'd rather upgrade deliberately, and
-`uses: SebHenn/ci-failure-intelligence@v0.5.0` runs `ghcr.io/sebhenn/cifail:0.5.0`.
+`uses: SebHenn/ci-failure-intelligence@v0.6.0` runs `ghcr.io/sebhenn/cifail:0.6.0`.
 
 Inputs: `log` (file, **directory or glob** to analyze), `mode` (`analyze`, the default, or
 `gate`), `args` (extra flags, e.g. `--type node`), `image` (run a different image; by

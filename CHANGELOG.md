@@ -9,6 +9,18 @@ after 1.0.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-26
+
+Fixes to the dotnet-tia selection-miss check that 0.5.0 added to the action, and to how TRX
+results are read everywhere. The action's `tia-report` now works with a report anywhere on the
+runner, and a check that could not run, or a failure it could not match to one test, is said so
+instead of being reported as "None".
+
+Minor rather than patch, because two of the TRX fixes change what existing users see. A test that
+timed out, errored or was aborted now counts as a failure in `analyze` and `gate`. NUnit and MSTest
+failures now carry their class in the name, so their stored test history starts again under the
+full name.
+
 ### Fixed
 
 - **The action's `tia-report` works with an absolute path, and says when it could not check**
@@ -598,7 +610,8 @@ First tagged release. **Superseded — do not install it**: its assets are named
 `cifail-0.1.0-alpha-*` while the tag is `v0.1.0`, so nothing that follows the
 documented install instructions can find them. Fixed in 0.2.0.
 
-[Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.2...v0.4.0
 

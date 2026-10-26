@@ -101,7 +101,7 @@ runs:
         # Which build of this action is running. `@v1` is a moving tag, so the ref a consumer
         # wrote does not identify a build — this stamp does. Bumped with <Version> in
         # Directory.Build.props and enforced by scripts/check-versions.sh, so it cannot drift.
-        CIFAIL_ACTION_VERSION: '0.5.0'
+        CIFAIL_ACTION_VERSION: '0.6.0'
         # Empty for a local `uses: ./` checkout; that is reported as such rather than guessed.
         CIFAIL_ACTION_REF: ${{ github.action_ref }}
         CIFAIL_ACTION_REPO: ${{ github.action_repository }}
