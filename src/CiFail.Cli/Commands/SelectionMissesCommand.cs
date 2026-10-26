@@ -102,26 +102,36 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
             return ExitCodes.Usage;
         }
 
-        var misses = SelectionMisses.Find(selection, failures);
+        var check = SelectionMisses.Check(selection, failures);
 
         if (settings.Json)
-            Console.Out.WriteLine(JsonSerializer.Serialize(ToDto(selection, failures.Count, misses), AnalysisJson.Options));
+            Console.Out.WriteLine(JsonSerializer.Serialize(ToDto(selection, failures.Count, check), AnalysisJson.Options));
         else
-            Render(selection, failures.Count, misses);
+            Render(selection, failures.Count, check);
 
-        return misses.Count == 0 ? ExitCodes.Ok : ExitCodes.Negative;
+        // Unmatched failures do not change the exit code: none of them is known to be a miss. The
+        // text and the JSON say they were not checked, so 0 is not read as a clean check.
+        return check.Misses.Count == 0 ? ExitCodes.Ok : ExitCodes.Negative;
     }
 
-    private static void Render(TiaSelection selection, int failureCount, IReadOnlyList<SelectionMiss> misses)
+    private static void Render(TiaSelection selection, int failureCount, SelectionCheck check)
     {
         var console = CliConsole.Out;
+        var misses = check.Misses;
         var against = selection.HeadCommit is { Length: > 0 } head
             ? $" at [bold]{Markup.Escape(head[..Math.Min(9, head.Length)])}[/]"
             : string.Empty;
 
-        if (misses.Count == 0)
+        if (misses.Count == 0 && check.Unmatched.Count == 0)
         {
             console.MarkupLine($"[green]No selection miss:[/] none of the {failureCount} failing test(s) was skipped by dotnet-tia{against}.");
+            return;
+        }
+
+        if (misses.Count == 0)
+        {
+            console.MarkupLine($"[yellow]No selection miss found{against}, but {check.Unmatched.Count} of {failureCount} failing test(s) could not be checked.[/]");
+            RenderUnmatched(check.Unmatched);
             return;
         }
 
@@ -134,10 +144,25 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
                 console.MarkupLine($"    [grey]{Markup.Escape(FirstLine(message))}[/]");
         }
 
+        RenderUnmatched(check.Unmatched);
+
         console.WriteLine();
         CliConsole.Hint("[grey]A skipped test can also fail for a reason the change had nothing to do with. " +
                         "Check out the selective run's commit and run [bold]dotnet tia explain <test>[/]: if nothing connects it to the change " +
                         "and the change broke it, that is a miss worth reporting at github.com/SebHenn/dotnet-tia/issues.[/]");
+    }
+
+    private static void RenderUnmatched(IReadOnlyList<UnmatchedFailure> unmatched)
+    {
+        if (unmatched.Count == 0) return;
+
+        var console = CliConsole.Out;
+        console.WriteLine();
+        console.MarkupLine("[yellow]Not checked:[/] the report names these only by method, and more than one skipped test has that name:");
+        foreach (var failure in unmatched)
+        {
+            console.MarkupLine($"  [bold]{Markup.Escape(failure.Failure.FullName)}[/] [grey]could be {Markup.Escape(string.Join(", ", failure.Candidates))}[/]");
+        }
     }
 
     private static string FirstLine(string text)
@@ -146,10 +171,11 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
         return end < 0 ? text : text[..end];
     }
 
-    private static object ToDto(TiaSelection selection, int failureCount, IReadOnlyList<SelectionMiss> misses) => new
+    private static object ToDto(TiaSelection selection, int failureCount, SelectionCheck check) => new
     {
         tia = new { selection.HeadCommit, selection.BaseRef, selection.BaseCommit },
         failingTests = failureCount,
-        misses = misses.Select(m => new { test = m.Test, project = m.Project, message = m.Failure.Message }).ToList(),
+        misses = check.Misses.Select(m => new { test = m.Test, project = m.Project, message = m.Failure.Message }).ToList(),
+        unmatched = check.Unmatched.Select(u => new { test = u.Failure.FullName, candidates = u.Candidates, message = u.Failure.Message }).ToList(),
     };
 }

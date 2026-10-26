@@ -266,7 +266,11 @@ runs:
             if [ "$misses_code" -le 1 ] && [ -n "$misses_count" ]; then
               emit "selection-misses" "$misses_count"
               failing="$(printf '%s' "$misses_json" | jq -r '.failingTests // 0')"
-              if [ "$misses_count" -gt 0 ]; then
+              unmatched_count="$(printf '%s' "$misses_json" | jq -r '.unmatched // [] | length')"
+              if [ "$misses_count" -eq 0 ] && [ "$unmatched_count" -gt 0 ]; then
+                # Not "None": these may be skipped tests, and which ones is not known (#56).
+                misses_md="$(printf '### Selection misses\n\nNot certain: no failing test that could be matched was skipped by the dotnet-tia selection, but %s of the %s could not be matched to one test.' "$unmatched_count" "$failing")"
+              elif [ "$misses_count" -gt 0 ]; then
                 misses_md="$(printf '### Candidate selection misses\n\n%s of %s failing test(s) were skipped by the dotnet-tia selection. A skipped test can fail for an unrelated reason; `dotnet tia explain <test>` at the pull request'"'"'s commit says whether the change reached it.' "$misses_count" "$failing")"
                 # $(...) drops trailing newlines, so the blank line before the list is added here.
                 # Names and messages come from the pull request's code, so both go in code spans,
@@ -275,6 +279,9 @@ runs:
                 misses_md="$misses_md"$'\n\n'"$(printf '%s' "$misses_json" | jq -r 'def span: "`" + (gsub("`"; [39] | implode)) + "`"; .misses[] | "- " + (.test // "" | span) + " (" + (.project // "" | span) + ")" + (if (.message // "") != "" then ": " + (.message | split("\n")[0] | .[0:300] | span) else "" end)')"
               else
                 misses_md="$(printf '### Selection misses\n\nNone: no failing test of the %s was skipped by the dotnet-tia selection.' "$failing")"
+              fi
+              if [ "$unmatched_count" -gt 0 ]; then
+                misses_md="$misses_md"$'\n\n'"Not checked: the report names these only by method, and more than one skipped test has that name:"$'\n\n'"$(printf '%s' "$misses_json" | jq -r 'def span: "`" + (gsub("`"; [39] | implode)) + "`"; .unmatched[] | "- " + (.test // "" | span) + " could be " + ([.candidates[] | span] | join(", "))')"
               fi
             else
               misses_unchecked "selection-misses could not check the reports (exit $misses_code)."

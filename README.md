@@ -694,11 +694,15 @@ cifail selection-misses --tia tia-report.json TestResults/
 - The other arguments are JUnit or TRX reports from the run that failed: files, directories or
   globs. A log beside them (a results directory has one) is skipped with a warning. Inputs with no
   report at all are refused rather than reported as "no miss".
-- Names are compared at method level, so a parameterised case matches its method. A report that
-  records only the method name, like TRX from MSTest, matches only when exactly one skipped test
-  ends with that name.
+- Names are compared at method level, so a parameterised case matches its method. A TRX report's
+  class and method come from its test definitions, so NUnit and MSTest results match exactly, and a
+  display name matches through the method that ran. A report that records only the method name
+  matches only when exactly one skipped test ends with that name. When more than one does, the
+  failure is listed as **not checked**, with the tests it could be, and the result is never "no
+  miss".
 - Exit **0** when no failure was a skipped test, **1** when some were, **2** for unusable input.
-  `--json` prints `{tia, failingTests, misses[]}`.
+  Unchecked failures do not change the exit code. `--json` prints
+  `{tia, failingTests, misses[], unmatched[]}`.
 
 The action does the same with `tia-report:`. Give it the pull request's report, and the JUnit or
 TRX files of the full run as `log:`:
