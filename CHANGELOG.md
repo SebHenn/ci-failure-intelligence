@@ -9,6 +9,30 @@ after 1.0.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-27
+
+The action leaves Linux-only Docker behind and does more of the dotnet-tia check itself.
+
+- **Runners:** it runs on Windows and macOS runners from the release's own checksummed binary.
+- **Reports:** it fetches the pull request's dotnet-tia report and refuses one from the wrong
+  commit.
+- **Misses:** `selection-misses` now does three new things:
+  - it ranks candidates by their failure history
+  - it matches failures in test projects the selection left out whole
+  - it keeps its section in the summary when hundreds of tests fail
+- **Rules:** 15 new rules cover GitHub Actions, Docker and .NET failures.
+
+**Two changes alter what existing users see:**
+- A TRX report from a crashed test host now counts as a failure in `analyze` and `gate`. It used
+  to read as passing.
+- A run cancelled by its concurrency group, or by losing its runner, is no longer
+  `generic-timeout`. A gate baseline that recorded one sees it under the new rule's fingerprint.
+
+The new runner support has two limits:
+- The action runs on Windows and macOS only from this release on, so pin `@v0.7.0` or later
+  there.
+- Matching skipped projects needs `skippedProjects` from dotnet-tia 0.8 or later.
+
 ### Added
 
 - **The action runs on Windows and macOS runners**
@@ -696,7 +720,8 @@ First tagged release. **Superseded — do not install it**: its assets are named
 `cifail-0.1.0-alpha-*` while the tag is `v0.1.0`, so nothing that follows the
 documented install instructions can find them. Fixed in 0.2.0.
 
-[Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/SebHenn/ci-failure-intelligence/compare/v0.3.2...v0.4.0

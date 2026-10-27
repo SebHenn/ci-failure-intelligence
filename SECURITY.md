@@ -22,7 +22,8 @@ release from `main`**. Only the latest release is supported.
 
 | Version | Supported |
 | --- | --- |
-| 0.6.x   | ✅ |
+| 0.7.x   | ✅ |
+| 0.6.x   | ❌ — superseded |
 | 0.5.x   | ❌ — superseded |
 | 0.4.x   | ❌ — superseded |
 | 0.3.x   | ❌ — superseded |
