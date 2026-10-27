@@ -108,6 +108,59 @@ public sealed class SelectionMissesCommandTests
         document.RootElement.GetProperty("uncheckedProjects").EnumerateArray().Single().GetProperty("project").GetString().Should().Be("Csv.Tests");
     }
 
+    [Theory]
+    [InlineData("0123456789abcdef", ExitCodes.Negative)]
+    [InlineData("0123456", ExitCodes.Negative)]
+    [InlineData("0123456789ABCDEF", ExitCodes.Negative)]
+    [InlineData("fedcba9876543210", ExitCodes.Usage)]
+    public void A_report_from_another_commit_is_refused(string head, int exitCode)
+    {
+        // The pull request's head is known; a report of an older push would misinform (#58).
+        using var cli = new CliHarness();
+        var (tia, results) = Write(cli, TiaReport, JUnit);
+
+        var result = cli.Run("selection-misses", "--tia", tia, results, "--expect-head", head);
+
+        result.ExitCode.Should().Be(exitCode);
+        if (exitCode == ExitCodes.Usage)
+            result.StderrFlat.Should().Contain("is from 0123456789abcdef, not fedcba9876543210");
+    }
+
+    [Fact]
+    public void A_miss_that_failed_before_says_so()
+    {
+        // #60: an earlier failure of the same test, recorded by analyze, makes it likely flaky.
+        using var cli = new CliHarness();
+        var (tia, results) = Write(cli, TiaReport, JUnit);
+        cli.Run("analyze", "--no-git", results).ExitCode.Should().NotBe(ExitCodes.Usage);
+
+        var text = cli.Run("selection-misses", "--tia", tia, results, "--commit", "1234567890");
+        text.ExitCode.Should().Be(ExitCodes.Negative);
+        text.StdoutFlat.Should().Contain("failed 1x on 1 day(s) before");
+
+        var json = cli.Run("selection-misses", "--tia", tia, results, "--commit", "1234567890", "--json");
+        using var document = JsonDocument.Parse(json.Stdout);
+        var history = document.RootElement.GetProperty("misses")[0].GetProperty("history");
+        history.GetProperty("failures").GetInt32().Should().Be(1);
+        history.GetProperty("flaky").GetBoolean().Should().BeFalse();
+
+        var none = cli.Run("selection-misses", "--tia", tia, results, "--no-history", "--json");
+        using var plain = JsonDocument.Parse(none.Stdout);
+        plain.RootElement.GetProperty("misses")[0].TryGetProperty("history", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_report_with_no_head_commit_cannot_be_shown_to_match()
+    {
+        using var cli = new CliHarness();
+        var (tia, results) = Write(cli, TiaReport.Replace("\"headCommit\": \"0123456789abcdef\",", "", StringComparison.Ordinal), JUnit);
+
+        var result = cli.Run("selection-misses", "--tia", tia, results, "--expect-head", "0123456789abcdef");
+
+        result.ExitCode.Should().Be(ExitCodes.Usage);
+        result.StderrFlat.Should().Contain("records no head commit");
+    }
+
     [Fact]
     public void A_failure_that_cannot_be_told_apart_is_not_reported_as_no_miss()
     {

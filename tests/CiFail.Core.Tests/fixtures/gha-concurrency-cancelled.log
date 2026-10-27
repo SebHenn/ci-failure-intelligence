@@ -1,0 +1,4 @@
+Run npm test
+> jest --ci
+##[error]Canceling since a higher priority waiting request for 'ci-refs/heads/feature-x' exists
+##[error]The operation was canceled.

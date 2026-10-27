@@ -706,12 +706,50 @@ cifail selection-misses --tia tia-report.json TestResults/
   suite's name, which the .NET JUnit loggers set to the assembly. When that can't be done, because
   the report gives no assembly for the project or a failure that matched nothing names none, the
   project is listed as **not checked**.
+- Each miss is looked up in cifail's own history, the store `analyze` records into: a test that
+  failed before, on other commits, is listed after the ones that never did, with "failed 4x on 3
+  day(s) before" (and "flaky" when it failed again after being resolved). `--json` adds
+  `history: {failures, distinctDays, flaky, lastSeen}`. The run's own commit (`--commit`, HEAD by
+  default) is not history. `--no-history` skips the lookup. In the action this needs a shared
+  store (`CIFAIL_DB_PROVIDER` and `CIFAIL_DB_CONNECTION`); the container's own is empty.
+- `--expect-head <sha>` refuses a report made at another commit, such as an older push of the
+  pull request. A short SHA is enough.
 - Exit **0** when no failure was a skipped test, **1** when some were, **2** for unusable input.
   Unchecked failures and projects do not change the exit code. `--json` prints
   `{tia, failingTests, misses[], unmatched[], uncheckedProjects[]}`.
 
 The action does the same with `tia-report:`. Give it the pull request's report, and the JUnit or
-TRX files of the full run as `log:`:
+TRX files of the full run as `log:`. Or let it fetch the report: with `tia-artifact:` set to the
+name the pull request's run uploaded it under, the action finds the pull request this commit
+merged (squash and rebase merges included), downloads the artifact from the latest completed run
+of that pull request's head, and checks that the report was made at that head. A report from an
+older push or from another pull request is "Not checked", never compared. It needs
+`actions: read` and `pull-requests: read`:
+
+```yaml
+# The pull request's workflow
+- uses: SebHenn/dotnet-tia@v0.7.1
+  with:
+    report: tia-report.json
+- uses: actions/upload-artifact@v4
+  if: always()
+  with: { name: tia-report, path: tia-report.json }
+
+# The default branch's full run, in the job that ran the tests
+permissions: { contents: read, actions: read, pull-requests: read }
+steps:
+  # ... the tests, writing TRX to TestResults/
+  - uses: SebHenn/ci-failure-intelligence@v1
+    if: failure()
+    with:
+      log: TestResults/
+      tia-artifact: tia-report
+```
+
+`cifail selection-misses --expect-head <sha>` makes the same check outside the action: a report
+whose `headCommit` is another commit is refused with exit 2.
+
+With a report you fetched yourself:
 
 ```yaml
 - uses: SebHenn/ci-failure-intelligence@v1

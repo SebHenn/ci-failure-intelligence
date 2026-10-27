@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CiFail.Core.Ingest.Reports;
+using CiFail.Core.Storage;
 
 namespace CiFail.Core.Analysis;
 
@@ -32,7 +33,14 @@ public sealed record UncheckedProject(string Project, string Reason);
 
 /// <summary>A failing test the selection had skipped.</summary>
 /// <param name="Test">The name as the selection wrote it, which is the one to hand to <c>dotnet tia explain</c>.</param>
-public sealed record SelectionMiss(TestFailure Failure, string Test, string Project);
+public sealed record SelectionMiss(TestFailure Failure, string Test, string Project)
+{
+    /// <summary>
+    /// The test's failures recorded before this run, when cifail's history was consulted and has
+    /// any (#60). A test that failed before, on other commits, is more likely flaky than missed.
+    /// </summary>
+    public TestStat? History { get; init; }
+}
 
 /// <summary>
 /// A failure whose report names it too loosely to say which skipped test it is: more than one
@@ -245,6 +253,54 @@ public static class SelectionMisses
         var suffix = "." + name;
         var endingWith = skipped.Keys.Where(k => k.EndsWith(suffix, StringComparison.Ordinal)).Take(CandidatesShown).ToList();
         return endingWith.Count == 1 ? (endingWith[0], []) : (null, endingWith);
+    }
+
+    /// <summary>
+    /// Whether two SHAs name one commit: equal ignoring case, or one a prefix of the other, both
+    /// at least seven characters - git's shortest abbreviation.
+    /// </summary>
+    public static bool SameCommit(string? a, string? b)
+    {
+        if (a is null || b is null) return false;
+        a = a.Trim();
+        b = b.Trim();
+        if (a.Length < 7 || b.Length < 7) return false;
+        return a.StartsWith(b, StringComparison.OrdinalIgnoreCase) || b.StartsWith(a, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The misses with their earlier failures from cifail's history attached, likely misses first:
+    /// a test that never failed before, then the rest by how often they had (#60).
+    /// </summary>
+    /// <param name="rows">Stored analyses; a failing test's rows have the source <c>file::FullName</c>.</param>
+    /// <param name="repoId">Only this repository's rows. A row recorded without one is kept.</param>
+    /// <param name="commit">The commit under test: its own failures are this run, not history.</param>
+    public static IReadOnlyList<SelectionMiss> WithHistory(
+        IReadOnlyList<SelectionMiss> misses,
+        IEnumerable<StoredAnalysis> rows,
+        string? repoId,
+        string? commit)
+    {
+        ArgumentNullException.ThrowIfNull(misses);
+        ArgumentNullException.ThrowIfNull(rows);
+
+        // At method level, like the match itself: a parameterised test's cases are one test.
+        var byTest = rows
+            .Where(r => repoId is null || r.RepoId is null || string.Equals(r.RepoId, repoId, StringComparison.Ordinal))
+            .Where(r => commit is null || !SameCommit(r.GitCommit, commit))
+            .Select(r => (Row: r, Name: TestFlakeComputer.TestName(r.Source)))
+            .Where(x => x.Name is not null)
+            .GroupBy(x => WithoutArguments(x.Name!), StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Row).ToList(), StringComparer.Ordinal);
+
+        return misses
+            .Select(m =>
+            {
+                var earlier = byTest.GetValueOrDefault(m.Test) ?? byTest.GetValueOrDefault(WithoutArguments(m.Failure.FullName));
+                return earlier is { Count: > 0 } ? m with { History = TestFlakeComputer.ToStat(m.Test, earlier) } : m;
+            })
+            .OrderBy(m => m.History?.FailureCount ?? 0)
+            .ToList();
     }
 
     /// <summary><c>Ns.Cls.Adds(x: 1, y: 2)</c> is the method <c>Ns.Cls.Adds</c>.</summary>

@@ -11,6 +11,33 @@ after 1.0.
 
 ### Added
 
+- **`selection-misses` tells a likely flake from a likely miss**
+  ([#60](https://github.com/SebHenn/ci-failure-intelligence/issues/60)). Every candidate used to
+  be equally suspect, and ruling out a flake was left to the reader, though cifail records every
+  failing test. Each miss is now looked up in that history: one that failed before on other
+  commits comes after those that never did, marked "failed 4x on 3 day(s) before" (and "flaky"
+  when it failed again after being resolved), and `--json` has `history`. The commit under test
+  (`--commit`, HEAD by default) is not history, and `--no-history` skips the lookup. A store that
+  can't be read is a warning, not a failed check.
+
+- **The action fetches the pull request's dotnet-tia report, and checks it is the right one**
+  ([#58](https://github.com/SebHenn/ci-failure-intelligence/issues/58)). Getting a report from
+  the pull request's run into the default branch's run took cross-run artifact plumbing nobody
+  documented, and a report from the wrong pull request, or an older push of the right one, went
+  unnoticed and gave confident, wrong candidates or a false "None". `tia-artifact:` names the
+  artifact. The action finds the pull request this commit merged (squash and rebase merges
+  included), downloads the artifact from the latest completed run of the pull request's head,
+  and reports "Not checked" unless the report's `headCommit` is that head. `selection-misses
+  --expect-head <sha>` makes the same check on the command line. `github-token` sets the token
+  used for the fetch.
+
+- **Rules for GitHub Actions and Docker infrastructure failures**
+  ([#63](https://github.com/SebHenn/ci-failure-intelligence/issues/63)):
+  `docker-hub-pull-limit`, `docker-platform-mismatch` (`exec format error`, `no matching
+  manifest for linux/arm64/v8`), `gha-token-permissions` (`Resource not accessible by
+  integration`), `gha-artifact-name-conflict`, `gha-deprecated-action`, `gha-action-not-found`,
+  `gha-runner-lost` and `gha-concurrency-cancelled`. Each used to fall through to a generic rule
+  with the wrong advice.
 - **.NET rules for analyzer, format, test-host, audit and platform failures**
   ([#62](https://github.com/SebHenn/ci-failure-intelligence/issues/62)):
   `dotnet-analyzer-error` (CA, IDE, SA, RS, xUnit, MSTEST and NUnit diagnostics raised to
@@ -19,15 +46,6 @@ after 1.0.
   `msbuild-file-locked` (MSB3027/MSB3021). `csc-compile-error` matched CS codes only, so the
   commonest of these fell through to "No known rule matched". `dotnet format` now marks a log as
   .NET.
-
-### Fixed
-
-- **A TRX report of a crashed test host is a failure**
-  ([#62](https://github.com/SebHenn/ci-failure-intelligence/issues/62)). A run that aborted
-  leaves no failed result, only an error in `RunInfos`, so report mode read it as passing. That
-  error is now a failure named "Test run aborted", which the new test-host rules explain.
-
-### Added
 
 - **`selection-misses` sees failures in test projects the selection skipped whole**
   ([#57](https://github.com/SebHenn/ci-failure-intelligence/issues/57)). dotnet-tia never names
@@ -40,6 +58,33 @@ after 1.0.
   failure names none, it is listed under "Not checked" in the CLI output, in `--json` as
   `uncheckedProjects` and in the action's summary, never as "None". A report from an older
   dotnet-tia reads as before.
+
+### Changed
+
+- **A run cancelled by its concurrency group, or by losing its runner, is no longer a timeout**
+  ([#63](https://github.com/SebHenn/ci-failure-intelligence/issues/63)). `generic-timeout` matched
+  the "The operation was canceled." that follows both, so `gate` and `stats` counted them as
+  timeouts and the advice was to raise `timeout-minutes`. They now get the rules above, which say
+  to re-run. A gate baseline that recorded one of these as `generic-timeout` sees it under the new
+  rule's fingerprint.
+
+### Fixed
+
+- **A TRX report of a crashed test host is a failure**
+  ([#62](https://github.com/SebHenn/ci-failure-intelligence/issues/62)). A run that aborted
+  leaves no failed result, only an error in `RunInfos`, so report mode read it as passing. That
+  error is now a failure named "Test run aborted", which the new test-host rules explain.
+
+- **A mass failure no longer pushes the selection-misses section out of the summary and the PR
+  comment** ([#59](https://github.com/SebHenn/ci-failure-intelligence/issues/59)). A TRX or JUnit
+  input is one analysis per failing test, all rendered in full, with the misses section after
+  them. GitHub refuses a comment over 65,536 characters and drops a step summary over 1 MiB, and
+  a comment body over 128 KiB could not even be passed to `gh`. The comment then failed with only
+  a line on stderr, and the step stayed green. Now the markdown report renders the first 20
+  analyses in full, lists the next 100 with one line each and counts the rest. The misses lists
+  are capped at 50, and the unmatched and unchecked lists at 20. The misses section comes first,
+  and a body still too long is cut to fit, with a link to the run. The comment goes to `gh` as
+  JSON on stdin, and a failed post or update is a `::warning::`.
 
 ## [0.6.0] - 2026-10-26
 

@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Xml;
 using CiFail.Cli.Output;
 using CiFail.Core.Analysis;
+using CiFail.Core.Git;
+using CiFail.Core.Storage;
 using CiFail.Core.Ingest.Reports;
 using CiFail.Core.Output;
 using Spectre.Console;
@@ -16,7 +18,7 @@ namespace CiFail.Cli.Commands;
 /// </summary>
 public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Settings>
 {
-    public sealed class Settings : OutputSettings
+    public sealed class Settings : StoreSettings
     {
         [CommandArgument(0, "<reports>")]
         [Description("JUnit or TRX reports from the run that failed: a file, directory or glob, repeatable.")]
@@ -33,6 +35,22 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
         [CommandOption("--json")]
         [Description("Print the result as JSON.")]
         public bool Json { get; init; }
+
+        [CommandOption("--no-history")]
+        [Description("Don't look the misses up in cifail's history of failures.")]
+        public bool NoHistory { get; init; }
+
+        [CommandOption("--commit <SHA>")]
+        [Description("The commit whose run failed. Its own failures are not counted as history. Defaults to HEAD.")]
+        public string? Commit { get; init; }
+
+        [CommandOption("--repo <REPO_ID>")]
+        [Description("Count only this repository's history (the root-commit repo id). Defaults to the current repository's.")]
+        public string? Repo { get; init; }
+
+        [CommandOption("--expect-head <SHA>")]
+        [Description("Refuse a report whose selection was not made at this commit: the pull request's head. A short SHA is enough.")]
+        public string? ExpectHead { get; init; }
     }
 
     public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
@@ -65,6 +83,16 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
         if (inputs.Count == 0)
         {
             CliConsole.Error("no test report given. Pass the JUnit or TRX files of the run that failed.");
+            return ExitCodes.Usage;
+        }
+
+        // A report from another push of the pull request, or from another one, would give
+        // confident candidates that are wrong, or a "no miss" that means nothing (#58).
+        if (!string.IsNullOrWhiteSpace(settings.ExpectHead) && !SelectionMisses.SameCommit(selection.HeadCommit, settings.ExpectHead))
+        {
+            CliConsole.Error(selection.HeadCommit is null
+                ? $"{Markup.Escape(settings.Tia)} records no head commit, so it cannot be shown to be from {Markup.Escape(settings.ExpectHead)}."
+                : $"{Markup.Escape(settings.Tia)} is from {Markup.Escape(selection.HeadCommit)}, not {Markup.Escape(settings.ExpectHead)}: its selection is not the one to check against.");
             return ExitCodes.Usage;
         }
 
@@ -103,6 +131,8 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
         }
 
         var check = SelectionMisses.Check(selection, failures);
+        if (!settings.NoHistory && check.Misses.Count > 0)
+            check = check with { Misses = WithHistory(settings, check.Misses) };
 
         if (settings.Json)
             Console.Out.WriteLine(JsonSerializer.Serialize(ToDto(selection, failures.Count, check), AnalysisJson.Options));
@@ -113,6 +143,34 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
         // text and the JSON say they were not checked, so 0 is not read as a clean check.
         return check.Misses.Count == 0 ? ExitCodes.Ok : ExitCodes.Negative;
     }
+
+    /// <summary>
+    /// The misses with their earlier failures, from the store <c>analyze</c> records into (#60).
+    /// Advisory: a store that can't be read is a warning, never a failed check.
+    /// </summary>
+    private static IReadOnlyList<SelectionMiss> WithHistory(Settings settings, IReadOnlyList<SelectionMiss> misses)
+    {
+        try
+        {
+            var git = string.IsNullOrWhiteSpace(settings.Commit) || string.IsNullOrWhiteSpace(settings.Repo)
+                ? GitContext.Detect(Directory.GetCurrentDirectory())
+                : null;
+            using var store = StoreSupport.Open(settings);
+            return SelectionMisses.WithHistory(
+                misses,
+                store.GetRecent(HistoryScanLimit),
+                string.IsNullOrWhiteSpace(settings.Repo) ? git?.RepoId : settings.Repo,
+                string.IsNullOrWhiteSpace(settings.Commit) ? git?.Head : settings.Commit);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            CliConsole.Warn($"failure history was not consulted: {Markup.Escape(ex.Message)}");
+            return misses;
+        }
+    }
+
+    /// <summary>How many recent records the history lookup reads, as <c>stats --tests</c> does.</summary>
+    private const int HistoryScanLimit = 5000;
 
     private static void Render(TiaSelection selection, int failureCount, SelectionCheck check)
     {
@@ -142,7 +200,8 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
         console.WriteLine();
         foreach (var miss in misses)
         {
-            console.MarkupLine($"  [bold]{Markup.Escape(miss.Test)}[/] [grey]({Markup.Escape(miss.Project)})[/]");
+            console.MarkupLine($"  [bold]{Markup.Escape(miss.Test)}[/] [grey]({Markup.Escape(miss.Project)})[/]" +
+                               (miss.History is { } history ? $" [yellow]{Markup.Escape(Before(history))}[/]" : string.Empty));
             if (miss.Failure.Message is { Length: > 0 } message)
                 console.MarkupLine($"    [grey]{Markup.Escape(FirstLine(message))}[/]");
         }
@@ -182,6 +241,11 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
         }
     }
 
+    /// <summary><c>failed 4x on 3 days before, last 2026-10-20 - likely flaky</c>.</summary>
+    internal static string Before(TestStat history) =>
+        $"failed {history.FailureCount}x on {history.DistinctDays} day(s) before, last {history.LastSeen:yyyy-MM-dd}" +
+        (history.Flaky ? " - flaky: it failed again after being resolved" : " - likely flaky");
+
     private static string FirstLine(string text)
     {
         var end = text.IndexOfAny(['\r', '\n']);
@@ -192,7 +256,15 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
     {
         tia = new { selection.HeadCommit, selection.BaseRef, selection.BaseCommit },
         failingTests = failureCount,
-        misses = check.Misses.Select(m => new { test = m.Test, project = m.Project, message = m.Failure.Message }).ToList(),
+        misses = check.Misses.Select(m => new
+        {
+            test = m.Test,
+            project = m.Project,
+            message = m.Failure.Message,
+            history = m.History is { } h
+                ? new { failures = h.FailureCount, distinctDays = h.DistinctDays, flaky = h.Flaky, lastSeen = h.LastSeen }
+                : null,
+        }).ToList(),
         unmatched = check.Unmatched.Select(u => new { test = u.Failure.FullName, candidates = u.Candidates, message = u.Failure.Message }).ToList(),
         uncheckedProjects = check.UncheckedProjects.Select(p => new { project = p.Project, reason = p.Reason }).ToList(),
     };

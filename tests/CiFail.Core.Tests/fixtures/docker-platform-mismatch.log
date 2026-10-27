@@ -1,0 +1,5 @@
+Run docker run --rm ghcr.io/acme/tool:1.4 --version
+Unable to find image 'ghcr.io/acme/tool:1.4' locally
+1.4: Pulling from acme/tool
+docker: no matching manifest for linux/arm64/v8 in the manifest list entries.
+Error: Process completed with exit code 125.

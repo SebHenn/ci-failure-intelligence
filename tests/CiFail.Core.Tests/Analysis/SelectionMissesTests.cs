@@ -1,5 +1,6 @@
 using CiFail.Core.Analysis;
 using CiFail.Core.Ingest.Reports;
+using CiFail.Core.Storage;
 
 namespace CiFail.Core.Tests.Analysis;
 
@@ -228,6 +229,47 @@ public sealed class SelectionMissesTests
 
         Assert.Empty(check.Misses);
         Assert.Equal("the dotnet-tia report names no assembly for it", Assert.Single(check.UncheckedProjects).Reason);
+    }
+
+    private static StoredAnalysis Row(long id, string test, string? commit, int daysAgo, string? repo = "repo-1") => new()
+    {
+        Id = id,
+        AnalyzedAt = new DateTimeOffset(2026, 10, 27, 12, 0, 0, TimeSpan.Zero).AddDays(-daysAgo),
+        Source = $"TestResults/a.trx::{test}",
+        Ecosystem = "dotnet",
+        RuleId = "xunit-assert-failed",
+        Matched = true,
+        Fingerprint = "f",
+        LogHash = "h",
+        Excerpt = "e",
+        RepoId = repo,
+        GitCommit = commit,
+    };
+
+    [Fact]
+    public void A_test_that_failed_before_is_put_after_one_that_never_did()
+    {
+        // #60: history tells a likely flake from a likely miss. This run's own failure, at the
+        // commit under test, and another repository's are not history.
+        var misses = SelectionMisses.Find(SelectionMisses.ReadReport(Report),
+            [Failure("App.Tests.GridTests.Wraps(size: 3)"), Failure("Lib.Tests.ParserTests.Parses")]);
+        var rows = new[]
+        {
+            Row(1, "App.Tests.GridTests.Wraps(size: 2)", "aaaaaaa1", daysAgo: 9),
+            Row(2, "App.Tests.GridTests.Wraps(size: 3)", "aaaaaaa2", daysAgo: 4),
+            Row(3, "App.Tests.GridTests.Wraps(size: 3)", "headcommit", daysAgo: 0),
+            Row(4, "Lib.Tests.ParserTests.Parses", "headcommit", daysAgo: 0),
+            Row(5, "Lib.Tests.ParserTests.Parses", "bbbbbbb1", daysAgo: 2, repo: "another-repo"),
+        };
+
+        var ordered = SelectionMisses.WithHistory(misses, rows, "repo-1", "headcommit");
+
+        Assert.Equal(["Lib.Tests.ParserTests.Parses", "App.Tests.GridTests.Wraps"], ordered.Select(m => m.Test));
+        Assert.Null(ordered[0].History);
+        var history = ordered[1].History!;
+        Assert.Equal(2, history.FailureCount);
+        Assert.Equal(2, history.DistinctDays);
+        Assert.False(history.Flaky);
     }
 
     [Fact]
