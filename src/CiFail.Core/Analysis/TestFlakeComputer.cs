@@ -42,7 +42,7 @@ public static class TestFlakeComputer
         };
     }
 
-    private static TestStat ToStat(string fullName, IReadOnlyList<StoredAnalysis> rows)
+    internal static TestStat ToStat(string fullName, IReadOnlyList<StoredAnalysis> rows)
     {
         // Flaky: a failure recorded after this test had been resolved (same logic as StatsComputer).
         var firstResolvedAt = rows
@@ -67,7 +67,7 @@ public static class TestFlakeComputer
     /// source isn't a test row. Splits on the first <c>::</c> (the file path won't contain one, while a
     /// C++ test name might), matching how the SARIF artifact uri is derived.
     /// </summary>
-    private static string? TestName(string source)
+    internal static string? TestName(string source)
     {
         var sep = source.IndexOf("::", StringComparison.Ordinal);
         if (sep < 0) return null;
