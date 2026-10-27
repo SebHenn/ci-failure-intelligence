@@ -11,6 +11,25 @@ after 1.0.
 
 ### Added
 
+- **Rules for GitHub Actions and Docker infrastructure failures**
+  ([#63](https://github.com/SebHenn/ci-failure-intelligence/issues/63)):
+  `docker-hub-pull-limit`, `docker-platform-mismatch` (`exec format error`, `no matching
+  manifest for linux/arm64/v8`), `gha-token-permissions` (`Resource not accessible by
+  integration`), `gha-artifact-name-conflict`, `gha-deprecated-action`, `gha-action-not-found`,
+  `gha-runner-lost` and `gha-concurrency-cancelled`. Each used to fall through to a generic rule
+  with the wrong advice.
+
+### Changed
+
+- **A run cancelled by its concurrency group, or by losing its runner, is no longer a timeout**
+  ([#63](https://github.com/SebHenn/ci-failure-intelligence/issues/63)). `generic-timeout` matched
+  the "The operation was canceled." that follows both, so `gate` and `stats` counted them as
+  timeouts and the advice was to raise `timeout-minutes`. They now get the rules above, which say
+  to re-run. A gate baseline that recorded one of these as `generic-timeout` sees it under the new
+  rule's fingerprint.
+
+### Added
+
 - **`selection-misses` sees failures in test projects the selection skipped whole**
   ([#57](https://github.com/SebHenn/ci-failure-intelligence/issues/57)). dotnet-tia never names
   the tests of an F# or VB test project, so when its selection left one out, a failure there

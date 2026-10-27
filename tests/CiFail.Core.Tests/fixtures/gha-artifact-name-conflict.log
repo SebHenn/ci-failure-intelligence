@@ -1,0 +1,5 @@
+Run actions/upload-artifact@v4
+With the provided path, there will be 3 files uploaded
+Artifact name is valid!
+Root directory input is valid!
+Error: Failed to CreateArtifact: Received non-retryable error: Failed request: (409) Conflict: an artifact with this name already exists on the workflow run
