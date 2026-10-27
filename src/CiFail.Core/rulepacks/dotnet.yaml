@@ -149,3 +149,106 @@
     The failing test's name is on the `Failed ...` line just above. Re-run only that one
     with `dotnet test --filter FullyQualifiedName~<TestName>`.
   docs: https://docs.nunit.org/articles/nunit/writing-tests/assertions/assertions.html
+
+# ---- Analyzers, test hosts, audit and platform (#62) -----------------------------------------
+# csc-compile-error matches CS codes only, so an analyzer or style diagnostic raised to an error -
+# among the commonest .NET CI failures - fell through to generic rules or to nothing.
+
+- id: dotnet-analyzer-error
+  ecosystem: dotnet
+  category: compile
+  title: Analyzer rule raised to an error
+  match: "error (?<code>(?:CA|IDE|SA|RS|RCS|VSTHRD|xUnit|MSTEST|NUnit)\\d+): (?<message>.+)"
+  confidence: 0.75
+  fix: |
+    An analyzer reported {code} as an error: {message}
+    It fails the build because its severity is error, through .editorconfig
+    (dotnet_diagnostic.{code}.severity), TreatWarningsAsErrors, or AnalysisLevel /
+    EnforceCodeStyleInBuild. Fix the code it points at; many style rules are fixed by
+    `dotnet format`. To change the rule rather than the code, set its severity in
+    .editorconfig, and keep the change reviewed like any other.
+  docs: https://learn.microsoft.com/dotnet/fundamentals/code-analysis/configuration-options
+
+- id: dotnet-format-verify
+  ecosystem: dotnet
+  category: build
+  title: dotnet format found unformatted code
+  match: "error (?<code>WHITESPACE|CHARSET|FINALNEWLINE|ENDOFLINE|IMPORTS): (?<message>.+)"
+  confidence: 0.85
+  fix: |
+    `dotnet format --verify-no-changes` found code that is not formatted ({code}).
+    Run `dotnet format` locally and commit the result. If it disagrees with your editor,
+    the .editorconfig the build sees is the one to fix; line endings often differ
+    between Windows and Linux checkouts (core.autocrlf, or a .gitattributes eol rule).
+  docs: https://learn.microsoft.com/dotnet/core/tools/dotnet-format
+
+- id: vstest-testhost-crashed
+  ecosystem: dotnet
+  category: test
+  title: Test host crashed
+  match: "The active test run was aborted\\. Reason: (?<reason>.+)|Test host process crashed(?<reason>.*)|^\\s*Test Run Aborted\\.?\\s*$"
+  confidence: 0.8
+  fix: |
+    The process running the tests died, so no test after it reported a result. Common
+    causes: a stack overflow, an unhandled exception on a background thread, an
+    Environment.Exit or FailFast in code under test, or the runner killed for memory.
+    Re-run with `dotnet test --blame-crash` (add --blame-crash-dump-type full) to get a
+    dump and the test that was running, attached as a test result.
+  docs: https://learn.microsoft.com/dotnet/core/tools/dotnet-test#options
+
+- id: vstest-blame-hang
+  ecosystem: dotnet
+  category: test
+  title: Test run hung and was stopped
+  # Outranks vstest-testhost-crashed: a hang dump also ends the run "aborted".
+  match: "The specified inactivity time of (?<timeout>.+?) has elapsed"
+  confidence: 0.85
+  fix: |
+    No test finished within {timeout}, so the run was stopped and hang dumps collected.
+    The Sequence file and the dump name the test that was running: look for a deadlock,
+    a sync-over-async wait (.Result, .Wait()), or a wait on a network or service that
+    never answers. --blame-hang-timeout sets the limit; give a slow test its own timeout
+    rather than raising it for every test.
+  docs: https://learn.microsoft.com/dotnet/core/tools/dotnet-test#options
+
+- id: nuget-audit-vulnerability
+  ecosystem: dotnet
+  category: dependency
+  title: Package with a known vulnerability
+  # An error only: NuGetAudit warns by default, and a warning beside the real failure is not it.
+  match: "error NU190[1-4]: Package '(?<package>[^']+)' (?<version>\\S+) has a known (?<severity>\\w+) severity vulnerability"
+  confidence: 0.85
+  fix: |
+    '{package}' {version} has a known {severity} severity vulnerability, and warnings are
+    errors in this build. Upgrade it (`dotnet list package --vulnerable --include-transitive`
+    shows which version is fixed). A transitive one is upgraded by referencing the fixed
+    version directly. Suppress one advisory only after reviewing it, with
+    <NuGetAuditSuppress Include="advisory URL" />.
+  docs: https://learn.microsoft.com/nuget/concepts/auditing-packages
+
+- id: netsdk1100-windows-targeting
+  ecosystem: dotnet
+  category: environment
+  title: Windows-only project built on Linux or macOS
+  match: "error NETSDK1100: "
+  confidence: 0.9
+  fix: |
+    A project targets Windows (WPF, WinForms, or a -windows framework) and is building on
+    a non-Windows runner. Set <EnableWindowsTargeting>true</EnableWindowsTargeting> (in
+    Directory.Build.props, or -p:EnableWindowsTargeting=true) to build it there, or build
+    that project on windows-latest. Running its tests still needs Windows.
+  docs: https://learn.microsoft.com/dotnet/core/tools/sdk-errors/netsdk1100
+
+- id: msbuild-file-locked
+  ecosystem: dotnet
+  category: build
+  title: Output file locked by another process
+  match: "error MSB30(?:27|21): (?<message>.+)"
+  confidence: 0.85
+  fix: |
+    MSBuild could not overwrite an output file because another process holds it: {message}
+    Usually a test host, a dotnet build server or an app from an earlier step that is
+    still running, or two builds of one project writing the same folder in parallel.
+    Stop it first (`dotnet build-server shutdown`), and don't build a project twice
+    concurrently into the same output path.
+  docs: https://learn.microsoft.com/visualstudio/msbuild/errors/msb3027

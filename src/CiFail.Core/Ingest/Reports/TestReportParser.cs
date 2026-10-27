@@ -198,6 +198,21 @@ public static class TestReportParser
                 Assembly = assembly,
             });
         }
+
+        // A crashed or hung test host leaves no failed result: the tests after it never report.
+        // What it leaves is an error in the run's information, and that is a failure too (#62).
+        foreach (var info in document.Descendants().Where(e => e.Name.LocalName == "RunInfo"))
+        {
+            if (!string.Equals(info.Attribute("outcome")?.Value, "Error", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var text = info.Elements().FirstOrDefault(e => e.Name.LocalName == "Text")?.Value.Trim();
+            if (string.IsNullOrEmpty(text))
+                continue;
+
+            failures.Add(new TestFailure(Name: "Test run aborted", Classname: null, Message: text, Details: null));
+        }
+
         return failures;
     }
 

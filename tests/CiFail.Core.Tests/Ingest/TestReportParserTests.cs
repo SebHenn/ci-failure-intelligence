@@ -126,6 +126,27 @@ public class TestReportParserTests
     }
 
     [Fact]
+    public void ParseTrx_reports_a_crashed_test_host_as_a_failure()
+    {
+        // The run aborted part way: no result says Failed, and the crash is only in RunInfos (#62).
+        var failures = TestReportParser.ParseFailures(ReportFormat.Trx, """
+            <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+              <Results><UnitTestResult testId="a1" testName="Passes" outcome="Passed" /></Results>
+              <ResultSummary outcome="Failed">
+                <RunInfos>
+                  <RunInfo computerName="runner" outcome="Warning"><Text>No test matches the given testcase filter</Text></RunInfo>
+                  <RunInfo computerName="runner" outcome="Error"><Text>The active test run was aborted. Reason: Test host process crashed : Stack overflow.</Text></RunInfo>
+                </RunInfos>
+              </ResultSummary>
+            </TestRun>
+            """);
+
+        var failure = failures.Should().ContainSingle().Subject;
+        failure.Name.Should().Be("Test run aborted");
+        failure.Message.Should().Contain("Test host process crashed");
+    }
+
+    [Fact]
     public void ParseTrx_takes_the_class_and_method_from_the_test_definition()
     {
         var failures = TestReportParser.ParseFailures(ReportFormat.Trx, TrxWithDefinitions);

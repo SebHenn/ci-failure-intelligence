@@ -38,6 +38,14 @@ after 1.0.
   integration`), `gha-artifact-name-conflict`, `gha-deprecated-action`, `gha-action-not-found`,
   `gha-runner-lost` and `gha-concurrency-cancelled`. Each used to fall through to a generic rule
   with the wrong advice.
+- **.NET rules for analyzer, format, test-host, audit and platform failures**
+  ([#62](https://github.com/SebHenn/ci-failure-intelligence/issues/62)):
+  `dotnet-analyzer-error` (CA, IDE, SA, RS, xUnit, MSTEST and NUnit diagnostics raised to
+  errors), `dotnet-format-verify`, `vstest-testhost-crashed`, `vstest-blame-hang`,
+  `nuget-audit-vulnerability` (NU1901-NU1904 as errors), `netsdk1100-windows-targeting` and
+  `msbuild-file-locked` (MSB3027/MSB3021). `csc-compile-error` matched CS codes only, so the
+  commonest of these fell through to "No known rule matched". `dotnet format` now marks a log as
+  .NET.
 
 - **`selection-misses` sees failures in test projects the selection skipped whole**
   ([#57](https://github.com/SebHenn/ci-failure-intelligence/issues/57)). dotnet-tia never names
@@ -59,7 +67,13 @@ after 1.0.
   timeouts and the advice was to raise `timeout-minutes`. They now get the rules above, which say
   to re-run. A gate baseline that recorded one of these as `generic-timeout` sees it under the new
   rule's fingerprint.
+
 ### Fixed
+
+- **A TRX report of a crashed test host is a failure**
+  ([#62](https://github.com/SebHenn/ci-failure-intelligence/issues/62)). A run that aborted
+  leaves no failed result, only an error in `RunInfos`, so report mode read it as passing. That
+  error is now a failure named "Test run aborted", which the new test-host rules explain.
 
 - **A mass failure no longer pushes the selection-misses section out of the summary and the PR
   comment** ([#59](https://github.com/SebHenn/ci-failure-intelligence/issues/59)). A TRX or JUnit

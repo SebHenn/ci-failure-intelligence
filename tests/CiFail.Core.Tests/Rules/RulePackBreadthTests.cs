@@ -44,6 +44,14 @@ public class RulePackBreadthTests
         { "msbuild-msb4018.log", Ecosystem.Dotnet, "msbuild-msb4018" },
         { "mstest-assert-failed.log", Ecosystem.Dotnet, "mstest-assert-failed" },
         { "nunit-assert-failed.log", Ecosystem.Dotnet, "nunit-assert-failed" },
+        // #62: analyzers, dotnet format, a crashed or hung test host, audit, platform, a lock.
+        { "dotnet-analyzer-error.log", Ecosystem.Dotnet, "dotnet-analyzer-error" },
+        { "dotnet-format-verify.log", Ecosystem.Dotnet, "dotnet-format-verify" },
+        { "vstest-testhost-crashed.log", Ecosystem.Dotnet, "vstest-testhost-crashed" },
+        { "vstest-blame-hang.log", Ecosystem.Dotnet, "vstest-blame-hang" },
+        { "nuget-audit-vulnerability.log", Ecosystem.Dotnet, "nuget-audit-vulnerability" },
+        { "netsdk1100-windows-targeting.log", Ecosystem.Dotnet, "netsdk1100-windows-targeting" },
+        { "msbuild-file-locked.log", Ecosystem.Dotnet, "msbuild-file-locked" },
 
         // node
         { "node-eresolve.log", Ecosystem.Node, "npm-eresolve" },
@@ -407,6 +415,31 @@ public class RulePackBreadthTests
 
         Service.Analyze("a", Fixtures.Load("gha-action-not-found.log"))
             .RootCause!.Captures["action"].Should().Be("actions/checkout@v9");
+    }
+
+    [Fact]
+    public void Names_the_analyzer_rule_and_the_vulnerable_package()
+    {
+        var analyzer = Service.Analyze("a", Fixtures.Load("dotnet-analyzer-error.log")).RootCause!;
+        analyzer.Captures["code"].Should().Be("CA1305");
+        analyzer.Fix.Should().Contain("dotnet_diagnostic.CA1305.severity");
+
+        var audit = Service.Analyze("a", Fixtures.Load("nuget-audit-vulnerability.log")).RootCause!;
+        audit.Captures["package"].Should().Be("System.Text.Json");
+        audit.Captures["version"].Should().Be("8.0.4");
+        audit.Captures["severity"].Should().Be("high");
+    }
+
+    [Fact]
+    public void A_vulnerability_warning_is_not_the_failure()
+    {
+        // NuGetAudit warns by default; beside a compile error, the compile error is the cause.
+        var analysis = Service.Analyze("a", """
+            /src/App/App.csproj : warning NU1903: Package 'System.Text.Json' 8.0.4 has a known high severity vulnerability
+            /src/App/A.cs(3,1): error CS0246: The type or namespace name 'Foo' could not be found [/src/App/App.csproj]
+            """);
+
+        analysis.RootCause!.Rule.Id.Should().Be("csc-compile-error");
     }
 
     [Fact]

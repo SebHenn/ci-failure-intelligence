@@ -205,7 +205,7 @@ public static class EcosystemDetector
         {
             Strong(@"(?:error|warning) (?:NU|MSB|CS|NETSDK)\d{3,5}"),
             Strong(@"\.csproj"),
-            Strong(@"\bdotnet (?:build|test|restore|publish|run|pack|tool)\b"),
+            Strong(@"\bdotnet (?:build|test|restore|publish|run|pack|tool|format)\b"),
             Weak(@"\bnuget\b"),
             Weak(@"\bmsbuild\b"),
             Weak(@"\.sln\b"),

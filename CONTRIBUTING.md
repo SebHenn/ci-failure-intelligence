@@ -124,7 +124,7 @@ Notes:
   confidently-identified deprecation notice (`severity: note`, `confidence: 0.9`) or a
   tentative but fatal OOM.
 - **`docs:` is expected**, not decorative: it's where a reader goes when the `fix` text isn't
-  enough. All 144 shipped rules have one and `cifail rules validate` warns when a rule doesn't.
+  enough. All 151 shipped rules have one and `cifail rules validate` warns when a rule doesn't.
 - New ecosystem? Add an enum value to `Models/Ecosystem.cs`, marker regexes to
   `Ingest/EcosystemDetector.cs`, and a new `rulepacks/<eco>.yaml`. That's the only case
   that touches C#. Note `ecosystems:` is *not* the way to express "Android builds are JVM
