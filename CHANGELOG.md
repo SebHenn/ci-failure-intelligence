@@ -11,6 +11,24 @@ after 1.0.
 
 ### Added
 
+- **.NET rules for analyzer, format, test-host, audit and platform failures**
+  ([#62](https://github.com/SebHenn/ci-failure-intelligence/issues/62)):
+  `dotnet-analyzer-error` (CA, IDE, SA, RS, xUnit, MSTEST and NUnit diagnostics raised to
+  errors), `dotnet-format-verify`, `vstest-testhost-crashed`, `vstest-blame-hang`,
+  `nuget-audit-vulnerability` (NU1901-NU1904 as errors), `netsdk1100-windows-targeting` and
+  `msbuild-file-locked` (MSB3027/MSB3021). `csc-compile-error` matched CS codes only, so the
+  commonest of these fell through to "No known rule matched". `dotnet format` now marks a log as
+  .NET.
+
+### Fixed
+
+- **A TRX report of a crashed test host is a failure**
+  ([#62](https://github.com/SebHenn/ci-failure-intelligence/issues/62)). A run that aborted
+  leaves no failed result, only an error in `RunInfos`, so report mode read it as passing. That
+  error is now a failure named "Test run aborted", which the new test-host rules explain.
+
+### Added
+
 - **`selection-misses` sees failures in test projects the selection skipped whole**
   ([#57](https://github.com/SebHenn/ci-failure-intelligence/issues/57)). dotnet-tia never names
   the tests of an F# or VB test project, so when its selection left one out, a failure there

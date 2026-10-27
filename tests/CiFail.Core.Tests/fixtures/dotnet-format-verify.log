@@ -1,0 +1,5 @@
+Run dotnet format --verify-no-changes --verbosity diagnostic
+  Formatting code files in workspace '/home/runner/work/app/App.sln'.
+/home/runner/work/app/src/App/OrderService.cs(12,1): error WHITESPACE: Fix whitespace formatting. Replace 2 characters with '\n\s\s\s\s'. [/home/runner/work/app/src/App/App.csproj]
+  Formatted code file '/home/runner/work/app/src/App/OrderService.cs'.
+Error: Process completed with exit code 2.

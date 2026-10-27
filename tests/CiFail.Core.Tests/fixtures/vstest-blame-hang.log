@@ -1,0 +1,9 @@
+Run dotnet test --no-build --blame-hang-timeout 10m
+Test run for /home/runner/work/app/tests/App.Tests/bin/Debug/net8.0/App.Tests.dll (.NETCoreApp,Version=v8.0)
+Starting test execution, please wait...
+Blame: Collecting hang dump from 'testhost' (4312)
+The specified inactivity time of 10 minutes has elapsed. Collecting hang dumps from testhost and its child processes
+Data collector 'Blame' message: The specified inactivity time of 10 minutes has elapsed. Collecting hang dumps from testhost and its child processes.
+The active test run was aborted. Reason: Test host process crashed
+
+Test Run Aborted.

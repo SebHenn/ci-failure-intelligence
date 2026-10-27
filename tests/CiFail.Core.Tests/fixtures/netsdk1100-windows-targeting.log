@@ -1,0 +1,4 @@
+Run dotnet build App.sln
+/usr/share/dotnet/sdk/8.0.404/Sdks/Microsoft.NET.Sdk/targets/Microsoft.NET.TargetFrameworkInference.targets(258,5): error NETSDK1100: To build a project targeting Windows on this operating system, set the EnableWindowsTargeting property to true. [/home/runner/work/app/src/Desktop/Desktop.csproj]
+
+Build FAILED.

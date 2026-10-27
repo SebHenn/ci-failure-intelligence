@@ -1,0 +1,5 @@
+Run dotnet build --no-restore
+C:\Program Files\dotnet\sdk\8.0.404\Microsoft.Common.CurrentVersion.targets(4807,5): warning MSB3026: Could not copy "obj\Debug\net8.0\App.dll" to "bin\Debug\net8.0\App.dll". Beginning retry 1 in 1000ms. The process cannot access the file 'bin\Debug\net8.0\App.dll' because it is being used by another process. [D:\a\app\src\App\App.csproj]
+C:\Program Files\dotnet\sdk\8.0.404\Microsoft.Common.CurrentVersion.targets(4807,5): error MSB3027: Could not copy "obj\Debug\net8.0\App.dll" to "bin\Debug\net8.0\App.dll". Exceeded retry count of 10. Failed. The file is locked by: "testhost (5120)" [D:\a\app\src\App\App.csproj]
+
+Build FAILED.
