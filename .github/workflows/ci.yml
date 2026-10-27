@@ -209,6 +209,20 @@ jobs:
           grep -q 'com.example.OrderTests.applies_discount' tia-out.txt
           grep -qx 'selection-misses=1' tia-outputs.txt
 
+          # Issue #57: a test project the selection skipped whole, which these failures cannot be
+          # matched to, is a "Not checked" line beside the miss rather than left out.
+          jq '. + {skippedProjects: [{project: "Csv.FSharp.Tests", reason: "nothing it references was impacted"}]}' \
+            samples/tia-report.json > tia-skipped-projects.json
+          : > tia-outputs.txt
+          INPUT_LOG=samples/junit-report.xml INPUT_MODE=analyze INPUT_ARGS='' \
+          INPUT_IMAGE=cifail:ci INPUT_SUMMARY=false INPUT_FAIL=false INPUT_COMMENT=false \
+          INPUT_SARIF='' INPUT_RULES='' INPUT_TIA_REPORT=tia-skipped-projects.json \
+          CIFAIL_ACTION_VERSION="$stamp" GITHUB_OUTPUT=tia-outputs.txt \
+            bash --noprofile --norc -e -o pipefail action-step.sh | tee tia-out.txt
+          grep -q 'skipped these test projects whole' tia-out.txt
+          grep -q 'Csv.FSharp.Tests' tia-out.txt
+          grep -qx 'selection-misses=1' tia-outputs.txt
+
           : > tia-outputs.txt
           INPUT_LOG=samples/junit-report.xml INPUT_MODE=analyze INPUT_ARGS='' \
           INPUT_IMAGE=cifail:ci INPUT_SUMMARY=false INPUT_FAIL=false INPUT_COMMENT=false \

@@ -9,6 +9,20 @@ after 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`selection-misses` sees failures in test projects the selection skipped whole**
+  ([#57](https://github.com/SebHenn/ci-failure-intelligence/issues/57)). dotnet-tia never names
+  the tests of an F# or VB test project, so when its selection left one out, a failure there
+  matched nothing and the check printed "None". dotnet-tia's report now lists such projects in
+  `skippedProjects` with the assembly each builds (dotnet-tia
+  [#130](https://github.com/SebHenn/dotnet-tia/issues/130)), and a failure from that assembly is a
+  candidate miss. TRX failures carry the assembly from the test definition and JUnit failures from
+  the suite name. When a project can't be checked, because the report gives no assembly or a
+  failure names none, it is listed under "Not checked" in the CLI output, in `--json` as
+  `uncheckedProjects` and in the action's summary, never as "None". A report from an older
+  dotnet-tia reads as before.
+
 ## [0.6.0] - 2026-10-26
 
 Fixes to the dotnet-tia selection-miss check that 0.5.0 added to the action, and to how TRX

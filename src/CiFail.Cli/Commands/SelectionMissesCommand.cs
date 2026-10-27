@@ -122,7 +122,7 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
             ? $" at [bold]{Markup.Escape(head[..Math.Min(9, head.Length)])}[/]"
             : string.Empty;
 
-        if (misses.Count == 0 && check.Unmatched.Count == 0)
+        if (misses.Count == 0 && check.Complete)
         {
             console.MarkupLine($"[green]No selection miss:[/] none of the {failureCount} failing test(s) was skipped by dotnet-tia{against}.");
             return;
@@ -130,8 +130,11 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
 
         if (misses.Count == 0)
         {
-            console.MarkupLine($"[yellow]No selection miss found{against}, but {check.Unmatched.Count} of {failureCount} failing test(s) could not be checked.[/]");
+            console.MarkupLine(check.Unmatched.Count > 0
+                ? $"[yellow]No selection miss found{against}, but {check.Unmatched.Count} of {failureCount} failing test(s) could not be checked.[/]"
+                : $"[yellow]No selection miss found{against}, but {check.UncheckedProjects.Count} test project(s) the selection skipped whole could not be checked.[/]");
             RenderUnmatched(check.Unmatched);
+            RenderUncheckedProjects(check.UncheckedProjects);
             return;
         }
 
@@ -145,6 +148,7 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
         }
 
         RenderUnmatched(check.Unmatched);
+        RenderUncheckedProjects(check.UncheckedProjects);
 
         console.WriteLine();
         CliConsole.Hint("[grey]A skipped test can also fail for a reason the change had nothing to do with. " +
@@ -165,6 +169,19 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
         }
     }
 
+    private static void RenderUncheckedProjects(IReadOnlyList<UncheckedProject> projects)
+    {
+        if (projects.Count == 0) return;
+
+        var console = CliConsole.Out;
+        console.WriteLine();
+        console.MarkupLine("[yellow]Not checked:[/] the selection skipped these test projects whole, and a failure from them could not be recognised:");
+        foreach (var project in projects)
+        {
+            console.MarkupLine($"  [bold]{Markup.Escape(project.Project)}[/][grey]: {Markup.Escape(project.Reason)}[/]");
+        }
+    }
+
     private static string FirstLine(string text)
     {
         var end = text.IndexOfAny(['\r', '\n']);
@@ -177,5 +194,6 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
         failingTests = failureCount,
         misses = check.Misses.Select(m => new { test = m.Test, project = m.Project, message = m.Failure.Message }).ToList(),
         unmatched = check.Unmatched.Select(u => new { test = u.Failure.FullName, candidates = u.Candidates, message = u.Failure.Message }).ToList(),
+        uncheckedProjects = check.UncheckedProjects.Select(p => new { project = p.Project, reason = p.Reason }).ToList(),
     };
 }

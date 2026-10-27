@@ -8,11 +8,27 @@ namespace CiFail.Core.Analysis;
 /// --report-skipped</c>, reduced to the part this needs.
 /// </summary>
 /// <param name="Skipped">Fully qualified test name to the test project it belongs to.</param>
+/// <param name="SkippedProjects">
+/// Test projects the selection left out whole without naming their tests - an F# or VB project,
+/// whose tests dotnet-tia does not enumerate (#57). Empty for a report from before dotnet-tia
+/// wrote them.
+/// </param>
 public sealed record TiaSelection(
     string? HeadCommit,
     string? BaseRef,
     string? BaseCommit,
-    IReadOnlyDictionary<string, string> Skipped);
+    IReadOnlyDictionary<string, string> Skipped,
+    IReadOnlyList<SkippedProject>? SkippedProjects = null)
+{
+    public IReadOnlyList<SkippedProject> SkippedProjects { get; init; } = SkippedProjects ?? [];
+}
+
+/// <summary>A test project the selection left out whole, matched to failures by the assembly it builds.</summary>
+/// <param name="Assembly">Without directory or extension. Null when the report did not say.</param>
+public sealed record SkippedProject(string Project, string? Assembly);
+
+/// <summary>A test project left out whole whose failures could not be recognised, and why.</summary>
+public sealed record UncheckedProject(string Project, string Reason);
 
 /// <summary>A failing test the selection had skipped.</summary>
 /// <param name="Test">The name as the selection wrote it, which is the one to hand to <c>dotnet tia explain</c>.</param>
@@ -26,10 +42,20 @@ public sealed record SelectionMiss(TestFailure Failure, string Test, string Proj
 public sealed record UnmatchedFailure(TestFailure Failure, IReadOnlyList<string> Candidates);
 
 /// <summary>
-/// The outcome of a check. A check with <see cref="Unmatched"/> failures is not a clean one, even
-/// with no misses: those failures may be skipped tests, and it is not known which.
+/// The outcome of a check. A check with <see cref="Unmatched"/> failures or
+/// <see cref="UncheckedProjects"/> is not a clean one, even with no misses: a failure may be from
+/// a skipped test, and it is not known which.
 /// </summary>
-public sealed record SelectionCheck(IReadOnlyList<SelectionMiss> Misses, IReadOnlyList<UnmatchedFailure> Unmatched);
+public sealed record SelectionCheck(
+    IReadOnlyList<SelectionMiss> Misses,
+    IReadOnlyList<UnmatchedFailure> Unmatched,
+    IReadOnlyList<UncheckedProject>? UncheckedProjects = null)
+{
+    public IReadOnlyList<UncheckedProject> UncheckedProjects { get; init; } = UncheckedProjects ?? [];
+
+    /// <summary>Nothing was left that could be a miss without being reported as one.</summary>
+    public bool Complete => Unmatched.Count == 0 && UncheckedProjects.Count == 0;
+}
 
 /// <summary>
 /// Failures that dotnet-tia's selection had skipped - a test it decided the change could not
@@ -103,7 +129,18 @@ public static class SelectionMisses
                 }
             }
 
-            return new TiaSelection(String(root, "headCommit"), String(root, "baseRef"), String(root, "baseCommit"), skipped);
+            // Optional: dotnet-tia wrote it from 0.8 on. An older report has none to check.
+            var skippedProjects = new List<SkippedProject>();
+            if (root.TryGetProperty("skippedProjects", out var projects) && projects.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var project in projects.EnumerateArray())
+                {
+                    if (String(project, "project") is { Length: > 0 } name)
+                        skippedProjects.Add(new SkippedProject(name, String(project, "assembly") is { Length: > 0 } assembly ? assembly : null));
+                }
+            }
+
+            return new TiaSelection(String(root, "headCommit"), String(root, "baseRef"), String(root, "baseCommit"), skipped, skippedProjects);
         }
     }
 
@@ -119,6 +156,11 @@ public static class SelectionMisses
     /// two would be a claim this cannot back. Such a failure is returned as unmatched rather than
     /// dropped, because leaving it out would make the check read as clean (#56).
     /// </summary>
+    /// <remarks>
+    /// A project skipped whole is matched by assembly instead, since its tests were never named
+    /// (#57). When that cannot be done - the report gave no assembly for it, or a failure that
+    /// matched nothing names none - the project is returned as unchecked, for the same reason.
+    /// </remarks>
     public static SelectionCheck Check(TiaSelection selection, IEnumerable<TestFailure> failures)
     {
         ArgumentNullException.ThrowIfNull(selection);
@@ -127,22 +169,51 @@ public static class SelectionMisses
         var misses = new List<SelectionMiss>();
         var unmatched = new List<UnmatchedFailure>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        var withoutAssembly = 0;
+
+        var byAssembly = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in selection.SkippedProjects)
+        {
+            if (project.Assembly is { } assembly)
+                byAssembly.TryAdd(assembly, project.Project);
+        }
 
         foreach (var failure in failures)
         {
+            // An assembly the selection left out whole is certain: none of its tests ran.
+            if (failure.Assembly is { } assembly && byAssembly.TryGetValue(assembly, out var skippedProject))
+            {
+                var name = WithoutArguments(failure.FullName);
+                if (seen.Add(name))
+                    misses.Add(new SelectionMiss(failure, name, skippedProject));
+                continue;
+            }
+
             var (test, candidates) = Match(selection.Skipped, failure);
             if (test is not null)
             {
                 if (seen.Add(test))
                     misses.Add(new SelectionMiss(failure, test, selection.Skipped[test]));
             }
-            else if (candidates.Count > 1 && seen.Add("?" + failure.FullName))
+            else if (candidates.Count > 1)
             {
-                unmatched.Add(new UnmatchedFailure(failure, candidates));
+                if (seen.Add("?" + failure.FullName))
+                    unmatched.Add(new UnmatchedFailure(failure, candidates));
+            }
+            else if (failure.Assembly is null)
+            {
+                withoutAssembly++;
             }
         }
 
-        return new SelectionCheck(misses, unmatched);
+        var uncheckedProjects = selection.SkippedProjects
+            .Where(p => p.Assembly is null || withoutAssembly > 0)
+            .Select(p => new UncheckedProject(p.Project, p.Assembly is null
+                ? "the dotnet-tia report names no assembly for it"
+                : $"{withoutAssembly} failing test(s) name no assembly, so whether one is from it is not known"))
+            .ToList();
+
+        return new SelectionCheck(misses, unmatched, uncheckedProjects);
     }
 
     /// <summary>How many of an unmatched failure's candidates are kept to show.</summary>
