@@ -82,7 +82,11 @@
   ecosystem: generic
   category: ci
   title: Step or job timed out
-  match: "(?:The (?:job|operation|step) (?:running|was) .*?canceled|timed out after|timeout after|Cancelling since a higher priority|The job running on runner .* has exceeded the maximum execution time|ETIMEDOUT|context deadline exceeded)"
+  # "The operation was canceled." follows any cancellation, so a run cancelled for a newer push or
+  # a runner that went away is left to the rules below, which say "re-run" rather than "raise
+  # timeout-minutes" - and are not counted as timeouts by gate and stats (#63).
+  match: "(?:The (?:job|operation|step) (?:running|was) .*?canceled|timed out after|timeout after|The job running on runner .* has exceeded the maximum execution time|ETIMEDOUT|context deadline exceeded)"
+  notMatch: "Cancel{1,2}ing since a higher priority|The runner has received a shutdown signal|lost communication with the server"
   confidence: 0.6
   fix: |
     A step or job was cancelled for exceeding its time limit. Find the slow step
@@ -139,7 +143,7 @@
   fix: |
     A service rejected requests for rate limiting (429). Authenticate so you get a
     higher quota (e.g. a token for registry/API pulls), add caching to cut request
-    volume, or back off and retry. For Docker Hub pulls, log in or mirror the image.
+    volume, or back off and retry. Docker Hub's pull limit has a rule of its own.
   docs: https://docs.docker.com/docker-hub/usage/
 
 - id: generic-docker-build
@@ -197,3 +201,115 @@
     the runner and the repo. Check the remote URL and that the secret hasn't expired —
     private submodules need credentials too.
   docs: https://docs.github.com/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens
+
+# ---- GitHub Actions and Docker infrastructure (#63) ------------------------------------------
+# Each of these used to fall through to a generic rule with the wrong advice: a pull limit read as
+# an unrecognised Docker failure, a missing permissions: scope as "look at the output above", and a
+# runner that went away as a timeout to raise. They outrank the generic rules they overlap with.
+
+- id: docker-hub-pull-limit
+  ecosystem: generic
+  category: network
+  title: Docker Hub pull rate limit reached
+  # Docker Hub's own wording, which generic-rate-limit's "rate limit exceeded" never matched.
+  match: "toomanyrequests: You have reached your (?:unauthenticated )?pull rate limit|You have reached your (?:unauthenticated )?pull rate limit"
+  confidence: 0.85
+  fix: |
+    Docker Hub refused the pull: anonymous pulls are limited per IP, and hosted runners
+    share IPs. Log in before pulling (docker/login-action with a Docker Hub token) for a
+    per-account limit, pull from a mirror such as public.ecr.aws/docker/library or
+    mirror.gcr.io, or push the image to GHCR and pull it from there.
+  docs: https://docs.docker.com/docker-hub/usage/
+
+- id: docker-platform-mismatch
+  ecosystem: generic
+  category: environment
+  title: Image built for another CPU architecture
+  match: "no matching manifest for (?<platform>[\\w/.-]+) in the manifest list entries|exec (?:/\\S+: )?format error|The requested image's platform \\((?<image>[^)]+)\\) does not match the detected host platform \\((?<platform>[^)]+)\\)"
+  confidence: 0.8
+  fix: |
+    The image or binary is for a different CPU architecture than the runner. This is
+    common since arm64 runners: an amd64-only image on ubuntu-24.04-arm, or an arm64
+    image built on a Mac and run on amd64. Use a multi-arch image (docker buildx build
+    --platform linux/amd64,linux/arm64), pin --platform to one the image has, or run the
+    job on a runner of the image's architecture.
+  docs: https://docs.docker.com/build/building/multi-platform/
+
+- id: gha-token-permissions
+  ecosystem: generic
+  category: auth
+  title: GITHUB_TOKEN lacks a permission
+  match: "Resource not accessible by integration"
+  confidence: 0.85
+  fix: |
+    The workflow's GITHUB_TOKEN does not have the scope this call needs. Add it under
+    `permissions:` on the job or workflow, for example `pull-requests: write` to comment,
+    `contents: write` to push or release, `packages: write` for GHCR, or `checks: write`.
+    Setting `permissions:` at all drops every scope not listed. A pull request from a
+    fork always gets a read-only token, whatever the workflow asks for.
+  docs: https://docs.github.com/actions/writing-workflows/choosing-what-your-workflow-does/controlling-permissions-for-github_token
+
+- id: gha-artifact-name-conflict
+  ecosystem: generic
+  category: ci
+  title: Artifact name already used in this run
+  match: "an artifact with this name already exists on the workflow run"
+  confidence: 0.85
+  fix: |
+    upload-artifact v4 and later make artifacts immutable, so two uploads with one
+    name in a run conflict - usually matrix jobs sharing a name. Put the matrix values in
+    the name, set `overwrite: true` to replace the earlier one, or merge them later
+    with actions/upload-artifact/merge.
+  docs: https://github.com/actions/upload-artifact#not-uploading-to-the-same-artifact
+
+- id: gha-deprecated-action
+  ecosystem: generic
+  category: ci
+  title: Workflow uses a retired action version
+  match: "uses a deprecated version of `?(?<action>[\\w.-]+/[\\w./-]+)`?(?::\\s*`?(?<version>v[\\d.]+)`?)?"
+  confidence: 0.85
+  fix: |
+    GitHub fails every job that uses this version of '{action}'. Move to its current
+    major version (for actions/upload-artifact and actions/download-artifact, v4 or
+    later; read the action's migration notes, since v4 changed artifact behaviour).
+    Dependabot's github-actions ecosystem keeps these current.
+  docs: https://github.blog/changelog/2024-04-16-deprecation-notice-v3-of-the-artifact-actions/
+
+- id: gha-action-not-found
+  ecosystem: generic
+  category: ci
+  title: Action could not be resolved
+  match: "Unable to resolve action `?(?<action>[^`',\\s]+)`?"
+  confidence: 0.85
+  fix: |
+    The runner could not download '{action}': the tag, branch or SHA does not exist, the
+    repository was renamed or deleted, or it is private and not shared with this one.
+    Check the `uses:` line against the action's releases. For a private action, allow
+    access under the action repository's Settings > Actions > Access.
+  docs: https://docs.github.com/actions/writing-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsuses
+
+- id: gha-runner-lost
+  ecosystem: generic
+  category: ci
+  title: Runner shut down or lost
+  match: "The runner has received a shutdown signal|lost communication with the server"
+  confidence: 0.85
+  fix: |
+    Not your code: the machine running the job went away - a preempted or recycled
+    runner, a self-hosted runner that crashed or ran out of memory or disk, or a
+    network drop. Re-run the job. If it keeps happening on a self-hosted runner, look at
+    that machine's resources and the runner service's own log.
+  docs: https://docs.github.com/actions/hosting-your-own-runners/managing-self-hosted-runners/monitoring-and-troubleshooting-self-hosted-runners
+
+- id: gha-concurrency-cancelled
+  ecosystem: generic
+  category: ci
+  title: Cancelled for a newer run in the concurrency group
+  match: "Cancel{1,2}ing since a higher priority waiting request for '?(?<group>[^'\\n]+?)'? exists|Cancel{1,2}ing since a higher priority waiting request"
+  confidence: 0.85
+  fix: |
+    Not a failure: a newer run in the concurrency group replaced this one, usually a
+    newer push to the same branch with `cancel-in-progress: true`. The newer run's
+    result is the one that counts. If runs are cancelled that should not be, give them
+    different concurrency groups.
+  docs: https://docs.github.com/actions/writing-workflows/choosing-what-your-workflow-does/control-the-concurrency-of-workflows-and-jobs
