@@ -9,6 +9,19 @@ after 1.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A mass failure no longer pushes the selection-misses section out of the summary and the PR
+  comment** ([#59](https://github.com/SebHenn/ci-failure-intelligence/issues/59)). A TRX or JUnit
+  input is one analysis per failing test, all rendered in full, with the misses section after
+  them. GitHub refuses a comment over 65,536 characters and drops a step summary over 1 MiB, and
+  a comment body over 128 KiB could not even be passed to `gh`. The comment then failed with only
+  a line on stderr, and the step stayed green. Now the markdown report renders the first 20
+  analyses in full, lists the next 100 with one line each and counts the rest. The misses lists
+  are capped at 50, and the unmatched and unchecked lists at 20. The misses section comes first,
+  and a body still too long is cut to fit, with a link to the run. The comment goes to `gh` as
+  JSON on stdin, and a failed post or update is a `::warning::`.
+
 ### Added
 
 - **`selection-misses` sees failures in test projects the selection skipped whole**
