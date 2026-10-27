@@ -223,6 +223,44 @@ jobs:
           grep -q 'Csv.FSharp.Tests' tia-out.txt
           grep -qx 'selection-misses=1' tia-outputs.txt
 
+          # Issue #58: tia-artifact finds the pull request this commit merged and downloads its
+          # report. A stub gh answers the API, so the lookup, the download and the head check
+          # are exercised; the real API is the same three calls.
+          mkdir -p gh-stub
+          cat > gh-stub/gh <<'STUB'
+          #!/bin/bash
+          case "$*" in
+            "api repos/acme/app/commits/merge123/pulls")
+              echo '[{"number": 7, "merge_commit_sha": "merge123", "head": {"sha": "'"$STUB_HEAD"'"}}]' ;;
+            "api repos/acme/app/actions/runs?head_sha="*)
+              echo 9001 ;;
+            "api repos/acme/app/actions/runs/9001/artifacts?name=tia-report"*)
+              echo 55 ;;
+            "run download 9001 -R acme/app -n tia-report -D "*)
+              cp samples/tia-report.json "${@: -1}/tia-report.json" ;;
+            *) echo "unexpected gh call: $*" >&2; exit 1 ;;
+          esac
+          STUB
+          chmod +x gh-stub/gh
+          head_sha="$(jq -r '.headCommit' samples/tia-report.json)"
+          for case in match mismatch; do
+            if [ "$case" = match ]; then stub_head="$head_sha"; else stub_head=ffffffffffffffff; fi
+            : > tia-outputs.txt
+            PATH="$PWD/gh-stub:$PATH" STUB_HEAD="$stub_head" GITHUB_SHA=merge123 GITHUB_REPOSITORY=acme/app \
+            INPUT_LOG=samples/junit-report.xml INPUT_MODE=analyze INPUT_ARGS='' \
+            INPUT_IMAGE=cifail:ci INPUT_SUMMARY=false INPUT_FAIL=false INPUT_COMMENT=false \
+            INPUT_SARIF='' INPUT_RULES='' INPUT_TIA_REPORT='' INPUT_TIA_ARTIFACT=tia-report \
+            CIFAIL_ACTION_VERSION="$stamp" GITHUB_OUTPUT=tia-outputs.txt RUNNER_TEMP="$RUNNER_TEMP" \
+              bash --noprofile --norc -e -o pipefail action-step.sh | tee tia-out.txt
+            if [ "$case" = match ]; then
+              grep -q 'pull request #7' tia-out.txt
+              grep -qx 'selection-misses=1' tia-outputs.txt
+            else
+              grep -q "Not checked: the report is from $head_sha, and pull request #7's head is ffffffffffffffff" tia-out.txt
+              grep -qx 'selection-misses=' tia-outputs.txt
+            fi
+          done
+
           : > tia-outputs.txt
           INPUT_LOG=samples/junit-report.xml INPUT_MODE=analyze INPUT_ARGS='' \
           INPUT_IMAGE=cifail:ci INPUT_SUMMARY=false INPUT_FAIL=false INPUT_COMMENT=false \

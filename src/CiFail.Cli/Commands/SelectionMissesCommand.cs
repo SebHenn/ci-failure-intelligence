@@ -33,6 +33,10 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
         [CommandOption("--json")]
         [Description("Print the result as JSON.")]
         public bool Json { get; init; }
+
+        [CommandOption("--expect-head <SHA>")]
+        [Description("Refuse a report whose selection was not made at this commit: the pull request's head. A short SHA is enough.")]
+        public string? ExpectHead { get; init; }
     }
 
     public override int Execute(CommandContext context, Settings settings, CancellationToken cancellation)
@@ -65,6 +69,16 @@ public sealed class SelectionMissesCommand : Command<SelectionMissesCommand.Sett
         if (inputs.Count == 0)
         {
             CliConsole.Error("no test report given. Pass the JUnit or TRX files of the run that failed.");
+            return ExitCodes.Usage;
+        }
+
+        // A report from another push of the pull request, or from another one, would give
+        // confident candidates that are wrong, or a "no miss" that means nothing (#58).
+        if (!string.IsNullOrWhiteSpace(settings.ExpectHead) && !SelectionMisses.SameCommit(selection.HeadCommit, settings.ExpectHead))
+        {
+            CliConsole.Error(selection.HeadCommit is null
+                ? $"{Markup.Escape(settings.Tia)} records no head commit, so it cannot be shown to be from {Markup.Escape(settings.ExpectHead)}."
+                : $"{Markup.Escape(settings.Tia)} is from {Markup.Escape(selection.HeadCommit)}, not {Markup.Escape(settings.ExpectHead)}: its selection is not the one to check against.");
             return ExitCodes.Usage;
         }
 

@@ -247,6 +247,19 @@ public static class SelectionMisses
         return endingWith.Count == 1 ? (endingWith[0], []) : (null, endingWith);
     }
 
+    /// <summary>
+    /// Whether two SHAs name one commit: equal ignoring case, or one a prefix of the other, both
+    /// at least seven characters - git's shortest abbreviation.
+    /// </summary>
+    public static bool SameCommit(string? a, string? b)
+    {
+        if (a is null || b is null) return false;
+        a = a.Trim();
+        b = b.Trim();
+        if (a.Length < 7 || b.Length < 7) return false;
+        return a.StartsWith(b, StringComparison.OrdinalIgnoreCase) || b.StartsWith(a, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary><c>Ns.Cls.Adds(x: 1, y: 2)</c> is the method <c>Ns.Cls.Adds</c>.</summary>
     internal static string WithoutArguments(string name)
     {

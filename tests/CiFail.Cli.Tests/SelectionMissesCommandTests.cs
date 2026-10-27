@@ -108,6 +108,36 @@ public sealed class SelectionMissesCommandTests
         document.RootElement.GetProperty("uncheckedProjects").EnumerateArray().Single().GetProperty("project").GetString().Should().Be("Csv.Tests");
     }
 
+    [Theory]
+    [InlineData("0123456789abcdef", ExitCodes.Negative)]
+    [InlineData("0123456", ExitCodes.Negative)]
+    [InlineData("0123456789ABCDEF", ExitCodes.Negative)]
+    [InlineData("fedcba9876543210", ExitCodes.Usage)]
+    public void A_report_from_another_commit_is_refused(string head, int exitCode)
+    {
+        // The pull request's head is known; a report of an older push would misinform (#58).
+        using var cli = new CliHarness();
+        var (tia, results) = Write(cli, TiaReport, JUnit);
+
+        var result = cli.Run("selection-misses", "--tia", tia, results, "--expect-head", head);
+
+        result.ExitCode.Should().Be(exitCode);
+        if (exitCode == ExitCodes.Usage)
+            result.StderrFlat.Should().Contain("is from 0123456789abcdef, not fedcba9876543210");
+    }
+
+    [Fact]
+    public void A_report_with_no_head_commit_cannot_be_shown_to_match()
+    {
+        using var cli = new CliHarness();
+        var (tia, results) = Write(cli, TiaReport.Replace("\"headCommit\": \"0123456789abcdef\",", "", StringComparison.Ordinal), JUnit);
+
+        var result = cli.Run("selection-misses", "--tia", tia, results, "--expect-head", "0123456789abcdef");
+
+        result.ExitCode.Should().Be(ExitCodes.Usage);
+        result.StderrFlat.Should().Contain("records no head commit");
+    }
+
     [Fact]
     public void A_failure_that_cannot_be_told_apart_is_not_reported_as_no_miss()
     {
