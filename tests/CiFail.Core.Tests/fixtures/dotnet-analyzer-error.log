@@ -1,0 +1,5 @@
+Run dotnet build --configuration Release --no-restore
+  App -> /home/runner/work/app/src/Core/bin/Release/net8.0/Core.dll
+/home/runner/work/app/src/App/OrderService.cs(41,27): error CA1305: The behavior of 'int.ToString()' could vary based on the current user's locale settings. Replace this call in 'OrderService.Describe()' with a call to 'int.ToString(IFormatProvider)'. [/home/runner/work/app/src/App/App.csproj]
+
+Build FAILED.
