@@ -59,6 +59,29 @@ public class MarkdownOutputTests
     }
 
     [Fact]
+    public void Many_failures_are_listed_past_the_first_twenty_and_counted_past_that()
+    {
+        // One analysis per failing test: a mass failure would otherwise be a comment GitHub
+        // refuses (#59). Every analysis is still counted in the headline.
+        var dtos = Enumerable.Range(0, 130).Select(i => new AnalysisJson.AnalysisDto
+        {
+            Source = $"T{i}", Matched = true, Fingerprint = $"r:{i}",
+            RootCause = new AnalysisJson.MatchDto { RuleId = "r", Title = $"Failure {i}", Category = "test", Confidence = 0.9, MatchedLine = "boom", Fix = "f" },
+        }).ToList();
+
+        var md = MarkdownOutput.Build(dtos);
+
+        md.Should().Contain("Analyzed **130** logs");
+        md.Should().Contain("### Failure 19");
+        md.Should().NotContain("### Failure 20");
+        md.Should().Contain("### 110 more");
+        md.Should().Contain("- Failure 20 — `T20`");
+        md.Should().Contain("- Failure 119 — `T119`");
+        md.Should().NotContain("Failure 120");
+        md.Should().Contain("… and 10 more");
+    }
+
+    [Fact]
     public void Summarizes_a_batch()
     {
         var dtos = new[]

@@ -9,6 +9,15 @@ namespace CiFail.Core.Output;
 /// </summary>
 public static class MarkdownOutput
 {
+    /// <summary>
+    /// Analyses rendered in full. A report of one analysis per failing test can hold hundreds,
+    /// and a PR comment or a step summary that long is refused or dropped whole (#59).
+    /// </summary>
+    public const int DetailedLimit = 20;
+
+    /// <summary>Analyses past <see cref="DetailedLimit"/> that still get a line; the rest are counted.</summary>
+    public const int ListedLimit = 100;
+
     public static string Build(IReadOnlyList<AnalysisJson.AnalysisDto> analyses)
     {
         var sb = new StringBuilder();
@@ -20,7 +29,7 @@ public static class MarkdownOutput
                       $"matched a known failure in **{matched}**.");
         sb.AppendLine();
 
-        foreach (var a in analyses)
+        foreach (var a in analyses.Take(DetailedLimit))
         {
             var rc = a.RootCause;
             if (rc is not null)
@@ -93,6 +102,22 @@ public static class MarkdownOutput
                 }
             }
 
+            sb.AppendLine();
+        }
+
+        var rest = analyses.Skip(DetailedLimit).ToList();
+        if (rest.Count > 0)
+        {
+            sb.AppendLine($"### {rest.Count} more");
+            sb.AppendLine();
+            foreach (var a in rest.Take(ListedLimit))
+            {
+                var title = a.RootCause is { } rc ? Inline(rc.Title) : "No known rule matched";
+                sb.AppendLine($"- {title} — `{Inline(a.Source)}`");
+            }
+
+            if (rest.Count > ListedLimit)
+                sb.AppendLine($"- … and {rest.Count - ListedLimit} more. `cifail analyze --json` lists every one.");
             sb.AppendLine();
         }
 
