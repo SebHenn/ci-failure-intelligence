@@ -127,6 +127,29 @@ public sealed class SelectionMissesCommandTests
     }
 
     [Fact]
+    public void A_miss_that_failed_before_says_so()
+    {
+        // #60: an earlier failure of the same test, recorded by analyze, makes it likely flaky.
+        using var cli = new CliHarness();
+        var (tia, results) = Write(cli, TiaReport, JUnit);
+        cli.Run("analyze", "--no-git", results).ExitCode.Should().NotBe(ExitCodes.Usage);
+
+        var text = cli.Run("selection-misses", "--tia", tia, results, "--commit", "1234567890");
+        text.ExitCode.Should().Be(ExitCodes.Negative);
+        text.StdoutFlat.Should().Contain("failed 1x on 1 day(s) before");
+
+        var json = cli.Run("selection-misses", "--tia", tia, results, "--commit", "1234567890", "--json");
+        using var document = JsonDocument.Parse(json.Stdout);
+        var history = document.RootElement.GetProperty("misses")[0].GetProperty("history");
+        history.GetProperty("failures").GetInt32().Should().Be(1);
+        history.GetProperty("flaky").GetBoolean().Should().BeFalse();
+
+        var none = cli.Run("selection-misses", "--tia", tia, results, "--no-history", "--json");
+        using var plain = JsonDocument.Parse(none.Stdout);
+        plain.RootElement.GetProperty("misses")[0].TryGetProperty("history", out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void A_report_with_no_head_commit_cannot_be_shown_to_match()
     {
         using var cli = new CliHarness();

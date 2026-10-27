@@ -11,6 +11,15 @@ after 1.0.
 
 ### Added
 
+- **`selection-misses` tells a likely flake from a likely miss**
+  ([#60](https://github.com/SebHenn/ci-failure-intelligence/issues/60)). Every candidate used to
+  be equally suspect, and ruling out a flake was left to the reader, though cifail records every
+  failing test. Each miss is now looked up in that history: one that failed before on other
+  commits comes after those that never did, marked "failed 4x on 3 day(s) before" (and "flaky"
+  when it failed again after being resolved), and `--json` has `history`. The commit under test
+  (`--commit`, HEAD by default) is not history, and `--no-history` skips the lookup. A store that
+  can't be read is a warning, not a failed check.
+
 - **The action fetches the pull request's dotnet-tia report, and checks it is the right one**
   ([#58](https://github.com/SebHenn/ci-failure-intelligence/issues/58)). Getting a report from
   the pull request's run into the default branch's run took cross-run artifact plumbing nobody

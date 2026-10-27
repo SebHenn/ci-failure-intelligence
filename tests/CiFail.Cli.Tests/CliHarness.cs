@@ -72,6 +72,7 @@ public sealed class CliHarness : IDisposable
         var stdout = new StringWriter();
         var stderr = new StringWriter();
 
+        var originalIn = Console.In;
         var originalOut = Console.Out;
         var originalError = Console.Error;
         var originalAnsi = AnsiConsole.Console;
@@ -90,6 +91,12 @@ public sealed class CliHarness : IDisposable
             Console.SetOut(stdout);
             Console.SetError(stderr);
 
+            // An empty stdin of the run's own. A command given no path reads stdin whenever it is
+            // redirected, and the test host's is whatever launched it: under a shell that leaves
+            // the pipe open, ReadToEnd waited forever and the suite hung. CI passes /dev/null,
+            // which is why it never did there.
+            Console.SetIn(new StringReader(string.Empty));
+
             var outConsole = CreateConsole(stdout);
             AnsiConsole.Console = outConsole;
             CliConsole.Out = outConsole;
@@ -102,6 +109,7 @@ public sealed class CliHarness : IDisposable
         {
             CliConsole.Reset();
             AnsiConsole.Console = originalAnsi;
+            Console.SetIn(originalIn);
             Console.SetOut(originalOut);
             Console.SetError(originalError);
             CultureInfo.CurrentUICulture = originalUiCulture;

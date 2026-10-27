@@ -350,7 +350,7 @@ runs:
             # only the workspace, at /work, and runner.temp is outside it (#50).
             tia_abs="$(cd "$(dirname -- "$INPUT_TIA_REPORT")" && pwd -P)/$(basename -- "$INPUT_TIA_REPORT")"
             tia_mount=/cifail-tia/report.json
-            misses_json="$(docker run "${run_args[@]}" -v "$tia_abs:$tia_mount:ro" "$INPUT_IMAGE" selection-misses --tia "$tia_mount" --json "$INPUT_LOG" 2>/tmp/cifail-misses.err)"
+            misses_json="$(docker run "${run_args[@]}" -v "$tia_abs:$tia_mount:ro" "$INPUT_IMAGE" selection-misses --tia "$tia_mount" --json --commit "${GITHUB_SHA:-HEAD}" "$INPUT_LOG" 2>/tmp/cifail-misses.err)"
             misses_code=$?
             cat /tmp/cifail-misses.err >&2 || true
             misses_count="$(printf '%s' "$misses_json" | jq -r '.misses | length' 2>/dev/null)"
@@ -371,7 +371,7 @@ runs:
                 # Names and messages come from the pull request's code, so both go in code spans,
                 # where markdown stays inert; a backtick in them would end the span, so it becomes
                 # an apostrophe ([39] | implode, since this program can't contain a quote).
-                misses_md="$misses_md"$'\n\n'"$(printf '%s' "$misses_json" | jq -r "$jq_lists"' .misses | capped(50; "- " + (.test // "" | span) + " (" + (.project // "" | span) + ")" + (if (.message // "") != "" then ": " + (.message | split("\n")[0] | .[0:300] | span) else "" end))')"
+                misses_md="$misses_md"$'\n\n'"$(printf '%s' "$misses_json" | jq -r "$jq_lists"' .misses | capped(50; "- " + (.test // "" | span) + " (" + (.project // "" | span) + ")" + (if .history then " - failed \(.history.failures)x on \(.history.distinctDays) day(s) before" + (if .history.flaky then ", flaky" else ", likely flaky" end) else "" end) + (if (.message // "") != "" then ": " + (.message | split("\n")[0] | .[0:300] | span) else "" end))')"
               else
                 misses_md="$(printf '### Selection misses\n\nNone: no failing test of the %s was skipped by the dotnet-tia selection.' "$failing")"
               fi

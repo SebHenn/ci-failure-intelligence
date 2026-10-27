@@ -104,6 +104,12 @@ public static class StoreSupport
     }
 
     /// <summary>
+    /// Open the store and leave every failure to the caller, for a lookup that is advisory and
+    /// says so in its own words rather than as an error.
+    /// </summary>
+    internal static IAnalysisStore Open(StoreSettings settings) => Create(settings);
+
+    /// <summary>
     /// Resolve the settings to a store. <c>--server</c> is shorthand for the remote http
     /// provider and wins over <c>--db-*</c>, so one flag points every read/resolve command at a
     /// shared service. The token (CLI &gt; env) becomes a bearer header when the server
