@@ -4,9 +4,9 @@ branding:
   icon: 'search'
   color: 'red'
 
-# NOTE: this action runs cifail through Docker, so it works on **Linux runners only**
-# (ubuntu-*). It will not run on windows-* or macos-* runners, which have no Docker daemon.
-# On those, install the CLI directly — see the README's install section.
+# NOTE: on Linux runners this action runs cifail's Docker image. On windows-* and macos-*
+# runners, which have no Docker daemon, it downloads the same release's self-contained binary
+# instead and checks it against the release's sha256 (the `runtime` input).
 
 inputs:
   log:
@@ -25,6 +25,10 @@ inputs:
     description: "cifail Docker image to use. Empty runs the image built from this action's own release (ghcr.io/sebhenn/cifail:<version>), so pinning the action pins the code that runs."
     required: false
     default: ''
+  runtime:
+    description: 'How cifail runs: "auto" (Docker on Linux, the release binary on Windows and macOS), "docker", or "binary" (the self-contained binary of this action''s release, verified against its sha256).'
+    required: false
+    default: 'auto'
   summary:
     description: 'Write the analysis to the GitHub Actions step summary.'
     required: false
@@ -100,6 +104,7 @@ runs:
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_ARGS: ${{ inputs.args }}
         INPUT_IMAGE: ${{ inputs.image }}
+        INPUT_RUNTIME: ${{ inputs.runtime }}
         INPUT_SUMMARY: ${{ inputs.summary }}
         INPUT_FAIL: ${{ inputs.fail }}
         INPUT_COMMENT: ${{ inputs.comment }}
@@ -131,12 +136,99 @@ runs:
           *) echo "cifail: unknown mode '$INPUT_MODE' (use analyze or gate)." >&2; exit 2 ;;
         esac
 
+        # Git Bash on a Windows runner is handed Windows paths; mktemp and friends want its own.
+        if command -v cygpath > /dev/null 2>&1; then
+          if [ -n "${RUNNER_TEMP:-}" ]; then RUNNER_TEMP="$(cygpath -u "$RUNNER_TEMP")"; fi
+          if [ -n "${RUNNER_TOOL_CACHE:-}" ]; then RUNNER_TOOL_CACHE="$(cygpath -u "$RUNNER_TOOL_CACHE")"; fi
+        fi
+
+        # ---- runtime -------------------------------------------------------------------
+        # Docker on Linux, this release's own binary elsewhere (#61): windows-* and macos-*
+        # runners have no Docker daemon, and a .NET test job often runs on windows-latest.
+        runtime="${INPUT_RUNTIME:-auto}"
+        case "$runtime" in
+          auto)
+            if [ -n "$INPUT_IMAGE" ] || [ "${RUNNER_OS:-Linux}" = "Linux" ]; then runtime=docker; else runtime=binary; fi ;;
+          docker|binary) ;;
+          *) echo "cifail: unknown runtime '$runtime' (use auto, docker or binary)." >&2; exit 2 ;;
+        esac
+        if [ "$runtime" = binary ] && [ -n "$INPUT_IMAGE" ]; then
+          echo "cifail: image: names a Docker image, and runtime is binary. Set one or the other." >&2
+          exit 2
+        fi
+
+        if [ "$runtime" = binary ]; then
+          # The archive of this action's own release, so pinning the action pins the code that
+          # runs, as the image tag does. CIFAIL_BINARY points at a binary already on disk.
+          if [ -n "${CIFAIL_BINARY:-}" ]; then
+            cifail_bin="$CIFAIL_BINARY"
+            binary_desc="binary $CIFAIL_BINARY"
+          else
+            if [ -z "${CIFAIL_ACTION_VERSION:-}" ]; then
+              echo "cifail: runtime is binary, and there is no version stamp to fetch one for." >&2
+              exit 2
+            fi
+            case "${RUNNER_OS:-$(uname -s)}" in
+              Windows|MINGW*|MSYS*|CYGWIN*) rid_os=win; ext=zip; exe=cifail.exe ;;
+              macOS|Darwin) rid_os=osx; ext=tar.gz; exe=cifail ;;
+              *) rid_os=linux; ext=tar.gz; exe=cifail ;;
+            esac
+            case "${RUNNER_ARCH:-$(uname -m)}" in
+              ARM64|arm64|aarch64) rid_arch=arm64 ;;
+              *) rid_arch=x64 ;;
+            esac
+            asset="cifail-$CIFAIL_ACTION_VERSION-$rid_os-$rid_arch.$ext"
+            url="https://github.com/SebHenn/ci-failure-intelligence/releases/download/v$CIFAIL_ACTION_VERSION/$asset"
+            # The tool cache survives between jobs on a self-hosted runner.
+            bin_dir="${RUNNER_TOOL_CACHE:-${RUNNER_TEMP:-/tmp}}/cifail/$CIFAIL_ACTION_VERSION/$rid_os-$rid_arch"
+            cifail_bin="$bin_dir/$exe"
+            mkdir -p "$bin_dir"
+            if [ ! -f "$bin_dir/$asset" ] || [ ! -f "$bin_dir/$asset.sha256" ]; then
+              if ! curl -fsSL --retry 3 -o "$bin_dir/$asset" "$url" || ! curl -fsSL --retry 3 -o "$bin_dir/$asset.sha256" "$url.sha256"; then
+                rm -f "$bin_dir/$asset" "$bin_dir/$asset.sha256"
+                echo "cifail: could not download $url." >&2
+                exit 2
+              fi
+            fi
+            # Checked every run, cached or not: an archive that is not the published one is not run.
+            expected="$(cut -d' ' -f1 < "$bin_dir/$asset.sha256" | tr -d '\r')"
+            if command -v sha256sum > /dev/null 2>&1; then
+              actual="$(sha256sum "$bin_dir/$asset" | cut -d' ' -f1)"
+            else
+              actual="$(shasum -a 256 "$bin_dir/$asset" | cut -d' ' -f1)"
+            fi
+            if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+              rm -f "$bin_dir/$asset" "$bin_dir/$asset.sha256" "$cifail_bin"
+              echo "cifail: $asset has sha256 $actual, and the release publishes ${expected:-none}. Not running it." >&2
+              exit 2
+            fi
+            if [ ! -f "$cifail_bin" ]; then
+              if [ "$ext" = zip ]; then
+                if command -v unzip > /dev/null 2>&1; then
+                  unzip -q -o "$bin_dir/$asset" -d "$bin_dir"
+                else
+                  # Windows' own tar is bsdtar, which reads a zip; Git Bash's is GNU tar, which can't.
+                  "$(cygpath -u "${SYSTEMROOT:-C:\Windows}")/System32/tar.exe" -xf "$bin_dir/$asset" -C "$bin_dir"
+                fi
+              else
+                tar -xzf "$bin_dir/$asset" -C "$bin_dir"
+              fi
+              chmod +x "$cifail_bin" 2> /dev/null || true
+            fi
+            if [ ! -f "$cifail_bin" ]; then
+              echo "cifail: $asset holds no $exe." >&2
+              exit 2
+            fi
+            binary_desc="binary $asset sha256 $actual"
+          fi
+        fi
+
         # The image of this action's own release, not `:latest` (#37). With `:latest`, pinning
         # the action — to `@v1`, a version or a commit — pinned only this wrapper, and the code
         # that read the log was whatever `:latest` was when the runner pulled it. The stamp is
         # checked against the release tag, and `finalize` refuses to publish a release whose
         # image cannot be pulled, so this tag exists for every release.
-        if [ -z "$INPUT_IMAGE" ]; then
+        if [ "$runtime" = docker ] && [ -z "$INPUT_IMAGE" ]; then
           if [ -z "${CIFAIL_ACTION_VERSION:-}" ]; then
             echo "cifail: no image: input and no version stamp to derive one from." >&2
             exit 2
@@ -151,13 +243,15 @@ runs:
         # checked: the root checkout and one level down, for `path:` checkouts. The container
         # needs the workspace (the log, the reports, git history), so this warns rather than
         # hiding .git.
-        for git_config in .git/config ./*/.git/config; do
-          if [ -f "$git_config" ] && grep -qi 'extraheader' "$git_config"; then
-            echo "::warning::cifail: $git_config holds a persisted credential, and the workspace is mounted into the cifail container, so the image can read it. Check out with 'persist-credentials: false', or use actions/checkout v6 or later."
-          fi
-        done
+        if [ "$runtime" = docker ]; then
+          for git_config in .git/config ./*/.git/config; do
+            if [ -f "$git_config" ] && grep -qi 'extraheader' "$git_config"; then
+              echo "::warning::cifail: $git_config holds a persisted credential, and the workspace is mounted into the cifail container, so the image can read it. Check out with 'persist-credentials: false', or use actions/checkout v6 or later."
+            fi
+          done
 
-        docker pull "$INPUT_IMAGE" >/dev/null 2>&1 || true
+          docker pull "$INPUT_IMAGE" >/dev/null 2>&1 || true
+        fi
 
         # ---- provenance ----------------------------------------------------------------
         # Name the build that is running, before it runs anything (issue #21). `@v1` is a
@@ -172,23 +266,37 @@ runs:
           pin="local checkout"
         fi
 
-        # RepoDigests is the immutable identity of what was actually pulled; the tag in
-        # $INPUT_IMAGE is not. Empty for a locally-built image that was never pushed.
-        image_digest="$(docker image inspect \
-          --format '{{ if .RepoDigests }}{{ index .RepoDigests 0 }}{{ end }}' \
-          "$INPUT_IMAGE" 2>/dev/null | tr -d '\r')"
-        image_desc="$INPUT_IMAGE"
-        if [ -n "$image_digest" ]; then image_desc="$INPUT_IMAGE@${image_digest#*@}"; fi
-
-        cli_version="$(docker run --rm "$INPUT_IMAGE" --version 2>/dev/null | tr -d '\r' | head -1)"
-        provenance="cifail action ${CIFAIL_ACTION_VERSION:+v}${CIFAIL_ACTION_VERSION:-of unknown version} ($pin)"
-        provenance="$provenance | cifail ${cli_version:-unknown} | image $image_desc"
-        echo "$provenance"
-
         run_args=(--rm -v "$PWD:/work" -w /work)
         # Pass shared-database config through to the container when configured.
         if [ -n "${CIFAIL_DB_PROVIDER:-}" ]; then run_args+=(-e CIFAIL_DB_PROVIDER); fi
         if [ -n "${CIFAIL_DB_CONNECTION:-}" ]; then run_args+=(-e CIFAIL_DB_CONNECTION); fi
+
+        # Either way, in the workspace: the binary inherits the environment and its paths.
+        run_cifail() {
+          if [ "$runtime" = docker ]; then
+            docker run "${run_args[@]}" "$INPUT_IMAGE" "$@"
+          else
+            "$cifail_bin" "$@"
+          fi
+        }
+
+        image_digest=""
+        if [ "$runtime" = docker ]; then
+          # RepoDigests is the immutable identity of what was actually pulled; the tag in
+          # $INPUT_IMAGE is not. Empty for a locally-built image that was never pushed.
+          image_digest="$(docker image inspect \
+            --format '{{ if .RepoDigests }}{{ index .RepoDigests 0 }}{{ end }}' \
+            "$INPUT_IMAGE" 2>/dev/null | tr -d '\r')"
+          runtime_desc="image $INPUT_IMAGE"
+          if [ -n "$image_digest" ]; then runtime_desc="image $INPUT_IMAGE@${image_digest#*@}"; fi
+        else
+          runtime_desc="$binary_desc"
+        fi
+
+        cli_version="$(run_cifail --version 2>/dev/null | tr -d '\r' | head -1)"
+        provenance="cifail action ${CIFAIL_ACTION_VERSION:+v}${CIFAIL_ACTION_VERSION:-of unknown version} ($pin)"
+        provenance="$provenance | cifail ${cli_version:-unknown} | $runtime_desc"
+        echo "$provenance"
 
         # A markdown report for humans, JSON on stdout for the outputs. Both come from one run:
         # --report-out writes the file *and* leaves stdout to --json.
@@ -214,7 +322,7 @@ runs:
 
         # stderr is kept separate so warnings can't corrupt the JSON document (the CLI is careful
         # about this; folding the streams with 2>&1 would throw that away).
-        json="$(docker run "${run_args[@]}" "$INPUT_IMAGE" "${cifail_args[@]}" 2>/tmp/cifail.err)"
+        json="$(run_cifail "${cifail_args[@]}" 2>/tmp/cifail.err)"
         code=$?
         cat /tmp/cifail.err >&2 || true
 
@@ -268,7 +376,9 @@ runs:
 
         # Two commits are one when either names the other: a short SHA and a full one.
         same_commit() {
-          local a="${1,,}" b="${2,,}"
+          local a b
+          a="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+          b="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
           [ "${#a}" -ge 7 ] && [ "${#b}" -ge 7 ] && { [[ "$a" == "$b"* ]] || [[ "$b" == "$a"* ]]; }
         }
 
@@ -346,11 +456,16 @@ runs:
             # confident and wrong, and its "None" would be worse.
             misses_unchecked "the report is from ${tia_report_head:-an unrecorded commit}, and pull request #$tia_pr's head is $tia_expect_head."
           else
-            # Mounted on its own, read-only, so an absolute path works too: the container sees
-            # only the workspace, at /work, and runner.temp is outside it (#50).
-            tia_abs="$(cd "$(dirname -- "$INPUT_TIA_REPORT")" && pwd -P)/$(basename -- "$INPUT_TIA_REPORT")"
-            tia_mount=/cifail-tia/report.json
-            misses_json="$(docker run "${run_args[@]}" -v "$tia_abs:$tia_mount:ro" "$INPUT_IMAGE" selection-misses --tia "$tia_mount" --json --commit "${GITHUB_SHA:-HEAD}" "$INPUT_LOG" 2>/tmp/cifail-misses.err)"
+            misses_args=(--json --commit "${GITHUB_SHA:-HEAD}" "$INPUT_LOG")
+            if [ "$runtime" = docker ]; then
+              # Mounted on its own, read-only, so an absolute path works too: the container sees
+              # only the workspace, at /work, and runner.temp is outside it (#50).
+              tia_abs="$(cd "$(dirname -- "$INPUT_TIA_REPORT")" && pwd -P)/$(basename -- "$INPUT_TIA_REPORT")"
+              tia_mount=/cifail-tia/report.json
+              misses_json="$(docker run "${run_args[@]}" -v "$tia_abs:$tia_mount:ro" "$INPUT_IMAGE" selection-misses --tia "$tia_mount" "${misses_args[@]}" 2>/tmp/cifail-misses.err)"
+            else
+              misses_json="$("$cifail_bin" selection-misses --tia "$INPUT_TIA_REPORT" "${misses_args[@]}" 2>/tmp/cifail-misses.err)"
+            fi
             misses_code=$?
             cat /tmp/cifail-misses.err >&2 || true
             misses_count="$(printf '%s' "$misses_json" | jq -r '.misses | length' 2>/dev/null)"

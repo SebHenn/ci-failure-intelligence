@@ -746,6 +746,12 @@ steps:
       tia-artifact: tia-report
 ```
 
+The action runs on Linux, Windows and macOS runners. On Linux it runs the Docker image of its
+own release. On Windows and macOS, which have no Docker daemon, it downloads the same release's
+self-contained binary and runs it only if it matches the release's published sha256. `runtime:
+docker` or `runtime: binary` picks one explicitly, and the provenance line names the image digest
+or the archive's sha256.
+
 `cifail selection-misses --expect-head <sha>` makes the same check outside the action: a report
 whose `headCommit` is another commit is refused with exit 2.
 

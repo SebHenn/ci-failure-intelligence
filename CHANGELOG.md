@@ -11,6 +11,15 @@ after 1.0.
 
 ### Added
 
+- **The action runs on Windows and macOS runners**
+  ([#61](https://github.com/SebHenn/ci-failure-intelligence/issues/61)). It ran everything through
+  `docker run`, so it was Linux-only, and a .NET test job on windows-latest could not use it or
+  pair it with dotnet-tia's action. `runtime: auto` (the default) still uses the Docker image on
+  Linux. On Windows and macOS it downloads the self-contained binary of the action's own release,
+  checks it against the release's sha256 and runs it. `runtime: binary` does that on Linux too,
+  with no image pull or container starts. The provenance line names the archive and its sha256
+  instead of the image digest.
+
 - **`selection-misses` tells a likely flake from a likely miss**
   ([#60](https://github.com/SebHenn/ci-failure-intelligence/issues/60)). Every candidate used to
   be equally suspect, and ruling out a flake was left to the reader, though cifail records every

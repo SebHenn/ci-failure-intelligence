@@ -99,6 +99,34 @@ jobs:
       - name: Test
         run: dotnet test --configuration Release --no-build --verbosity normal
 
+      # Issue #61: on Windows the action runs the release's own binary, with no Docker. It is
+      # fetched for the stamp, so the stamp is pointed at a published release here: the code
+      # under test is the download, the checksum, the unzip and running the exe from Git Bash.
+      - name: The action runs natively on Windows
+        shell: bash
+        run: |
+          python - <<'PY'
+          import io
+          lines = io.open('action.yml', encoding='utf-8').read().split('\n')
+          start = next(i for i, l in enumerate(lines) if l.strip() == 'run: |')
+          indent = len(lines[start]) - len(lines[start].lstrip()) + 2
+          body = []
+          for line in lines[start + 1:]:
+              if line.strip() and not line.startswith(' ' * indent):
+                  break
+              body.append(line[indent:])
+          io.open('action-step.sh', 'w', encoding='utf-8', newline='\n').write('\n'.join(body))
+          PY
+          : > outputs.txt
+          INPUT_LOG=samples/nuget-nu1101.log INPUT_MODE=analyze INPUT_ARGS='' INPUT_IMAGE='' \
+          INPUT_RUNTIME=auto INPUT_SUMMARY=false INPUT_FAIL=false INPUT_COMMENT=false \
+          INPUT_SARIF='' INPUT_RULES='' INPUT_TIA_REPORT='' CIFAIL_ACTION_VERSION=0.5.0 \
+          GITHUB_OUTPUT=outputs.txt \
+            bash --noprofile --norc -e -o pipefail action-step.sh | tee out.txt
+          grep -q 'binary cifail-0.5.0-win-x64.zip sha256 ' out.txt
+          grep -q 'cifail 0.5.0' out.txt
+          grep -qx 'rule=nuget-nu1101' outputs.txt
+
   # Build the image AND RUN IT. Building alone proves almost nothing here: the Dockerfile's
   # two base images are independent, so a runtime base that can't host the app still builds
   # clean and only fails when someone runs it. That is not hypothetical — a dependabot PR
@@ -260,6 +288,25 @@ jobs:
               grep -qx 'selection-misses=' tia-outputs.txt
             fi
           done
+
+          # Issue #61: runtime: binary on Linux fetches the release archive for the stamp and
+          # checks its sha256; pointed at a published release, since this one is not out yet.
+          : > bin-outputs.txt
+          INPUT_LOG=samples/nuget-nu1101.log INPUT_MODE=analyze INPUT_ARGS='' INPUT_IMAGE='' \
+          INPUT_RUNTIME=binary INPUT_SUMMARY=false INPUT_FAIL=false INPUT_COMMENT=false \
+          INPUT_SARIF='' INPUT_RULES='' INPUT_TIA_REPORT='' CIFAIL_ACTION_VERSION=0.5.0 \
+          GITHUB_OUTPUT=bin-outputs.txt \
+            bash --noprofile --norc -e -o pipefail action-step.sh | tee bin-out.txt
+          grep -q 'binary cifail-0.5.0-linux-x64.tar.gz sha256 ' bin-out.txt
+          grep -qx 'rule=nuget-nu1101' bin-outputs.txt
+          # A runtime of binary with an image is a contradiction, refused rather than guessed.
+          if INPUT_LOG=samples/nuget-nu1101.log INPUT_MODE=analyze INPUT_ARGS='' INPUT_IMAGE=cifail:ci \
+             INPUT_RUNTIME=binary INPUT_SUMMARY=false INPUT_FAIL=false INPUT_COMMENT=false \
+             INPUT_SARIF='' INPUT_RULES='' INPUT_TIA_REPORT='' CIFAIL_ACTION_VERSION="$stamp" \
+             bash --noprofile --norc -e -o pipefail action-step.sh > /dev/null 2>&1; then
+            echo "runtime: binary with an image: was accepted" >&2
+            exit 1
+          fi
 
           : > tia-outputs.txt
           INPUT_LOG=samples/junit-report.xml INPUT_MODE=analyze INPUT_ARGS='' \
