@@ -49,6 +49,14 @@ inputs:
     description: "A dotnet-tia report from the pull request's selective run (dotnet-tia's report: input). When set, the JUnit or TRX reports in log: are also checked for failures of tests that selection skipped."
     required: false
     default: ''
+  tia-artifact:
+    description: "Instead of tia-report: the name of the artifact the pull request's run uploaded its dotnet-tia report as. The action finds the pull request this commit merged, downloads the artifact from the latest completed run of its head commit, and checks the report is from that commit. Needs actions: read and pull-requests: read."
+    required: false
+    default: ''
+  github-token:
+    description: 'Token for fetching tia-artifact. The PR comment uses GITHUB_TOKEN from the environment, as before.'
+    required: false
+    default: ${{ github.token }}
 
 outputs:
   matched:
@@ -98,6 +106,8 @@ runs:
         INPUT_SARIF: ${{ inputs.sarif }}
         INPUT_RULES: ${{ inputs.rules }}
         INPUT_TIA_REPORT: ${{ inputs.tia-report }}
+        INPUT_TIA_ARTIFACT: ${{ inputs.tia-artifact }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         # Which build of this action is running. `@v1` is a moving tag, so the ref a consumer
         # wrote does not identify a build — this stamp does. Bumped with <Version> in
         # Directory.Build.props and enforced by scripts/check-versions.sh, so it cannot drift.
@@ -249,16 +259,92 @@ runs:
         jq_lists='def span: "`" + (gsub("`"; [39] | implode)) + "`";
           def capped($n; f): (.[:$n][] | f), (if length > $n then "- ... and \(length - $n) more; `cifail selection-misses --json` lists every one." else empty end);'
         INPUT_TIA_REPORT="${INPUT_TIA_REPORT:-}"
+        INPUT_TIA_ARTIFACT="${INPUT_TIA_ARTIFACT:-}"
         misses_unchecked() {
           echo "::warning::cifail: selection misses were not checked: ${1//%/%25}"
           emit "selection-misses" ""
           misses_md="$(printf '### Candidate selection misses\n\nNot checked: %s' "$1")"
         }
-        if [ -n "$INPUT_TIA_REPORT" ]; then
+
+        # Two commits are one when either names the other: a short SHA and a full one.
+        same_commit() {
+          local a="${1,,}" b="${2,,}"
+          [ "${#a}" -ge 7 ] && [ "${#b}" -ge 7 ] && { [[ "$a" == "$b"* ]] || [[ "$b" == "$a"* ]]; }
+        }
+
+        # The report lives in another workflow run: the pull request's (#58). The pull request is
+        # the one this commit merged, found through the API, which also works for a squash or a
+        # rebase merge. A squash commit is no descendant of the pull request's head, so the head
+        # is taken from the pull request, and the report has to be from exactly that commit.
+        tia_pr=""
+        tia_expect_head=""
+        tia_fetch_error=""
+        fetch_tia_artifact() {
+          local -x GH_TOKEN="${INPUT_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}"
+          local repo="${GITHUB_REPOSITORY:-}" pulls pr runs run found="" dir reports
+          if ! command -v gh > /dev/null 2>&1; then
+            tia_fetch_error="tia-artifact needs the gh CLI, and this runner has none."
+            return 1
+          fi
+          if ! pulls="$(gh api "repos/$repo/commits/$GITHUB_SHA/pulls" 2>/tmp/cifail-gh.err)"; then
+            tia_fetch_error="could not look up the pull request of $GITHUB_SHA ($(head -c 300 /tmp/cifail-gh.err)). The token needs pull-requests: read."
+            return 1
+          fi
+          pr="$(jq -r --arg sha "$GITHUB_SHA" '(map(select(.merge_commit_sha == $sha)) + .)[0] // empty | "\(.number) \(.head.sha)"' <<< "$pulls" 2>/dev/null)"
+          if [ -z "$pr" ]; then
+            tia_fetch_error="no pull request is associated with $GITHUB_SHA, so there is no selection to check its failures against."
+            return 1
+          fi
+          tia_pr="${pr%% *}"
+          tia_expect_head="${pr#* }"
+          if ! runs="$(gh api "repos/$repo/actions/runs?head_sha=$tia_expect_head&status=completed&per_page=100" --jq '.workflow_runs[].id' 2>/tmp/cifail-gh.err)"; then
+            tia_fetch_error="could not list the runs of pull request #$tia_pr ($(head -c 300 /tmp/cifail-gh.err)). The token needs actions: read."
+            return 1
+          fi
+          # Newest first, so a re-run's report wins over the one it replaced.
+          for run in $runs; do
+            if [ -n "$(gh api "repos/$repo/actions/runs/$run/artifacts?name=$INPUT_TIA_ARTIFACT" --jq '.artifacts[] | select(.expired | not) | .id' 2>/dev/null)" ]; then
+              found="$run"
+              break
+            fi
+          done
+          if [ -z "$found" ]; then
+            tia_fetch_error="no completed run of pull request #$tia_pr's head $tia_expect_head has an unexpired artifact named '$INPUT_TIA_ARTIFACT'."
+            return 1
+          fi
+          dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/cifail-tia.XXXXXX")"
+          if ! gh run download "$found" -R "$repo" -n "$INPUT_TIA_ARTIFACT" -D "$dir" > /dev/null 2>/tmp/cifail-gh.err; then
+            tia_fetch_error="could not download '$INPUT_TIA_ARTIFACT' from run $found ($(head -c 300 /tmp/cifail-gh.err))."
+            return 1
+          fi
+          reports="$(find "$dir" -type f -name '*.json')"
+          if [ "$(printf '%s' "$reports" | grep -c .)" -ne 1 ]; then
+            tia_fetch_error="artifact '$INPUT_TIA_ARTIFACT' from run $found should hold one .json report, and holds $(printf '%s' "$reports" | grep -c .)."
+            return 1
+          fi
+          INPUT_TIA_REPORT="$reports"
+          echo "cifail: checking against the dotnet-tia report of pull request #$tia_pr ($tia_expect_head), from run $found."
+        }
+        if [ -n "$INPUT_TIA_ARTIFACT" ] && [ -z "$INPUT_TIA_REPORT" ]; then
+          fetch_tia_artifact || true
+        fi
+
+        tia_report_head=""
+        if [ -n "$INPUT_TIA_REPORT" ] && [ -f "$INPUT_TIA_REPORT" ]; then
+          tia_report_head="$(jq -r '.headCommit // empty' "$INPUT_TIA_REPORT" 2>/dev/null)"
+        fi
+
+        if [ -n "$tia_fetch_error" ]; then
+          misses_unchecked "$tia_fetch_error"
+        elif [ -n "$INPUT_TIA_REPORT" ]; then
           if [ ! -f "$INPUT_TIA_REPORT" ]; then
             misses_unchecked "tia-report '$INPUT_TIA_REPORT' does not exist. Was the pull request's report downloaded?"
           elif [ -z "$INPUT_LOG" ]; then
             misses_unchecked "tia-report is set but log: is empty, so there were no test reports to check."
+          elif [ -n "$tia_expect_head" ] && ! same_commit "$tia_report_head" "$tia_expect_head"; then
+            # Another push of the pull request, or another pull request: its candidates would be
+            # confident and wrong, and its "None" would be worse.
+            misses_unchecked "the report is from ${tia_report_head:-an unrecorded commit}, and pull request #$tia_pr's head is $tia_expect_head."
           else
             # Mounted on its own, read-only, so an absolute path works too: the container sees
             # only the workspace, at /work, and runner.temp is outside it (#50).

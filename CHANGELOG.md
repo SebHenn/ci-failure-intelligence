@@ -9,6 +9,19 @@ after 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **The action fetches the pull request's dotnet-tia report, and checks it is the right one**
+  ([#58](https://github.com/SebHenn/ci-failure-intelligence/issues/58)). Getting a report from
+  the pull request's run into the default branch's run took cross-run artifact plumbing nobody
+  documented, and a report from the wrong pull request, or an older push of the right one, went
+  unnoticed and gave confident, wrong candidates or a false "None". `tia-artifact:` names the
+  artifact. The action finds the pull request this commit merged (squash and rebase merges
+  included), downloads the artifact from the latest completed run of the pull request's head,
+  and reports "Not checked" unless the report's `headCommit` is that head. `selection-misses
+  --expect-head <sha>` makes the same check on the command line. `github-token` sets the token
+  used for the fetch.
+
 ### Fixed
 
 - **A mass failure no longer pushes the selection-misses section out of the summary and the PR
