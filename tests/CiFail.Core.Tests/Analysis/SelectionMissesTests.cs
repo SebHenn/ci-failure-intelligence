@@ -161,6 +161,75 @@ public sealed class SelectionMissesTests
         Assert.Throws<FormatException>(() => SelectionMisses.ReadReport(json));
     }
 
+    private const string WithSkippedProjects = """
+        {
+          "schemaVersion": 1,
+          "mode": "selective",
+          "skippedTests": [ { "project": "App.Tests", "tests": ["App.Tests.GridTests.Wraps"] } ],
+          "skippedProjects": [
+            { "project": "App.FSharp.Tests", "assembly": "App.FSharp.Tests", "reason": "nothing it references was impacted" }
+          ]
+        }
+        """;
+
+    private static TestFailure From(string assembly, string name, string? classname = null) =>
+        new(name, classname, "boom", null) { Assembly = assembly };
+
+    [Fact]
+    public void A_report_from_before_skipped_projects_has_none()
+    {
+        Assert.Empty(SelectionMisses.ReadReport(Report).SkippedProjects);
+        Assert.True(SelectionMisses.Check(SelectionMisses.ReadReport(Report), [Failure("App.Tests.GridTests.Draws")]).Complete);
+    }
+
+    [Fact]
+    public void A_failure_from_a_project_skipped_whole_is_a_candidate_miss()
+    {
+        // An F# project: dotnet-tia never named its tests, so only the assembly can say (#57).
+        // TRX writes the assembly lowercased in storage, so it is compared without case.
+        var check = SelectionMisses.Check(SelectionMisses.ReadReport(WithSkippedProjects),
+            [From("app.fsharp.tests", "parses a row", "Tests.Csv")]);
+
+        var miss = Assert.Single(check.Misses);
+        Assert.Equal("Tests.Csv.parses a row", miss.Test);
+        Assert.Equal("App.FSharp.Tests", miss.Project);
+        Assert.True(check.Complete);
+    }
+
+    [Fact]
+    public void A_failure_from_an_assembly_that_ran_is_not_a_miss()
+    {
+        var check = SelectionMisses.Check(SelectionMisses.ReadReport(WithSkippedProjects),
+            [From("App.Tests", "Draws", "App.Tests.GridTests")]);
+
+        Assert.Empty(check.Misses);
+        Assert.True(check.Complete);
+    }
+
+    [Fact]
+    public void A_project_skipped_whole_is_unchecked_when_a_failure_names_no_assembly()
+    {
+        // It could be from the F# project. Leaving that out would read as a clean check.
+        var check = SelectionMisses.Check(SelectionMisses.ReadReport(WithSkippedProjects), [Failure("Tests.Csv.parses a row")]);
+
+        Assert.Empty(check.Misses);
+        var project = Assert.Single(check.UncheckedProjects);
+        Assert.Equal("App.FSharp.Tests", project.Project);
+        Assert.Contains("1 failing test(s) name no assembly", project.Reason, StringComparison.Ordinal);
+        Assert.False(check.Complete);
+    }
+
+    [Fact]
+    public void A_project_skipped_whole_with_no_assembly_is_unchecked()
+    {
+        var report = WithSkippedProjects.Replace("\"assembly\": \"App.FSharp.Tests\", ", "", StringComparison.Ordinal);
+
+        var check = SelectionMisses.Check(SelectionMisses.ReadReport(report), [From("App.FSharp.Tests", "parses a row", "Tests.Csv")]);
+
+        Assert.Empty(check.Misses);
+        Assert.Equal("the dotnet-tia report names no assembly for it", Assert.Single(check.UncheckedProjects).Reason);
+    }
+
     [Fact]
     public void A_full_run_skips_nothing()
     {

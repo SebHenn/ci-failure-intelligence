@@ -90,6 +90,42 @@ public class TestReportParserTests
         """;
 
     [Fact]
+    public void ParseTrx_takes_the_assembly_from_the_test_definition()
+    {
+        // As VSTest and Microsoft.Testing.Platform write it: the real path as the method's
+        // codeBase, a lowercased one as the test's storage (#57).
+        var failures = TestReportParser.ParseFailures(ReportFormat.Trx, """
+            <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+              <TestDefinitions>
+                <UnitTest name="Adds" storage="c:\repo\app.tests\bin\debug\net10.0\app.tests.dll" id="a1">
+                  <TestMethod codeBase="C:\repo\App.Tests\bin\Debug\net10.0\App.Tests.dll" className="App.Tests.MathTests" name="Adds" />
+                </UnitTest>
+                <UnitTest name="Parses" storage="/repo/csv.tests/bin/csv.tests.dll" id="b2"><TestMethod className="Csv.Tests" name="Parses" /></UnitTest>
+              </TestDefinitions>
+              <Results>
+                <UnitTestResult testId="a1" testName="Adds" outcome="Failed" />
+                <UnitTestResult testId="b2" testName="Parses" outcome="Failed" />
+              </Results>
+            </TestRun>
+            """);
+
+        failures.Select(f => f.Assembly).Should().Equal("App.Tests", "csv.tests");
+    }
+
+    [Theory]
+    [InlineData("App.Tests.dll", "App.Tests")]
+    [InlineData("/home/runner/work/app/App.Tests/bin/Release/net10.0/App.Tests.dll", "App.Tests")]
+    [InlineData("App.FSharp.Tests", "App.FSharp.Tests")]
+    public void ParseJUnit_takes_the_assembly_from_the_suite_name(string suite, string assembly)
+    {
+        var failures = TestReportParser.ParseFailures(ReportFormat.JUnit, $"""
+            <testsuites><testsuite name="{suite}"><testcase classname="C" name="m"><failure message="x" /></testcase></testsuite></testsuites>
+            """);
+
+        failures.Single().Assembly.Should().Be(assembly);
+    }
+
+    [Fact]
     public void ParseTrx_takes_the_class_and_method_from_the_test_definition()
     {
         var failures = TestReportParser.ParseFailures(ReportFormat.Trx, TrxWithDefinitions);

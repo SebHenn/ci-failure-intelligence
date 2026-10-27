@@ -71,6 +71,44 @@ public sealed class SelectionMissesCommandTests
     }
 
     [Fact]
+    public void A_project_skipped_whole_is_matched_by_assembly_and_otherwise_not_checked()
+    {
+        // An F# test project dotnet-tia left out whole: its tests were never named (#57).
+        using var cli = new CliHarness();
+        var tia = TiaReport.Replace(
+            "\"skippedTests\"",
+            "\"skippedProjects\": [ { \"project\": \"Csv.Tests\", \"assembly\": \"Csv.Tests\", \"reason\": \"nothing it references was impacted\" } ], \"skippedTests\"",
+            StringComparison.Ordinal);
+        var (tiaPath, results) = Write(cli, tia, """
+            <testsuites>
+              <testsuite name="Csv.Tests.dll"><testcase classname="Csv" name="parses a row"><failure message="bad row" /></testcase></testsuite>
+            </testsuites>
+            """);
+
+        var miss = cli.Run("selection-misses", "--tia", tiaPath, results);
+        miss.ExitCode.Should().Be(ExitCodes.Negative);
+        miss.StdoutFlat.Should().Contain("Csv.parses a row");
+        miss.StdoutFlat.Should().Contain("Csv.Tests");
+
+        // The same failure from a report that names no assembly could be from it, or not.
+        File.WriteAllText(results, """
+            <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+              <Results><UnitTestResult testName="parses a row" outcome="Failed" /></Results>
+            </TestRun>
+            """);
+
+        var text = cli.Run("selection-misses", "--tia", tiaPath, results);
+        text.ExitCode.Should().Be(ExitCodes.Ok);
+        text.StdoutFlat.Should().NotContain("No selection miss:");
+        text.StdoutFlat.Should().Contain("Not checked:");
+        text.StdoutFlat.Should().Contain("Csv.Tests");
+
+        var json = cli.Run("selection-misses", "--tia", tiaPath, results, "--json");
+        using var document = JsonDocument.Parse(json.Stdout);
+        document.RootElement.GetProperty("uncheckedProjects").EnumerateArray().Single().GetProperty("project").GetString().Should().Be("Csv.Tests");
+    }
+
+    [Fact]
     public void A_failure_that_cannot_be_told_apart_is_not_reported_as_no_miss()
     {
         // MSTest without definitions names a failure by its method alone, and two skipped tests

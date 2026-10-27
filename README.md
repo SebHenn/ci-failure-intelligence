@@ -700,9 +700,15 @@ cifail selection-misses --tia tia-report.json TestResults/
   matches only when exactly one skipped test ends with that name. When more than one does, the
   failure is listed as **not checked**, with the tests it could be, and the result is never "no
   miss".
+- A test project the selection skipped whole without naming its tests, an F# or VB one that
+  dotnet-tia doesn't enumerate, is in the report's `skippedProjects` (dotnet-tia 0.8 and later).
+  Its failures are matched by assembly: TRX names it in the test definition, and JUnit as the
+  suite's name, which the .NET JUnit loggers set to the assembly. When that can't be done, because
+  the report gives no assembly for the project or a failure that matched nothing names none, the
+  project is listed as **not checked**.
 - Exit **0** when no failure was a skipped test, **1** when some were, **2** for unusable input.
-  Unchecked failures do not change the exit code. `--json` prints
-  `{tia, failingTests, misses[], unmatched[]}`.
+  Unchecked failures and projects do not change the exit code. `--json` prints
+  `{tia, failingTests, misses[], unmatched[], uncheckedProjects[]}`.
 
 The action does the same with `tia-report:`. Give it the pull request's report, and the JUnit or
 TRX files of the full run as `log:`:

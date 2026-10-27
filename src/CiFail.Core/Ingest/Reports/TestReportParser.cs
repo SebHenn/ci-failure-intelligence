@@ -37,6 +37,12 @@ public sealed record TestFailure(string Name, string? Classname, string Message,
     public string? Method { get; init; }
 
     /// <summary>
+    /// The test assembly the failure came from, without directory or extension, when the report
+    /// says (#57). TRX names it in the test definition; JUnit usually as the suite's name.
+    /// </summary>
+    public string? Assembly { get; init; }
+
+    /// <summary>
     /// Render this failure as the normalized log text fed into the analysis pipeline, so the
     /// same rules/similarity/fingerprinting work per failing test as they do on a raw log.
     /// </summary>
@@ -118,11 +124,18 @@ public static class TestReportParser
             var fault = tc.Elements().FirstOrDefault(e => e.Name.LocalName is "failure" or "error");
             if (fault is null) continue;
 
+            // The .NET JUnit loggers name a suite after the assembly, sometimes with its path. Other
+            // producers name it after a class, which then matches no assembly and is harmless.
+            var suite = tc.Ancestors().FirstOrDefault(e => e.Name.LocalName == "testsuite")?.Attribute("name")?.Value;
+
             failures.Add(new TestFailure(
                 Name: tc.Attribute("name")?.Value ?? "(unknown)",
                 Classname: tc.Attribute("classname")?.Value,
                 Message: fault.Attribute("message")?.Value ?? fault.Value.Trim(),
-                Details: string.IsNullOrWhiteSpace(fault.Value) ? null : fault.Value.Trim()));
+                Details: string.IsNullOrWhiteSpace(fault.Value) ? null : fault.Value.Trim())
+            {
+                Assembly = AssemblyName(suite),
+            });
         }
         return failures;
     }
@@ -142,12 +155,17 @@ public static class TestReportParser
         // display name wherever one is set. The class and the method are in the test's definition,
         // joined on the test id (#56). Without them, two tests with one method name in different
         // classes are one name, and matching or keying on it merges them.
-        var definitions = new Dictionary<string, (string? Class, string? Method)>(StringComparer.OrdinalIgnoreCase);
+        // The assembly too: VSTest and Microsoft.Testing.Platform both write its path as the
+        // method's codeBase, and lowercased as the test's storage (#57).
+        var definitions = new Dictionary<string, (string? Class, string? Method, string? Assembly)>(StringComparer.OrdinalIgnoreCase);
         foreach (var test in document.Descendants().Where(e => e.Name.LocalName == "UnitTest"))
         {
             var method = test.Elements().FirstOrDefault(e => e.Name.LocalName == "TestMethod");
             if (test.Attribute("id")?.Value is { Length: > 0 } id && method is not null)
-                definitions.TryAdd(id, (ClassName(method.Attribute("className")?.Value), method.Attribute("name")?.Value));
+                definitions.TryAdd(id, (
+                    ClassName(method.Attribute("className")?.Value),
+                    method.Attribute("name")?.Value,
+                    AssemblyName(method.Attribute("codeBase")?.Value ?? test.Attribute("storage")?.Value)));
         }
 
         var failures = new List<TestFailure>();
@@ -161,7 +179,7 @@ public static class TestReportParser
             var stack = errorInfo?.Elements().FirstOrDefault(e => e.Name.LocalName == "StackTrace")?.Value;
 
             var name = r.Attribute("testName")?.Value ?? "(unknown)";
-            var (className, methodName) = r.Attribute("testId")?.Value is { } testId
+            var (className, methodName, assembly) = r.Attribute("testId")?.Value is { } testId
                 ? definitions.GetValueOrDefault(testId)
                 : default;
 
@@ -177,9 +195,24 @@ public static class TestReportParser
                 Details: string.IsNullOrWhiteSpace(stack) ? null : stack.Trim())
             {
                 Method = methodName,
+                Assembly = assembly,
             });
         }
         return failures;
+    }
+
+    /// <summary>
+    /// <c>C:\out\App.Tests.dll</c> or <c>/out/App.Tests.dll</c> is <c>App.Tests</c>, whichever
+    /// system wrote the path. A bare name is kept as it is.
+    /// </summary>
+    internal static string? AssemblyName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var name = value.Trim();
+        name = name[(name.LastIndexOfAny(['/', '\\']) + 1)..];
+        if (name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            name = name[..^4];
+        return name.Length == 0 ? null : name;
     }
 
     /// <summary>MSTest has written <c>Ns.Class, Assembly, Version=...</c>; the class is the part before the comma.</summary>
